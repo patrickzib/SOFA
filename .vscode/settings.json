@@ -1,0 +1,16 @@
+{
+    "C_Cpp.errorSquiggles": "Disabled",
+    "files.associations": {
+        "sax_breakpoints.h": "c",
+        "isax_index.h": "c",
+        "inmemory_index_engine.h": "c",
+        "iterator": "c",
+        "algorithm": "c",
+        "unordered_map": "c",
+        "cmath": "cpp",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "utility": "c"
+    }
+}

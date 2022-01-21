@@ -1,0 +1,63 @@
+#ifndef sfalib_h
+#define sfalib_h
+
+#include "../../config.h"
+#include "../../globals.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <float.h>
+#include <math.h>
+
+#include <fftw3.h>
+#include <sys/types.h>
+
+enum response sfa_bins_init(isax_index *index);
+
+void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread);
+
+void* set_bins_worker_dft(void *transferdata);
+
+void* set_bins_worker_pca(void *transferdata);
+
+void* order_divide_worker(void *transferdata);
+
+void sfa_fill_order_line(isax_index *index, ts_type **dft_mem_array);
+
+void sfa_divide_equi_depth_hist(isax_index *index, ts_type **dft_mem_array);
+
+void sfa_divide_equi_width_hist(isax_index *index, ts_type **dft_mem_array);
+
+void sfa_print_bins(isax_index *index);
+
+void free_dft_memory(isax_index *index, ts_type **dft_mem_array);
+
+int compare_ts_type (const void * a, const void * b);
+
+ts_type sfa_fft_min_dist (isax_index *index, unsigned char c1_value, unsigned char c2_value, ts_type real_c2, unsigned int dim);
+
+ts_type minidist_fft_to_isax_complete(isax_index *index, ts_type *query_fft, sax_type *sax, sax_type *sax_cardinalities);
+ts_type minidist_fft_to_isax(isax_index *index, float *query_fft, sax_type *sax);
+
+void sfa_printbin(unsigned long long n, int size);
+
+void fft_print(ts_type *fft, int segments);
+
+void sfa_print(sax_type *sax,int segments,  int cardinality);	
+
+typedef struct bins_data_inmemory
+{
+	isax_index *index;
+	long int start_number,stop_number;	
+	ts_type ** dft_mem_array;
+    const char *filename;
+	int workernumber;
+	long int records;
+	ts_type * ts;
+	fftwf_complex *ts_out;
+	fftwf_plan plan_forward;
+	ts_type * transform;
+}bins_data_inmemory;
+
+#endif
