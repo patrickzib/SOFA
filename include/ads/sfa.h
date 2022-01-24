@@ -19,8 +19,6 @@ void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int
 
 void* set_bins_worker_dft(void *transferdata);
 
-void* set_bins_worker_pca(void *transferdata);
-
 void* order_divide_worker(void *transferdata);
 
 void sfa_fill_order_line(isax_index *index, ts_type **dft_mem_array);
@@ -37,8 +35,10 @@ int compare_ts_type (const void * a, const void * b);
 
 ts_type sfa_fft_min_dist (isax_index *index, unsigned char c1_value, unsigned char c2_value, ts_type real_c2, unsigned int dim);
 
-ts_type minidist_fft_to_isax_complete(isax_index *index, ts_type *query_fft, sax_type *sax, sax_type *sax_cardinalities);
-ts_type minidist_fft_to_isax(isax_index *index, float *query_fft, sax_type *sax);
+ts_type minidist_fft_to_isax_complete(isax_index *index, ts_type *query_fft, sax_type *sax, sax_type *sax_cardinalities, float min_val);
+ts_type minidist_fft_to_isax(isax_index *index, float *query_fft, sax_type *sax, float min_val);
+
+sax_type promote_sax_cardinality(isax_index *index, ts_type current_query_fft, sax_type current_query_sax, sax_type current_value_sax, sax_type current_sax_cardinality);
 
 void sfa_printbin(unsigned long long n, int size);
 
@@ -54,6 +54,7 @@ typedef struct bins_data_inmemory
     const char *filename;
 	int workernumber;
 	long int records;
+	long int records_offset;
 	ts_type * ts;
 	fftwf_complex *ts_out;
 	fftwf_plan plan_forward;

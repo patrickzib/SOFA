@@ -7,6 +7,7 @@
 #include "../../config.h"
 #include "../../globals.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ads/isax_index.h"
@@ -14,8 +15,8 @@
 #include "ads/isax_visualize_index.h"
 #include "ads/sax/sax.h"
 
-#define STRING_SIZE 5000
-#define BUFFER_SIZE 3000
+#define STRING_SIZE 256
+#define BUFFER_SIZE 256
 
 void bst_print_dot_null(void * key, int nullcount, FILE* stream)
 {
@@ -86,13 +87,12 @@ void calculate_average_depth(FILE *ifile, isax_index *index)
         return;
     };
 
-    char logfile_out_number[STRING_SIZE] = "subtree,";
-    char logfile_out_depth[STRING_SIZE] = "average depth,";
-    char logfile_out_leaf_size[STRING_SIZE] = "average leaf size,";
+    char *buffer_number = malloc(BUFFER_SIZE * sizeof(char));
+    char *buffer_depth = malloc(BUFFER_SIZE * sizeof(char));
+    char *buffer_leaf_size = malloc(BUFFER_SIZE * sizeof(char));
 
-    char buffer_number[BUFFER_SIZE] = "";
-    char buffer_depth[BUFFER_SIZE] = "";
-    char buffer_leaf_size[BUFFER_SIZE] = "";
+    char logfile_out_header[STRING_SIZE] = "subtrees\taverage depth\taverage leaf size\n";
+    char logfile_out_values[STRING_SIZE] = "";
 
     double depth = 0.0;
     unsigned long leaf_size_total = 0;
@@ -122,15 +122,6 @@ void calculate_average_depth(FILE *ifile, isax_index *index)
             depth += current_depth;
             leaf_size_total += leaf_size;
             leaf_counter_total += leaf_count;
-
-            sprintf(buffer_number, "%d,", tree_counter);
-            sprintf(buffer_depth, "%f,", current_depth);
-            sprintf(buffer_leaf_size, "%f,", current_leaf_size);
-
-            strcat(logfile_out_number, buffer_number);
-            strcat(logfile_out_depth, buffer_depth);
-            strcat(logfile_out_leaf_size, buffer_leaf_size);
-
         }
 
         node = node->next;
@@ -138,17 +129,20 @@ void calculate_average_depth(FILE *ifile, isax_index *index)
     double total_depth_average = depth / (double)tree_counter;
     double total_leaf_size_average = (double)leaf_size_total / (double)leaf_counter_total;
 
-    sprintf(buffer_number, "total\n");
-    sprintf(buffer_depth, "%f\n", total_depth_average);
+    sprintf(buffer_number, "%d\t", tree_counter);
+    sprintf(buffer_depth, "%f\t", total_depth_average);
     sprintf(buffer_leaf_size, "%f\n", total_leaf_size_average);
 
-    strcat(logfile_out_number, buffer_number);
-    strcat(logfile_out_depth, buffer_depth);
-    strcat(logfile_out_leaf_size, buffer_leaf_size);
+    strcat(logfile_out_values, buffer_number);
+    strcat(logfile_out_values, buffer_depth);
+    strcat(logfile_out_values, buffer_leaf_size);
 
-    fprintf(ifile,"%s",logfile_out_number);
-    fprintf(ifile,"%s",logfile_out_depth);
-    fprintf(ifile,"%s",logfile_out_leaf_size);
+    fprintf(ifile,"%s",logfile_out_header);
+    fprintf(ifile,"%s",logfile_out_values);
+
+    free(buffer_number);
+    free(buffer_depth);
+    free(buffer_leaf_size);
 
     return;
 }

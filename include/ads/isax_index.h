@@ -73,7 +73,6 @@ typedef struct {
     
     int function_type;
     unsigned int sample_size;
-    int fft_size;
     int histogram_type;
     int sample_type;
 

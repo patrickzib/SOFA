@@ -375,7 +375,7 @@ float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node,
         __sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i=0; i<node->buffer->partial_buffer_size; i++) {
 
-        	distmin = minidist_fft_to_isax(index, query_fft, node->buffer->partial_sax_buffer[i]);
+        	distmin = minidist_fft_to_isax(index, query_fft, node->buffer->partial_sax_buffer[i], bsf);
             if (distmin<bsf)
             {
                 float dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 

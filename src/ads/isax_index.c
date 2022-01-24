@@ -216,7 +216,6 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 
     settings->sample_size = sample_size;
     settings->sample_type = sample_type;
-    settings->fft_size = fminf(settings->timeseries_size, settings->paa_segments);
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
 

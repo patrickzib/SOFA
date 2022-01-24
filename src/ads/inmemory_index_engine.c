@@ -2334,7 +2334,6 @@ isax_index * isax_index_init_inmemory(isax_index_settings *settings)
 
     index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
 
-    //TODO check if normalization is with n=fft_size or n=timeseries_size?
     index->norm_factor = ((ts_type) 1)/(sqrtf(settings->timeseries_size));
 
     return index;

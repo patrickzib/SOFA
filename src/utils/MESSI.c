@@ -723,6 +723,12 @@ int main (int argc, char **argv)
            
         }
 
+        if(paa_segments>time_series_size)
+        {
+            fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
+            return -1;
+        }
+
         time(&time_now);
 
         char time_str[20];
@@ -740,7 +746,7 @@ int main (int argc, char **argv)
         strcat(strcpy(log_filename_query,getenv("HOME")),"/MESSI_logs/query");
 
         mkdir(log_filename, 0777);
-        //mkdir(log_filename_tree, 0777);
+        mkdir(log_filename_tree, 0777);
         mkdir(log_filename_index, 0777);
         mkdir(log_filename_query, 0777);
 
@@ -766,9 +772,9 @@ int main (int argc, char **argv)
         FILE *logfile;
         logfile = fopen(log_filename,"w");
 
-        /*
+        
         FILE *logfile_tree;
-        logfile_tree = fopen(log_filename_tree,"w");*/
+        logfile_tree = fopen(log_filename_tree,"w");
 
         FILE *logfile_index;
         logfile_index = fopen(log_filename_index,"w");
@@ -846,7 +852,7 @@ int main (int argc, char **argv)
             //build index            
             index_creation_pRecBuf(dataset, dataset_size, idx);
 
-            //calculate_average_depth(logfile_tree, idx);
+            calculate_average_depth(logfile_tree, idx);
 
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
@@ -861,7 +867,7 @@ int main (int argc, char **argv)
             // MESSI: paralllel in memory index creation 
             index_creation_pRecBuf(dataset, dataset_size, idx);
 
-			//calculate_average_depth(logfile_tree, idx);
+			calculate_average_depth(logfile_tree, idx);
 
 			INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
@@ -980,7 +986,7 @@ int main (int argc, char **argv)
     	fprintf(logfile_index, "%ld\n", (long int)stat_index.st_size);
         
         fclose(logfile);
-        //fclose(logfile_tree);
+        fclose(logfile_tree);
         fclose(logfile_query);
     	fclose(logfile_index);
 
