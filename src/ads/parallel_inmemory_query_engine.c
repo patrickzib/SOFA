@@ -148,7 +148,7 @@ query_result refine_answer_inmemory_m (ts_type *ts, ts_type *paa, isax_index *in
         //SFA
         if(index->settings->function_type == 4)
         {
-            mindist_result->distance = minidist_fft_to_isax_complete(index, paa, current_root_node->isax_values, current_root_node->isax_cardinalities, minimum_distance);
+            mindist_result->distance = minidist_fft_to_isax(index, paa, current_root_node->isax_values, current_root_node->isax_cardinalities, minimum_distance);
         }
         else
         {
@@ -227,7 +227,7 @@ query_result refine_answer_inmemory_m (ts_type *ts, ts_type *paa, isax_index *in
                         //SFA
                         if(index->settings->function_type == 4)
                         {
-                            mindist_result->distance = minidist_fft_to_isax_complete(index, paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities,minimum_distance);
+                            mindist_result->distance = minidist_fft_to_isax(index, paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities,minimum_distance);
                         }
                         else
                         {
@@ -258,7 +258,7 @@ query_result refine_answer_inmemory_m (ts_type *ts, ts_type *paa, isax_index *in
                         //SFA
                         if(index->settings->function_type == 4)
                         {
-                            mindist_result->distance = minidist_fft_to_isax_complete(index, paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities,minimum_distance);
+                            mindist_result->distance = minidist_fft_to_isax(index, paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities,minimum_distance);
                         }
                         else
                         {
@@ -3020,7 +3020,7 @@ void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *inde
 
     if(index->settings->function_type == 4)
     {
-        distance =  minidist_fft_to_isax_complete(index, paa, node->isax_values, node->isax_cardinalities,bsf);
+        distance =  minidist_fft_to_isax(index, paa, node->isax_values, node->isax_cardinalities,bsf);
     }
     else
     {

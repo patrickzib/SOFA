@@ -331,74 +331,8 @@ void* order_divide_worker(void *transferdata)
         }
     }
 }
-//deprecated
-void sfa_fill_order_line(isax_index *index, ts_type **dft_mem_array)
-{
-    unsigned int sample_size = index->settings->sample_size;
 
-    int transforms_size = index->settings->paa_segments;
 
-    fprintf(stderr,"Sample size %u\n", sample_size);     
-
-    ts_type * cur_coeff_line;
-
-    for (int j = 0; j < transforms_size; ++j)
-    {
-        cur_coeff_line = (ts_type *) dft_mem_array[j];      
-        qsort(cur_coeff_line, sample_size, sizeof(ts_type), &compare_ts_type);
-    }
-}
-
-//deprecated
-void sfa_divide_equi_depth_hist(isax_index *index, ts_type **dft_mem_array)
-{
-    unsigned int sample_size = index->settings->sample_size;
-    ts_type * cur_coeff_line;
-
-    ts_type depth = (ts_type) sample_size / index->settings->sax_alphabet_cardinality;
-    fprintf(stderr, "Using Equi-depth histograms\n");
-
-    for (int i = 0; i < index->settings->paa_segments; ++i)
-    {
-        cur_coeff_line = dft_mem_array[i];
-
-	    int pos = 0;
-	    int count = 0;
-        for (int j=0; j < sample_size; ++j)
-	    {
-	        ++count;
-	        unsigned int ceiling = ceil (depth * (pos+1));
-	        if (count > ceiling && (pos == 0 || index->bins[i][pos-1] != cur_coeff_line[j]))
-	        {
-	            index->bins[i][pos] = cur_coeff_line[j];
-	            pos++;
- 	        }
-	    }
-    }
-}
-//deprecated
-void sfa_divide_equi_width_hist(isax_index *index, ts_type **dft_mem_array)
-{
-    ts_type * cur_coeff_line;
-    unsigned int sample_size = index->settings->sample_size;
-    int num_symbols = index->settings->sax_alphabet_cardinality;
-
-    fprintf(stderr, "Using Equi-width histograms\n");
-  
-    for (int i = 0; i < index->settings->paa_segments; ++i)
-    {
-        cur_coeff_line = dft_mem_array[i];
-	   
-        ts_type first = cur_coeff_line[0];
-        ts_type last = cur_coeff_line[sample_size-1];
-
-        ts_type interval_width = (last-first) / (ts_type) num_symbols;
-        for (int j=0; j < num_symbols-1; ++j)
-        {
-	        index->bins[i][j] = interval_width*(j+1)+first;
-        }
-    }
-}
 
 void sfa_print_bins(isax_index *index)
 {
@@ -450,191 +384,216 @@ int compare_ts_type (const void * a, const void * b)
     else return ts_a>ts_b;
 }
 
-ts_type sfa_fft_min_dist (isax_index *index, unsigned char c1_value, unsigned char c2_value, ts_type real_c2, unsigned int dim)
+ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf)
 {
-    if (c1_value == c2_value) {
-        return 0;
-    }
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
 
-    if (c1_value > c2_value)
-    {
-        return  (index->bins[dim][((int)c1_value)-1] - real_c2);
-    }
-  
-    if (c1_value < c2_value)
-    {
-        return  (real_c2 - index->bins[dim][(int)c1_value]);
-    }
-}
-
-ts_type minidist_fft_to_isax_complete(isax_index *index, ts_type *query_fft, sax_type *sax, sax_type *sax_cardinalities, float min_val) 
-{ 
-    sax_type * query_sax = calloc(index->settings->paa_segments,sizeof(sax_type));
-
-    sfa_from_fft(index, (ts_type *) query_fft, query_sax);
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
+    int max_cardinality = index->settings->sax_alphabet_cardinality;
+    int number_of_segments = index->settings->paa_segments;
+   
     ts_type distance = 0.0;
     ts_type value;
 
-    unsigned int i=0;
+    // For each sax record find the break point
+    int i=0;
 
-    if (!index->settings->is_norm)
+    if(!index->settings->is_norm)
     {
-        sax_type sax_promoted = sax[0];
+        sax_type c_c = sax_cardinalities[i];
 
-        //promote sax , if necessary
-        if((unsigned int) sax_cardinalities[0] < index->settings->sax_bit_cardinality)
-        {
-           sax_promoted = promote_sax_cardinality(index, query_fft[0], query_sax[0], sax[0], sax_cardinalities[0]);
-        }
+        sax_type c_m = max_bit_cardinality;
+        sax_type v = sax[i];
+        
+        sax_type region_lower = (v <<  (c_m - c_c));
+        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
 
-        //distance = sfa_fft_min_dist(index, sax_promoted, sax[0], query_fft[0],0);
-        if (sax_promoted == query_sax[0]) 
-        {
-            distance = 0.0;
-        }
-        else if (sax_promoted > query_sax[0])
-        {
-            distance = (index->bins[0][((int)sax_promoted)-1] - query_fft[0]);
+        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
+        float breakpoint_upper = 0; // <-- - || -
+        
+        
+        if (region_lower == 0) {
+            breakpoint_lower = min_val;
         }
         else
         {
-            distance = (query_fft[0] - index->bins[0][(int)sax_promoted]);
+            breakpoint_lower = index->bins[i][ region_lower - 1];
+        }
+        if (region_upper == max_cardinality - 1) {
+            breakpoint_upper = max_val;
+        }
+        else
+        {
+            breakpoint_upper = index->bins[i][ region_upper];
+        }
+        
+        if (breakpoint_lower > fft[i]) {
+
+            distance = breakpoint_lower - fft[i];
+            distance *= distance;
+            //distance += pow(breakpoint_lower-1 - paa[i], 2);
+        }
+        else if(breakpoint_upper < fft[i]) {
+            distance = (fft[i] - breakpoint_upper);
+            distance *= distance;
+            //distance += pow(breakpoint_upper - paa[i], 2);
         }
 
-        distance *= distance;
-        i += 2;
+        i = 2;
     }
 
-    for(;i<index->settings->paa_segments; ++i)
-    {
+    for (; i<number_of_segments; i++) {
 
-        sax_type sax_promoted = sax[i];
+        sax_type c_c = sax_cardinalities[i];
 
-        //promote sax , if necessary
-        if((unsigned int) sax_cardinalities[i] < index->settings->sax_bit_cardinality)
-        {
-           sax_promoted = promote_sax_cardinality(index, query_fft[i], query_sax[i], sax[i], sax_cardinalities[i]);
-        }
+        sax_type c_m = max_bit_cardinality;
+        sax_type v = sax[i];
+        
+        sax_type region_lower = (v <<  (c_m - c_c));
+        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
 
-        //distance = sfa_fft_min_dist(index, sax_promoted, sax[i], query_fft[i],i);
-        if (sax_promoted == query_sax[i]) 
-        {
-            value = 0.0;
-        }
-        else if (sax_promoted > query_sax[i])
-        {
-            value = (index->bins[i][((int)sax_promoted)-1] - query_fft[i]);
+        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
+        float breakpoint_upper = 0; // <-- - || -
+        
+        
+        if (region_lower == 0) {
+            breakpoint_lower = min_val;
         }
         else
         {
-            value = (query_fft[i] - index->bins[i][(int)sax_promoted]);
+            breakpoint_lower = index->bins[i][ region_lower - 1];
+        }
+        if (region_upper == max_cardinality - 1) {
+            breakpoint_upper = max_val;
+        }
+        else
+        {
+            breakpoint_upper = index->bins[i][ region_upper];
+        }
+        
+        if (breakpoint_lower > fft[i]) {
+
+            value = breakpoint_lower - fft[i];
+            distance += 2*value*value;
+        }
+        else if(breakpoint_upper < fft[i]) {
+            value = (fft[i] - breakpoint_upper);
+            distance += 2*value*value;
         }
 
-        distance += 2*value*value;
-
-        if(distance>min_val)
+        if(distance>bsf)
         {
-            free(query_sax);
             return distance;
         }
     }
 
-    free(query_sax);
     return distance;
 }
 
-sax_type promote_sax_cardinality(isax_index *index, ts_type current_query_fft, sax_type current_query_sax, sax_type current_value_sax, sax_type current_sax_cardinality)
+ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf)
 {
-    if((unsigned int) current_sax_cardinality < index->settings->sax_bit_cardinality)
-    {
-        current_value_sax = current_value_sax << (index->settings->sax_bit_cardinality - current_sax_cardinality);
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
 
-        sax_type mask_bits = (0xff << (index->settings->sax_bit_cardinality - current_sax_cardinality));
-        sax_type current_query_sax_masked = current_query_sax & mask_bits;
-
-        //lex. smaller -> set all  other values 1
-        if(current_value_sax < current_query_sax_masked)
-        {
-            mask_bits = (0xff >> current_sax_cardinality);
-            return current_value_sax | mask_bits;
-        }
-        //lex. larger -> set all other values 0
-        else if(current_value_sax > current_query_sax_masked)
-        {
-            return current_value_sax;
-        }
-        //lex. same -> set all other values like query
-        else if(current_value_sax == current_query_sax_masked)
-        {
-            return current_query_sax;
-        }
-    }
-    else if((unsigned int) current_sax_cardinality == index->settings->sax_bit_cardinality)
-    {
-        return current_value_sax;
-    }
-    else if((unsigned int) current_sax_cardinality > index->settings->sax_bit_cardinality)
-    {
-        fprintf(stderr, "ERROR: current cardinality %u is bigger than maximal cardinality %u\n",(unsigned int) current_sax_cardinality, index->settings->sax_bit_cardinality); 
-    }
-}
-
-ts_type minidist_fft_to_isax(isax_index *index, ts_type *query_fft, sax_type *sax, float min_val) 
-{
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
+    int max_cardinality = index->settings->sax_alphabet_cardinality;
+    int number_of_segments = index->settings->paa_segments;
+   
     ts_type distance = 0.0;
     ts_type value;
-    unsigned int i=0;
-
-    sax_type * query_sax = calloc(index->settings->paa_segments,sizeof(sax_type));
-
-    sfa_from_fft(index, (ts_type *) query_fft, query_sax);
-
-    if (!index->settings->is_norm)
+    
+    // For each sax record find the break point
+    int i=0;
+    if(!index->settings->is_norm)
     {
-        //distance = sfa_fft_min_dist(index, sax[0], query_sax[0], query_fft[0],0);
-        if (sax[0] == query_sax[0]) 
-        {
-            distance = 0.0;
-        }
-        else if (sax[0] > query_sax[0])
-        {
-            distance = (index->bins[0][((int)sax[0])-1] - query_fft[0]);
+        sax_type c_c = sax_cardinalities[i];
+
+        sax_type c_m = max_bit_cardinality;
+        sax_type v = sax[i];
+        
+        sax_type region_lower = (v <<  (c_m - c_c));
+        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
+
+        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
+        float breakpoint_upper = 0; // <-- - || -
+        
+        
+        if (region_lower == 0) {
+            breakpoint_lower = min_val;
         }
         else
         {
-            distance = (query_fft[0] - index->bins[0][(int)sax[0]]);
+            breakpoint_lower = index->bins[i][region_lower - 1];
+        }
+        if (region_upper == max_cardinality - 1) {
+            breakpoint_upper = max_val;
+        }
+        else
+        {
+            breakpoint_upper = index->bins[i][ region_upper];
+        }
+        
+        if (breakpoint_lower > fft[i]) {
+
+            distance = breakpoint_lower - fft[i];
+            distance *= distance;
+        }
+        else if(breakpoint_upper < fft[i]) {
+            distance = (fft[i] - breakpoint_upper);
+            distance *= distance;
         }
 
-        distance *= distance;
-
-        i += 2;
+        i = 2;
     }
 
-    for (; i < index->settings->paa_segments; i++) {
+    for (; i<number_of_segments; i++) {
 
-        //ts_type value = sfa_fft_min_dist(index, sax[i], query_sax[i], query_fft[i],i);
-        if (sax[i] == query_sax[i]) 
-        {
-            value = 0.0;
-        }
-        else if (sax[i] > query_sax[i])
-        {
-            value = (index->bins[i][((int)sax[i])-1] - query_fft[i]);
+        sax_type c_c = sax_cardinalities[i];
+
+        sax_type c_m = max_bit_cardinality;
+        sax_type v = sax[i];
+        
+        sax_type region_lower = (v <<  (c_m - c_c));
+        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
+
+        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
+        float breakpoint_upper = 0; // <-- - || -
+        
+        
+        if (region_lower == 0) {
+            breakpoint_lower = min_val;
         }
         else
         {
-            value = (query_fft[i] - index->bins[i][(int)sax[i]]);
+            breakpoint_lower = index->bins[i][  region_lower - 1];
+        }
+        if (region_upper == max_cardinality - 1) {
+            breakpoint_upper = max_val;
+        }
+        else
+        {
+            breakpoint_upper = index->bins[i][ region_upper];
+        }
+        
+        if (breakpoint_lower > fft[i]) {
+
+            value = breakpoint_lower - fft[i];
+            distance += 2*value*value;
+            //distance += pow(breakpoint_lower - paa[i], 2);
+        }
+        else if(breakpoint_upper < fft[i]) {
+            value = (fft[i] - breakpoint_upper);
+            distance += 2*value*value;
+            //distance += pow(breakpoint_upper - paa[i], 2);
         }
 
-        distance += 2*value*value;
-
-        if(distance>min_val)
+        if(distance>bsf)
         {
-            free(query_sax);
             return distance;
         }
     }
-    free(query_sax);
+
     return distance;
 }
 
