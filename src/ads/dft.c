@@ -85,6 +85,8 @@ enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, 
 
     sfa_from_fft(index, cur_coeff_line, sax_out);
 
+    free(cur_coeff_line);
+
     if(sax_out != NULL) return SUCCESS;
     else
     {

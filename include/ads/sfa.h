@@ -14,6 +14,7 @@
 #include <sys/types.h>
 
 enum response sfa_bins_init(isax_index *index);
+void sfa_free_bins(isax_index *index);
 
 void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread);
 

@@ -70,6 +70,15 @@ enum response sfa_bins_init(isax_index *index)
     return SUCCESS;
 }
 
+void sfa_free_bins(isax_index *index)
+{
+    for (int i = 0; i < index->settings->paa_segments; ++i)
+    {
+        free(index->bins[i]);
+    }
+    free(index->bins);
+}
+
 void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread)
 {
     int paa_segments = index->settings->paa_segments;
@@ -470,36 +479,62 @@ ts_type minidist_fft_to_isax_complete(isax_index *index, ts_type *query_fft, sax
 
     if (!index->settings->is_norm)
     {
+        sax_type sax_promoted = sax[0];
+
         //promote sax , if necessary
-        if((unsigned int) sax_cardinalities[i] < index->settings->sax_bit_cardinality)
+        if((unsigned int) sax_cardinalities[0] < index->settings->sax_bit_cardinality)
         {
-            sax_type sax_promoted = promote_sax_cardinality(index, query_fft[i], query_sax[i], sax[i], sax_cardinalities[i]);
-            distance = sfa_fft_min_dist(index, sax_promoted, query_sax[0], query_fft[0],0);
+           sax_promoted = promote_sax_cardinality(index, query_fft[0], query_sax[0], sax[0], sax_cardinalities[0]);
+        }
+
+        //distance = sfa_fft_min_dist(index, sax_promoted, sax[0], query_fft[0],0);
+        if (sax_promoted == query_sax[0]) 
+        {
+            distance = 0.0;
+        }
+        else if (sax_promoted > query_sax[0])
+        {
+            distance = (index->bins[0][((int)sax_promoted)-1] - query_fft[0]);
         }
         else
         {
-            distance = sfa_fft_min_dist(index, sax[0], query_sax[0], query_fft[0],0);
+            distance = (query_fft[0] - index->bins[0][(int)sax_promoted]);
         }
-        
+
         distance *= distance;
         i += 2;
     }
 
     for(;i<index->settings->paa_segments; ++i)
     {
+
+        sax_type sax_promoted = sax[i];
+
+        //promote sax , if necessary
         if((unsigned int) sax_cardinalities[i] < index->settings->sax_bit_cardinality)
         {
-            sax_type sax_promoted = promote_sax_cardinality(index, query_fft[i], query_sax[i], sax[i], sax_cardinalities[i]);
-            value = sfa_fft_min_dist(index, sax_promoted, query_sax[i], query_fft[i],i);
-            distance += 2*value*value;
+           sax_promoted = promote_sax_cardinality(index, query_fft[i], query_sax[i], sax[i], sax_cardinalities[i]);
+        }
+
+        //distance = sfa_fft_min_dist(index, sax_promoted, sax[i], query_fft[i],i);
+        if (sax_promoted == query_sax[i]) 
+        {
+            value = 0.0;
+        }
+        else if (sax_promoted > query_sax[i])
+        {
+            value = (index->bins[i][((int)sax_promoted)-1] - query_fft[i]);
         }
         else
         {
-            value = sfa_fft_min_dist(index, sax[i], query_sax[i], query_fft[i],i);
-            distance += 2*value*value;
+            value = (query_fft[i] - index->bins[i][(int)sax_promoted]);
         }
+
+        distance += 2*value*value;
+
         if(distance>min_val)
         {
+            free(query_sax);
             return distance;
         }
     }
@@ -546,7 +581,8 @@ sax_type promote_sax_cardinality(isax_index *index, ts_type current_query_fft, s
 
 ts_type minidist_fft_to_isax(isax_index *index, ts_type *query_fft, sax_type *sax, float min_val) 
 {
-    ts_type distance = 0;
+    ts_type distance = 0.0;
+    ts_type value;
     unsigned int i=0;
 
     sax_type * query_sax = calloc(index->settings->paa_segments,sizeof(sax_type));
@@ -555,22 +591,50 @@ ts_type minidist_fft_to_isax(isax_index *index, ts_type *query_fft, sax_type *sa
 
     if (!index->settings->is_norm)
     {
-        distance = sfa_fft_min_dist(index, sax[0], query_sax[0], query_fft[0],0);
+        //distance = sfa_fft_min_dist(index, sax[0], query_sax[0], query_fft[0],0);
+        if (sax[0] == query_sax[0]) 
+        {
+            distance = 0.0;
+        }
+        else if (sax[0] > query_sax[0])
+        {
+            distance = (index->bins[0][((int)sax[0])-1] - query_fft[0]);
+        }
+        else
+        {
+            distance = (query_fft[0] - index->bins[0][(int)sax[0]]);
+        }
+
         distance *= distance;
 
         i += 2;
     }
 
     for (; i < index->settings->paa_segments; i++) {
-        ts_type value = sfa_fft_min_dist(index, sax[i], query_sax[i], query_fft[i],i);
+
+        //ts_type value = sfa_fft_min_dist(index, sax[i], query_sax[i], query_fft[i],i);
+        if (sax[i] == query_sax[i]) 
+        {
+            value = 0.0;
+        }
+        else if (sax[i] > query_sax[i])
+        {
+            value = (index->bins[i][((int)sax[i])-1] - query_fft[i]);
+        }
+        else
+        {
+            value = (query_fft[i] - index->bins[i][(int)sax[i]]);
+        }
+
         distance += 2*value*value;
 
         if(distance>min_val)
         {
+            free(query_sax);
             return distance;
         }
     }
-
+    free(query_sax);
     return distance;
 }
 

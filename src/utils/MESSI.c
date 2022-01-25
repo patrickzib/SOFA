@@ -1007,7 +1007,6 @@ int main (int argc, char **argv)
         }
         COUNT_TOTAL_TIME_END
 
-
         if(!inmemory_flag)
         {
             index_write(idx); 
@@ -1018,7 +1017,13 @@ int main (int argc, char **argv)
         else
         {
             free(rawfile);
-            if(function_type==3 || function_type==4)
+
+            if(function_type==4)
+            {
+                sfa_free_bins(idx);
+                isax_index_pRecBuf_destroy(idx, NULL,maxquerythread);
+            }
+            else if(function_type==3)
             {
                 isax_index_pRecBuf_destroy(idx, NULL,maxquerythread);
             }
