@@ -191,7 +191,6 @@ query_result  approximate_search_inmemory_pRecBuf (ts_type *ts, ts_type *paa, is
             // Adaptive splitting
         }
 
-        //TODO save ts with lowest distance for FIRST_BSF
         result.distance = calculate_node_distance_inmemory(index, node, ts, FLT_MAX);
         result.node = node;
     }

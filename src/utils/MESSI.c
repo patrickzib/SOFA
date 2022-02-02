@@ -580,6 +580,47 @@ int main (int argc, char **argv)
             calculate_thread=24;
             maxquerythread=24;
     }
+    else if (cpu_control_type==362)
+    {
+            CPU_SET(0, &mask);
+            CPU_SET(1, &mask);
+            CPU_SET(2, &mask);
+            CPU_SET(3, &mask);
+            CPU_SET(4, &mask);
+            CPU_SET(5, &mask);
+            CPU_SET(6, &mask);
+            CPU_SET(7, &mask);
+            CPU_SET(8, &mask);
+            CPU_SET(9, &mask);
+            CPU_SET(10, &mask);
+            CPU_SET(11, &mask);
+            CPU_SET(12, &mask);
+            CPU_SET(13, &mask);
+            CPU_SET(14, &mask);
+            CPU_SET(15, &mask);
+            CPU_SET(16, &mask);
+            CPU_SET(17, &mask);
+            CPU_SET(18, &mask);
+            CPU_SET(19, &mask);
+            CPU_SET(20, &mask);
+            CPU_SET(21, &mask);
+            CPU_SET(22, &mask);
+            CPU_SET(23, &mask);
+            CPU_SET(24, &mask);
+            CPU_SET(25, &mask);
+            CPU_SET(26, &mask);
+            CPU_SET(27, &mask);
+            CPU_SET(28, &mask);
+            CPU_SET(29, &mask);
+            CPU_SET(30, &mask);
+            CPU_SET(31, &mask);
+            CPU_SET(32, &mask);
+            CPU_SET(33, &mask);
+            CPU_SET(34, &mask);
+            CPU_SET(35, &mask);
+            calculate_thread=36;
+            maxquerythread=36;
+    }
     else if(cpu_control_type==1)
     {
 

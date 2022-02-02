@@ -207,14 +207,8 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
         fread(ts, sizeof(ts_type),index->settings->timeseries_size,ifile);
         COUNT_INPUT_TIME_END
         printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
-        /*
-        for(int i=0; i<index->settings->timeseries_size; ++i)
-        {
-            fprintf(stderr, "%.2f", ts[i]);
-        }
-        fprintf(stderr, "\n");*/
-        COUNT_QUERYING_TIME_START
 
+        COUNT_QUERYING_TIME_START
 
         if(index->settings->function_type == 4)
         {
@@ -237,12 +231,6 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
             paa_from_ts(ts, paa, index->settings->paa_segments,
                     index->settings->ts_values_per_paa_segment);
         }
-        /*
-        for(int i=0; i<index->settings->paa_segments; ++i)
-        {
-            fprintf(stderr, "%.2f", paa[i]);
-        }
-        fprintf(stderr, "\n");*/
 
         COUNT_TOTAL_TIME_START
         query_result result = search_function(ts, paa, index,&nodelist, minimum_distance, min_checked_leaves);
@@ -256,33 +244,11 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
         RESET_LB_DIST_CALC()
         RESET_CHECKED_NODES()
         RESET_LOADED_NODES()
-        /*
-        fprintf(stderr, "Query ts:");
-        for(int i=0; i<index->settings->timeseries_size; ++i)
-        {
-            fprintf(stderr,"%.3f|",ts[i]);
-        }
-        fprintf(stderr, "\n");
-
-        ts_type * result_ts = calculate_node_ts_distance_inmemory(index, result.node, ts, result.distance);
-        fprintf(stderr, "Result ts:");
-        for(int i=0; i<index->settings->timeseries_size; ++i)
-        {
-            fprintf(stderr,"%.3f|",result_ts[i]);
-        }
-        fprintf(stderr, "\n");
-        
-        float dist = ts_euclidean_distance(ts, result_ts, index->settings->timeseries_size, FLT_MAX);
-        fprintf(stderr, "Distance:%.5f\n",dist);*/
 
         fflush(stdout);
     #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
     #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
-        //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
-        //}
         q_loaded++;
     }
 

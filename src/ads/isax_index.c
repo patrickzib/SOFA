@@ -2368,6 +2368,7 @@ void index_mRecBuf_write(isax_index *index)
     FILE *file = fopen(filename, "wb");
     free(filename);
 
+    int function_type = index->settings->function_type;
     int raw_filename_size = strlen(index->settings->raw_filename);
     int timeseries_size = index->settings->timeseries_size;
     int paa_segments = index->settings->paa_segments;
@@ -2384,6 +2385,7 @@ void index_mRecBuf_write(isax_index *index)
     // SETTINGS DATA
     fwrite(&raw_filename_size, sizeof(int), 1, file);
     fwrite(index->settings->raw_filename, sizeof(char), raw_filename_size, file);
+    fwrite(&function_type, sizeof(int), 1, file);
     fwrite(&timeseries_size, sizeof(int), 1, file);
     fwrite(&paa_segments, sizeof(int), 1, file);
     fwrite(&sax_bit_cardinality, sizeof(int), 1, file);
@@ -2395,6 +2397,29 @@ void index_mRecBuf_write(isax_index *index)
     fwrite(&total_loaded_leaves, sizeof(int), 1, file);
     fwrite(&tight_bound, sizeof(int), 1, file);
     fwrite(&aggressive_check, sizeof(int), 1, file);
+
+    //SFA: write additional sampling settings and bins
+    if(index->settings->function_type==4)
+    {
+        char is_norm = index->settings->is_norm;
+        int sample_size = index->settings->sample_size;
+        int sample_type = index->settings->sample_type;
+        int hist_type = index->settings->histogram_type;
+
+        fwrite(&is_norm, sizeof(char), 1, file);
+        fwrite(&sample_size, sizeof(int), 1, file);
+        fwrite(&sample_type, sizeof(int), 1, file);
+        fwrite(&hist_type, sizeof(int), 1, file);
+
+        for(int i=0; i<index->settings->paa_segments; ++i)
+        {
+            for(int j=0; j<index->settings->sax_alphabet_cardinality-1; ++j)
+            {
+                float binning_value = index->bins[i][j];
+                fwrite(&binning_value, sizeof(float), 1, file);
+            }
+        }
+    }
     // FBL DATA AND NODES
     int j;
     for (j=0; j<index->fbl->number_of_buffers; j++) {

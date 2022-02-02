@@ -91,7 +91,7 @@ void calculate_average_depth(FILE *ifile, isax_index *index)
     char *buffer_depth = malloc(BUFFER_SIZE * sizeof(char));
     char *buffer_leaf_size = malloc(BUFFER_SIZE * sizeof(char));
 
-    char logfile_out_header[STRING_SIZE] = "subtrees\taverage depth\taverage leaf size\n";
+    char logfile_out_header[STRING_SIZE] = "subtrees,average depth,average leaf size\n";
     char logfile_out_values[STRING_SIZE] = "";
 
     double depth = 0.0;
@@ -129,8 +129,8 @@ void calculate_average_depth(FILE *ifile, isax_index *index)
     double total_depth_average = depth / (double)tree_counter;
     double total_leaf_size_average = (double)leaf_size_total / (double)leaf_counter_total;
 
-    sprintf(buffer_number, "%d\t", tree_counter);
-    sprintf(buffer_depth, "%f\t", total_depth_average);
+    sprintf(buffer_number, "%d,", tree_counter);
+    sprintf(buffer_depth, "%f,", total_depth_average);
     sprintf(buffer_leaf_size, "%f\n", total_leaf_size_average);
 
     strcat(logfile_out_values, buffer_number);

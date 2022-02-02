@@ -1973,12 +1973,8 @@ query_result exact_search_ParISnew_inmemory_workstealing (ts_type *ts, ts_type *
 query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves) 
 {
-     //   RDcalculationnumber=0;
-    //LBDcalculationnumber=0;
-
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
 
-    //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1992,7 +1988,6 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
     }
     pqueue_t **allpq=malloc(sizeof(pqueue_t*)*N_PQUEUE);
 
-
     pthread_mutex_t ququelock[N_PQUEUE];
     int queuelabel[N_PQUEUE];
 
@@ -2000,13 +1995,6 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
 
     SET_APPROXIMATE(approximate_result.distance);
 
-    if(approximate_result.node != NULL) {
-        // Insert approximate result in heap.
-        //pqueue_insert(pq, &approximate_result);
-        //GOOD: if(approximate_result.node->filename != NULL)
-        //GOOD: printf("POPS: %.5lf\t", approximate_result.distance);
-    }
-    // Insert all root nodes in heap.
     isax_node *current_root_node = index->first_node;
 
     pthread_t threadid[maxquerythread];
@@ -2016,7 +2004,6 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
  
-    
     for (int i = 0; i < N_PQUEUE; i++)
     {
                 allpq[i]=pqueue_init(index->settings->root_nodes_size/N_PQUEUE,
@@ -2048,7 +2035,6 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
     
     for (int i = 0; i < maxquerythread; i++)
     {
-        //TODO SFA in exact_search_worker_inmemory_hybridpqueue
         pthread_create(&(threadid[i]),NULL,exact_search_worker_inmemory_hybridpqueue,(void*)&(workerdata[i]));
     }
     for (int i = 0; i < maxquerythread; i++)
@@ -2060,7 +2046,6 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
     // Free the priority queue.
     pthread_barrier_destroy(&lock_barrier);
 
-    //pqueue_free(pq);
     for (int i = 0; i < N_PQUEUE; i++)
     {
         pqueue_free(allpq[i]);
@@ -2068,11 +2053,8 @@ query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,no
     free(allpq);
     bsf_result=bsf_result;
 
-    //free(rfdata);
-    //        printf("the number of LB distance calculation is %ld\t\t and the Real distance calculation is %ld\n ",LBDcalculationnumber,RDcalculationnumber);
     return bsf_result;
 
-    // Free the nodes that where not popped.
 }
 
 
@@ -2478,7 +2460,6 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
     int calculate_node=0,calculate_node_quque=0;
     int tnumber=rand()% N_PQUEUE;
     int startqueuenumber=((MESSI_workerdata*)rfdata)->startqueuenumber;
-    //COUNT_QUEUE_TIME_START
 
     while (1) 
     {
@@ -2488,13 +2469,8 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             break;
             current_root_node=((MESSI_workerdata*)rfdata)->nodelist[current_root_node_number];
 
-            //TODO check if insert in hybridqueue needs changes for SFA
             insert_tree_node_m_hybridpqueue(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber);
-            //insert_tree_node_mW(paa,current_root_node,index,bsfdisntance,pq,((MESSI_workerdata*)rfdata)->lock_queue); 
     }
-
-    //COUNT_QUEUE_TIME_END
-    //calculate_node_quque=pq->size;
 
     pthread_barrier_wait(((MESSI_workerdata*)rfdata)->lock_barrier);
     //printf("the size of quque is %d \n",pq->size);
@@ -2505,7 +2481,6 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
         pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
         if(n==NULL)
             break;
-        //pthread_rwlock_rdlock(((MESSI_workerdata*)rfdata)->lock_bsf);
         bsfdisntance=bsf_result->distance;
         //pthread_rwlock_unlock(((MESSI_workerdata*)rfdata)->lock_bsf);
         // The best node has a worse mindist, so search is finished!
@@ -2519,7 +2494,6 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             if (n->node->is_leaf) {
 
                 checks++;
-
                 float distance;
                 //SFA
                 if(index->settings->function_type == 4)
@@ -2541,7 +2515,6 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                     }
                     pthread_rwlock_unlock(((MESSI_workerdata*)rfdata)->lock_bsf);
                 }
-
             }
             
         }
@@ -2606,9 +2579,7 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                                 }
                                 pthread_rwlock_unlock(((MESSI_workerdata*)rfdata)->lock_bsf);
                             }
-
                         }
-            
                     }
                 //add
                 free(n);
