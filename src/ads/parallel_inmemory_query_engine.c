@@ -11,6 +11,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <sys/wait.h>
+#include <time.h>
+#include <sys/time.h>
 
 #include "omp.h"  
 #include "ads/isax_query_engine.h"
@@ -2461,29 +2463,49 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
     int tnumber=rand()% N_PQUEUE;
     int startqueuenumber=((MESSI_workerdata*)rfdata)->startqueuenumber;
 
+    struct timeval current_time;
+    struct timeval pq_insert_time_start;
+    struct timeval pq_remove_time_start;
+    struct timeval lb_dist_calc_time_start;
+    struct timeval real_dist_calc_time_start;
+
+    unsigned long int total_pq_insert_time=0;
+    unsigned long int total_pq_remove_time=0;
+    unsigned long int total_lb_dist_calc_time=0;
+    unsigned long int total_real_dist_calc_time=0;
+
+    gettimeofday(&pq_insert_time_start, NULL);
+
     while (1) 
     {
             current_root_node_number=__sync_fetch_and_add(((MESSI_workerdata*)rfdata)->node_counter,1);
-            //printf("the number is %d\n",current_root_node_number );
             if(current_root_node_number>= ((MESSI_workerdata*)rfdata)->amountnode)
             break;
             current_root_node=((MESSI_workerdata*)rfdata)->nodelist[current_root_node_number];
 
-            insert_tree_node_m_hybridpqueue(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber);
+            insert_tree_node_m_hybridpqueue_time(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber, &total_lb_dist_calc_time);
     }
 
     pthread_barrier_wait(((MESSI_workerdata*)rfdata)->lock_barrier);
-    //printf("the size of quque is %d \n",pq->size);
+
+    //calculate time for pqinsertion
+    gettimeofday(&current_time, NULL);
+    total_pq_insert_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_insert_time_start.tv_sec*1000000 + (pq_insert_time_start.tv_usec)));  
+
     while (1)
     {
+        gettimeofday(&pq_remove_time_start, NULL);
         pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
         n = pqueue_pop(((MESSI_workerdata*)rfdata)->allpq[startqueuenumber]);
         pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
+
+        //calculate time for pq remove
+        gettimeofday(&current_time, NULL);
+        total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
+
         if(n==NULL)
             break;
         bsfdisntance=bsf_result->distance;
-        //pthread_rwlock_unlock(((MESSI_workerdata*)rfdata)->lock_bsf);
-        // The best node has a worse mindist, so search is finished!
 
         if (n->distance > bsfdisntance || n->distance > minimum_distance) {
             break;
@@ -2498,11 +2520,11 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                 //SFA
                 if(index->settings->function_type == 4)
                 {
-                    distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
+                    distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                 }
                 else
                 {
-                    distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
+                    distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                 }
 
                 if (distance < bsfdisntance)
@@ -2523,6 +2545,8 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
 
     if( (((MESSI_workerdata*)rfdata)->allqueuelabel[startqueuenumber])==1)
     {
+        gettimeofday(&pq_remove_time_start, NULL);
+
         (((MESSI_workerdata*)rfdata)->allqueuelabel[startqueuenumber])=0;
         pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
         while(n = pqueue_pop(((MESSI_workerdata*)rfdata)->allpq[startqueuenumber]))
@@ -2530,6 +2554,10 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             free(n);
         }
         pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
+
+        //calculate time for pq remove
+        gettimeofday(&current_time, NULL);
+        total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
     }
 
     while(1)
@@ -2543,9 +2571,17 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                 finished=false;
                 while(1)
                 {
+                    gettimeofday(&pq_remove_time_start, NULL);
+
                     pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[i]));
                     n = pqueue_pop(((MESSI_workerdata*)rfdata)->allpq[i]);
                     pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[i]));
+
+                    //calculate time for pq remove
+                    gettimeofday(&current_time, NULL);
+                    total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
+
+
                     if(n==NULL)
                     break;
                     if (n->distance > bsfdisntance || n->distance > minimum_distance) {
@@ -2562,11 +2598,11 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                             //SFA
                             if(index->settings->function_type == 4)
                             {
-                                distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
+                                distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                             }
                             else
                             {
-                                distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
+                                distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                             }
 
                             if (distance < bsfdisntance)
@@ -2592,19 +2628,10 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             break;
         }
     }
-
-
-    //pthread_barrier_wait(((MESSI_workerdata*)rfdata)->lock_barrier);
-    //while(n=pqueue_pop(pq))
-    //{
-            //free(n);
-    //}
-    //pqueue_free(pq);
-    //
-    
-
-                                      //printf("create pq time is %f \n",worker_total_time );
-    //printf("the check's node is\t %d\tthe local queue's node is\t%d\n",checks,calculate_node_quque);
+    __sync_fetch_and_add(&TOTAL_PQ_INSERT_TIME,(int)total_pq_insert_time);
+    __sync_fetch_and_add(&TOTAL_PQ_REMOVE_TIME,(int)total_pq_remove_time);
+    __sync_fetch_and_add(&TOTAL_LB_DIST_CALC_TIME,(int)total_lb_dist_calc_time);
+    __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);
 }
 
 
@@ -2985,8 +3012,6 @@ void insert_tree_node_m_hybridpqueue_workstealing(float *paa,isax_node *node,isa
 
 void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t **pq,pthread_mutex_t *lock_queue,int *tnumber)
 {   
-    //TODO count lb distance calc???
-    //COUNT_CAL_TIME_START
     float distance;
 
     if(index->settings->function_type == 4)
@@ -3026,6 +3051,59 @@ void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *inde
             if (node->right_child->isax_cardinalities != NULL)
             {
                 insert_tree_node_m_hybridpqueue(paa,node->right_child,index,bsf,pq,lock_queue,tnumber);
+            }
+        }
+    }
+}
+
+void insert_tree_node_m_hybridpqueue_time(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t **pq,pthread_mutex_t *lock_queue,int *tnumber, unsigned long int *time_lb)
+{   
+    float distance;
+
+    struct timeval current_time;
+    struct timeval lb_dist_time_start;
+
+    gettimeofday(&lb_dist_time_start, NULL);
+    if(index->settings->function_type == 4)
+    {
+        distance =  minidist_fft_to_isax(index, paa, node->isax_values, node->isax_cardinalities,bsf);
+    }
+    else
+    {
+        distance =  minidist_paa_to_isax(paa, node->isax_values,
+                                            node->isax_cardinalities,
+                                            index->settings->sax_bit_cardinality,
+                                            index->settings->sax_alphabet_cardinality,
+                                            index->settings->paa_segments,
+                                            MINVAL, MAXVAL,
+                                            index->settings->mindist_sqrt);
+    }
+    gettimeofday(&current_time, NULL);
+    *time_lb += ((int)(current_time.tv_sec*1000000 + (current_time.tv_usec)) - (int)(lb_dist_time_start.tv_sec*1000000 + (lb_dist_time_start.tv_usec)));
+
+    //COUNT_CAL_TIME_END
+    if(distance < bsf)
+    {
+        if (node->is_leaf) 
+        {   
+            query_result * mindist_result = malloc(sizeof(query_result));
+            mindist_result->node = node;
+            mindist_result->distance=distance;
+            pthread_mutex_lock(&lock_queue[*tnumber]);
+            pqueue_insert(pq[*tnumber], mindist_result);
+            pthread_mutex_unlock(&lock_queue[*tnumber]);
+            *tnumber=(*tnumber+1)%N_PQUEUE;
+            added_tree_node++;
+        }
+        else
+        {   
+            if (node->left_child->isax_cardinalities != NULL)
+            {
+                insert_tree_node_m_hybridpqueue_time(paa,node->left_child,index, bsf,pq,lock_queue,tnumber, time_lb);
+            }
+            if (node->right_child->isax_cardinalities != NULL)
+            {
+                insert_tree_node_m_hybridpqueue_time(paa,node->right_child,index,bsf,pq,lock_queue,tnumber, time_lb);
             }
         }
     }

@@ -93,12 +93,18 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 	        {
                 ts_fftw[j] = ts[j];
             }
+            if(index->settings->coeff_number != 0)
+            {
+                fft_from_ts_coeff(index, ts_fftw, ts_out, transform, plan_forward);
+            }
+            else
+            {
+                fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
+            }
 
-            fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
-
-            for (int j =0; j < index->settings->timeseries_size; ++j)
-	        {
-                paa[j] = (ts_type) roundf(transform[j]*100.0)/100.0;
+            for(int i=0; i<index->settings->paa_segments; ++i)
+            {
+                paa[i] = (ts_type) roundf(transform[i]*100.0)/100.0;
             }
         }
 
@@ -137,9 +143,6 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
                             float minimum_distance, int min_checked_leaves,
                             query_result (*search_function)(ts_type*, ts_type*, isax_index*,node_list*, float, int)) 
 {
-    //DEBUGGING
-    //FILE * testfile;
-    //testfile = fopen("results.log","w");
 
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
@@ -209,7 +212,7 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
         printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
 
         COUNT_QUERYING_TIME_START
-
+        COUNT_INIT_TIME_START
         if(index->settings->function_type == 4)
         {
             //SFA: parse ts and make fft representation
@@ -218,11 +221,18 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
                 ts_fftw[i] = ts[i];
             }
 
-            fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
+            if(index->settings->coeff_number != 0)
+            {
+                fft_from_ts_coeff(index, ts_fftw, ts_out, transform, plan_forward);
+            }
+            else
+            {
+                fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
+            }
 
             for(int i=0; i<index->settings->paa_segments; ++i)
             {
-                paa[i] = transform[i];
+                paa[i] = (ts_type) roundf(transform[i]*100.0)/100.0;
             }
         }
         else
@@ -239,11 +249,6 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
 
         PRINT_STATS(result.distance)
         SAVE_STATS(result.distance)
-
-        RESET_REAL_DIST_CALC()
-        RESET_LB_DIST_CALC()
-        RESET_CHECKED_NODES()
-        RESET_LOADED_NODES()
 
         fflush(stdout);
     #if VERBOSE_LEVEL >= 1

@@ -17,8 +17,12 @@ enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
 
 void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread);
+void sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread);
+
+ts_type** calculate_variance_coeff(isax_index *index, ts_type ** dft_mem_array);
 
 void* set_bins_worker_dft(void *transferdata);
+void* set_bins_worker_dft_coeff(void *transferdata);
 
 void* order_divide_worker(void *transferdata);
 
@@ -27,6 +31,8 @@ void sfa_print_bins(isax_index *index);
 void free_dft_memory(isax_index *index, ts_type **dft_mem_array);
 
 int compare_ts_type (const void * a, const void * b);
+int compare_var (const void *a, const void *b);
+int compare_int (const void *a, const void *b);
 
 ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
@@ -51,5 +57,12 @@ typedef struct bins_data_inmemory
 	fftwf_plan plan_forward;
 	ts_type * transform;
 }bins_data_inmemory;
+
+typedef struct variance_coeff_index
+{
+	double variance;
+	int coeff_index;
+}variance_coeff_index;
+
 
 #endif

@@ -76,7 +76,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                                 int max_total_buffer_size, int initial_fbl_buffer_size,
                                                 int total_loaded_leaves, int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag, int sample_size,
-                                                char is_norm, int histogram_type, int sample_type)
+                                                char is_norm, int histogram_type, int sample_type, int coeff_number)
 {
     int i;
     isax_index_settings *settings = malloc(sizeof(isax_index_settings));
@@ -218,6 +218,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sample_type = sample_type;
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
+    settings->coeff_number = coeff_number;
 
     return settings;
 }
@@ -2411,13 +2412,20 @@ void index_mRecBuf_write(isax_index *index)
         fwrite(&sample_type, sizeof(int), 1, file);
         fwrite(&hist_type, sizeof(int), 1, file);
 
+        if(index->settings->coeff_number!=0)
+        {
+            fwrite(index->coefficients, sizeof(int), index->settings->paa_segments/2, file);
+        }
+
         for(int i=0; i<index->settings->paa_segments; ++i)
         {
+            fwrite(index->bins[i], sizeof(float), index->settings->sax_alphabet_cardinality-1, file);
+            /*
             for(int j=0; j<index->settings->sax_alphabet_cardinality-1; ++j)
             {
                 float binning_value = index->bins[i][j];
                 fwrite(&binning_value, sizeof(float), 1, file);
-            }
+            }*/
         }
     }
     // FBL DATA AND NODES
@@ -2495,7 +2503,7 @@ isax_index * index_read(const char* root_directory) {
 																total_loaded_leaves,
 																tight_bound,
 																aggressive_check,
-																0,0,false,false,1,false,1,1);
+																0,0,false,false,1,false,1,1,0);
 	idx_settings->raw_filename = malloc(sizeof(char) * 256);
 	strcpy(idx_settings->raw_filename, raw_filename);
 	free(raw_filename);

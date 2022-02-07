@@ -75,6 +75,7 @@ typedef struct {
     unsigned int sample_size;
     int histogram_type;
     int sample_type;
+    int coeff_number;
 
 } isax_index_settings;
 
@@ -103,6 +104,8 @@ typedef struct {
     ts_type **bins;
     ts_type norm_factor;
 
+    int * coefficients;
+
 } isax_index;
 
 
@@ -122,7 +125,8 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
                                                 int total_loaded_leaves,
 												int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag,
-                                                int sample_size, char is_norm, int histogram_type, int sample_type);
+                                                int sample_size, char is_norm, int histogram_type,
+                                                int sample_type, int coeff_number);
 void print_settings(isax_index_settings *settings);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node, 

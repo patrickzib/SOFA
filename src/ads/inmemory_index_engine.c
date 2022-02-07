@@ -1551,14 +1551,14 @@ void* indexbulkloadingworker_pRecBuf_inmemory(void *transferdata)
 }
 void* index_creation_pRecBuf_worker(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory*)transferdata)->index->settings->paa_segments);
-        //struct timeval workertimestart;
-    //struct timeval writetiemstart;
-    //struct timeval workercurenttime;
-    //struct timeval writecurenttime;
-    //double worker_total_time,tee,tss;
-    //gettimeofday(&workertimestart, NULL);    
+	unsigned long int transformation_time=0.0;
+	unsigned long int indexing_time=0.0;
 
+	struct timeval current_time;
+    struct timeval transformation_time_start;
+    struct timeval indexing_time_start;
+
+    sax_type * sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory*)transferdata)->index->settings->paa_segments);
 
     unsigned long start_number=((buffer_data_inmemory*)transferdata)->start_number;
     unsigned long stop_number=((buffer_data_inmemory*)transferdata)->stop_number;
@@ -1586,7 +1586,6 @@ void* index_creation_pRecBuf_worker(void *transferdata)
         ts_out = (fftwf_complex *)fftwf_malloc ( sizeof ( fftwf_complex ) * (ts_length/2+1) ) ;
  
         //create fftw plan
-        //TODO create lock for plan creation!!!
         plan_forward = fftwf_plan_dft_r2c_1d (ts_length, ts_fftw, ts_out, FFTW_ESTIMATE );
 
         transform = fftwf_malloc ( sizeof ( ts_type ) * ts_length);
@@ -1607,6 +1606,8 @@ void* index_creation_pRecBuf_worker(void *transferdata)
         //store result in sax
         if(index->settings->function_type==4)
         {
+        	gettimeofday(&transformation_time_start, NULL);
+
             for (int j =0; j < index->settings->timeseries_size; ++j)
 	        {
                 ts_fftw[j] = ts[j];
@@ -1614,11 +1615,18 @@ void* index_creation_pRecBuf_worker(void *transferdata)
 
             if(sfa_from_ts(index, ts_fftw, sax, ts_out, transform, plan_forward) == SUCCESS)
             {
+            	gettimeofday(&current_time, NULL);
+            	transformation_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (transformation_time_start.tv_sec*1000000 + (transformation_time_start.tv_usec)));
+            	gettimeofday(&indexing_time_start, NULL);
+
                 *pos = (file_position_type)(i*index->settings->timeseries_size);
     
                 memcpy(&(index->sax_cache[i*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
     
                 isax_pRecBuf_index_insert_inmemory(index, sax, pos, ((buffer_data_inmemory*)transferdata)->lock_firstnode,((buffer_data_inmemory*)transferdata)->workernumber,((buffer_data_inmemory*)transferdata)->total_workernumber);
+            	
+            	gettimeofday(&current_time, NULL);
+            	indexing_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (indexing_time_start.tv_sec*1000000 + (indexing_time_start.tv_usec)));
             }
             else
             {
@@ -1630,16 +1638,24 @@ void* index_creation_pRecBuf_worker(void *transferdata)
         //MESSI iSAX
         else
         {
+        	gettimeofday(&transformation_time_start, NULL);
+
             if(sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
                            index->settings->sax_bit_cardinality) == SUCCESS)
             {
+            	gettimeofday(&current_time, NULL);
+            	transformation_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (transformation_time_start.tv_sec*1000000 + (transformation_time_start.tv_usec)));
+            	gettimeofday(&indexing_time_start, NULL);
+
                 *pos = (file_position_type)(i*index->settings->timeseries_size);
     
                 memcpy(&(index->sax_cache[i*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
     
                 isax_pRecBuf_index_insert_inmemory(index, sax, pos, ((buffer_data_inmemory*)transferdata)->lock_firstnode,((buffer_data_inmemory*)transferdata)->workernumber,((buffer_data_inmemory*)transferdata)->total_workernumber);
 
+                gettimeofday(&current_time, NULL);
+            	indexing_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (indexing_time_start.tv_sec*1000000 + (indexing_time_start.tv_usec)));
             }
             else
             {
@@ -1662,20 +1678,15 @@ void* index_creation_pRecBuf_worker(void *transferdata)
     free(pos);
     free(sax);
     free(ts);
-    //gettimeofday(&workercurenttime, NULL);
-    //tss = workertimestart.tv_sec*1000000 + (workertimestart.tv_usec); 
-    //tee = workercurenttime.tv_sec*1000000  + (workercurenttime.tv_usec); 
-    //worker_total_time += (tee - tss); 
-    //printf("the worker time is %f\n",worker_total_time );
 
     pthread_barrier_wait(((buffer_data_inmemory*)transferdata)->lock_barrier1);
 
     bool have_record=false;
     int j;
     isax_node_record *r = malloc(sizeof(isax_node_record));
-    //int preworkernumber=((buffer_data_inmemory*)transferdata)->total_workernumber;
 
-    //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
+    gettimeofday(&indexing_time_start, NULL);
+
     while(1)
     {
 
@@ -1719,6 +1730,13 @@ void* index_creation_pRecBuf_worker(void *transferdata)
         }
         
     }
+
+    gettimeofday(&current_time, NULL);
+    indexing_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (indexing_time_start.tv_sec*1000000 + (indexing_time_start.tv_usec)));
+
+    __sync_fetch_and_add(&TOTAL_INDEXING_PART_TIME,(int)indexing_time);
+    __sync_fetch_and_add(&TOTAL_TRANSFORMATION_PART_TIME,(int)transformation_time);
+
     free(r);
 }
 void* index_creation_pRecBuf_worker_new(void *transferdata)

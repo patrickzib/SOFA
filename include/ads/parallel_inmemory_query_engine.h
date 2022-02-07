@@ -92,6 +92,7 @@ void insert_tree_node_m(float *paa,isax_node *node,isax_index *index,float bsf,p
 void insert_tree_node_mgpu(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_bsf *pq,pthread_mutex_t *lock_queue);
 void insert_tree_node_m_workstealing(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t *pq,pthread_mutex_t *lock_queue,localStack* workstack);
 void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t **pq,pthread_mutex_t *lock_queue,int *tnumber);
+void insert_tree_node_m_hybridpqueue_time(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t **pq,pthread_mutex_t *lock_queue,int *tnumber, unsigned long int *time_lb);
 void insert_tree_node_m_hybridpqueue_workstealing(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t **pq,pthread_mutex_t *lock_queue,localStack* workstack,int *tnumber);
 void pushbottom(localStack *stk, isax_node *node);
 isax_node* poptop(localStack *stk);

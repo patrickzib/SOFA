@@ -112,6 +112,26 @@ void* LOGFILE;
         double result_distance_all;
         double total_time_all;
 
+        struct timeval init_time_start;
+        struct timeval tree_pass_time_start;
+
+        double total_init_time;
+        double total_tree_pass_time;
+        unsigned long int TOTAL_PQ_INSERT_TIME;
+        unsigned long int TOTAL_PQ_REMOVE_TIME;
+        unsigned long int TOTAL_LB_DIST_CALC_TIME;
+        unsigned long int TOTAL_REAL_DIST_CALC_TIME;
+
+        unsigned long int TOTAL_INDEXING_PART_TIME;
+        unsigned long int TOTAL_TRANSFORMATION_PART_TIME;
+
+        double total_init_time_all;
+        double total_tree_pass_time_all;
+        double total_pq_insert_time_all;
+        double total_pq_remove_time_all;
+        double total_lb_dist_calc_time_all;
+        double total_real_dist_calc_time_all;
+
         int total_tree_nodes;
         int loaded_nodes;
         int checked_nodes;
@@ -148,7 +168,20 @@ void* LOGFILE;
                             bytes_accessed_all=0;\
                             approximate_all = 0.0;\
                             result_distance_all=0.0;\
-                            total_time_all = 0.0;\
+                            total_init_time=0.0;\
+                            total_tree_pass_time=0.0;\
+                            TOTAL_PQ_INSERT_TIME=0;\
+                            TOTAL_PQ_REMOVE_TIME=0;\
+                            TOTAL_LB_DIST_CALC_TIME=0;\
+                            TOTAL_REAL_DIST_CALC_TIME=0;\
+                            total_init_time_all=0.0;\
+                            total_tree_pass_time_all=0.0;\
+                            total_pq_insert_time_all=0.0;\
+                            total_pq_remove_time_all=0.0;\
+                            total_lb_dist_calc_time_all=0.0;\
+                            total_real_dist_calc_time_all=0.0;\
+                            TOTAL_INDEXING_PART_TIME = 0.0;\
+                            TOTAL_TRANSFORMATION_PART_TIME = 0.0;\
           printf("input\t output\t nodes\t checked_nodes\t bytes_accessed\t loaded_nodes\t loaded_records\t approximate_distance\t distance\t total\n");
         #define PRINT_STATS(result_distance) printf("%lf\t %lf\t %d\t %d\t %ld\t %d\t %lld\t %lf\t %lf\t %lf\n", \
         total_input_time, total_output_time, \
@@ -157,11 +190,13 @@ void* LOGFILE;
         loaded_records, APPROXIMATE,\
         result_distance, total_time);
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
-        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing,total time,index file size\n%lf,%lf,%lf,", total_binning_time, total_indexing_time,\
-        (total_binning_time+total_indexing_time));
-        #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
-        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%lf, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %lf\n", \
-        total_querying_time,\
+        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%lf,%lf,%ld,%ld,%lf,", total_binning_time, total_indexing_time,\
+        TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));
+        #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, init time, tree pass time, pq insert time, pq remove time, lb dist time, real dist time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
+        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%lf, %lf, %lf, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %lf\n", \
+        total_querying_time, total_init_time, \
+        total_tree_pass_time, TOTAL_PQ_INSERT_TIME, TOTAL_PQ_REMOVE_TIME,\
+        TOTAL_LB_DIST_CALC_TIME, TOTAL_REAL_DIST_CALC_TIME,\
         total_tree_nodes, checked_nodes, \
         BYTES_ACCESSED, loaded_nodes, \
         loaded_records, RDcalculationnumber, \
@@ -171,32 +206,55 @@ void* LOGFILE;
         total_time_all += total_time;\
         bytes_accessed_all += BYTES_ACCESSED;\
         approximate_all += APPROXIMATE;\
-        result_distance_all += result_distance;
-        #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
-        (total_querying_time_all / queries_size),\
+        result_distance_all += result_distance;\
+        RDcalculationnumber_all += RDcalculationnumber;\
+        RDcalculationnumber = 0;\
+        LBDcalculationnumber_all += LBDcalculationnumber;\
+        LBDcalculationnumber = 0;\
+        checked_nodes_all += checked_nodes;\
+        checked_nodes = 0;\
+        loaded_nodes_all += loaded_nodes;\
+        loaded_nodes = 0;\
+        total_init_time_all += total_init_time;\
+        total_init_time=0.0;\
+        total_tree_pass_time_all += total_tree_pass_time;\
+        total_tree_pass_time=0.0;\
+        total_pq_insert_time_all += TOTAL_PQ_INSERT_TIME;\
+        TOTAL_PQ_INSERT_TIME=0;\
+        total_pq_remove_time_all += TOTAL_PQ_REMOVE_TIME;\
+        TOTAL_PQ_REMOVE_TIME=0;\
+        total_lb_dist_calc_time_all += TOTAL_LB_DIST_CALC_TIME;\
+        TOTAL_LB_DIST_CALC_TIME=0;\
+        total_real_dist_calc_time_all += TOTAL_REAL_DIST_CALC_TIME;\
+        TOTAL_REAL_DIST_CALC_TIME=0;
+        #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
+        (total_querying_time_all / queries_size), (total_init_time_all / queries_size),\
+        (total_tree_pass_time_all / queries_size), (total_pq_insert_time_all / queries_size),(total_pq_remove_time_all / queries_size),\
+        (total_lb_dist_calc_time_all / queries_size), (total_real_dist_calc_time_all / queries_size),\
         total_tree_nodes, ((double)checked_nodes_all / queries_size), \
         ((double)bytes_accessed_all / queries_size), ((double)loaded_nodes_all / queries_size), \
         ((double)loaded_records / queries_size), ((double)RDcalculationnumber_all / queries_size), \
         ((double)LBDcalculationnumber_all / queries_size), (approximate_all / queries_size),\
-        (result_distance_all / queries_size), (total_time_all / queries_size));\
-
+        (result_distance_all / queries_size), (total_time_all / queries_size));
         #define min(x,y)  ( x<y?x:y )
         #define COUNT_NEW_NODE() __sync_fetch_and_add(&total_tree_nodes,1);
         #define COUNT_LOADED_NODE() loaded_nodes++;
         #define COUNT_CHECKED_NODE() checked_nodes++;
-
         #define COUNT_LOADED_RECORD() loaded_records++;
 
-        #define RESET_REAL_DIST_CALC()  RDcalculationnumber_all += RDcalculationnumber;\
-                                        RDcalculationnumber = 0;
-        #define RESET_LB_DIST_CALC()  LBDcalculationnumber_all += LBDcalculationnumber;\
-                                      LBDcalculationnumber = 0;
-        #define RESET_CHECKED_NODES() checked_nodes_all += checked_nodes;\
-                                      checked_nodes = 0;
-        #define RESET_LOADED_NODES() loaded_nodes_all += loaded_nodes;\
-                                      loaded_nodes = 0;
+        #define COUNT_INIT_TIME_START gettimeofday(&init_time_start, NULL);
+        #define COUNT_TREE_PASS_TIME_START gettimeofday(&tree_pass_time_start, NULL);
+        #define COUNT_PQ_INSERT_TIME_START gettimeofday(&pq_insert_time_start, NULL);
 
-        
+        #define COUNT_INIT_TIME_END  gettimeofday(&current_time, NULL); \
+                                      tS = init_time_start.tv_sec*1000000 + (init_time_start.tv_usec); \
+                                      tE = current_time.tv_sec*1000000 + (current_time.tv_usec); \
+                                      total_init_time += (tE - tS);
+        #define COUNT_TREE_PASS_TIME_END  gettimeofday(&current_time, NULL); \
+                                      tS = tree_pass_time_start.tv_sec*1000000 + (tree_pass_time_start.tv_usec); \
+                                      tE = current_time.tv_sec*1000000 + (current_time.tv_usec); \
+                                      total_tree_pass_time += (tE - tS);                        
+
         #define COUNT_INPUT_TIME_START gettimeofday(&input_time_start, NULL);
         #define COUNT_QUEUE_TIME_START gettimeofday(&queue_time_start, NULL);
         #define COUNT_INDEXING_TIME_START gettimeofday(&indexing_time_start, NULL);
