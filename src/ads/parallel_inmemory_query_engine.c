@@ -2463,6 +2463,7 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
     int tnumber=rand()% N_PQUEUE;
     int startqueuenumber=((MESSI_workerdata*)rfdata)->startqueuenumber;
 
+    /*
     struct timeval current_time;
     struct timeval pq_insert_time_start;
     struct timeval pq_remove_time_start;
@@ -2474,7 +2475,9 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
     unsigned long int total_lb_dist_calc_time=0;
     unsigned long int total_real_dist_calc_time=0;
 
+
     gettimeofday(&pq_insert_time_start, NULL);
+    */
 
     while (1) 
     {
@@ -2483,25 +2486,30 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             break;
             current_root_node=((MESSI_workerdata*)rfdata)->nodelist[current_root_node_number];
 
-            insert_tree_node_m_hybridpqueue_time(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber, &total_lb_dist_calc_time);
+            insert_tree_node_m_hybridpqueue(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber);
+            //insert_tree_node_m_hybridpqueue_time(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber, &total_lb_dist_calc_time);
     }
 
     pthread_barrier_wait(((MESSI_workerdata*)rfdata)->lock_barrier);
 
     //calculate time for pqinsertion
+    /*
     gettimeofday(&current_time, NULL);
     total_pq_insert_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_insert_time_start.tv_sec*1000000 + (pq_insert_time_start.tv_usec)));  
+    */
 
     while (1)
     {
-        gettimeofday(&pq_remove_time_start, NULL);
+        //gettimeofday(&pq_remove_time_start, NULL);
         pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
         n = pqueue_pop(((MESSI_workerdata*)rfdata)->allpq[startqueuenumber]);
         pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
 
         //calculate time for pq remove
+        /*
         gettimeofday(&current_time, NULL);
         total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
+        */
 
         if(n==NULL)
             break;
@@ -2520,11 +2528,13 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                 //SFA
                 if(index->settings->function_type == 4)
                 {
-                    distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                    //distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                    distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
                 }
                 else
                 {
-                    distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                    //distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                    distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
                 }
 
                 if (distance < bsfdisntance)
@@ -2545,7 +2555,7 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
 
     if( (((MESSI_workerdata*)rfdata)->allqueuelabel[startqueuenumber])==1)
     {
-        gettimeofday(&pq_remove_time_start, NULL);
+        //gettimeofday(&pq_remove_time_start, NULL);
 
         (((MESSI_workerdata*)rfdata)->allqueuelabel[startqueuenumber])=0;
         pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
@@ -2556,8 +2566,10 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
         pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[startqueuenumber]));
 
         //calculate time for pq remove
+        /*
         gettimeofday(&current_time, NULL);
         total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
+        */
     }
 
     while(1)
@@ -2571,16 +2583,17 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                 finished=false;
                 while(1)
                 {
-                    gettimeofday(&pq_remove_time_start, NULL);
+                    //gettimeofday(&pq_remove_time_start, NULL);
 
                     pthread_mutex_lock(&(((MESSI_workerdata*)rfdata)->alllock[i]));
                     n = pqueue_pop(((MESSI_workerdata*)rfdata)->allpq[i]);
                     pthread_mutex_unlock(&(((MESSI_workerdata*)rfdata)->alllock[i]));
 
                     //calculate time for pq remove
+                    /*
                     gettimeofday(&current_time, NULL);
                     total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
-
+                    */
 
                     if(n==NULL)
                     break;
@@ -2598,11 +2611,13 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
                             //SFA
                             if(index->settings->function_type == 4)
                             {
-                                distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                                //distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                                distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
                             }
                             else
                             {
-                                distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                                //distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
+                                distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
                             }
 
                             if (distance < bsfdisntance)
@@ -2628,12 +2643,12 @@ void* exact_search_worker_inmemory_hybridpqueue(void *rfdata)
             break;
         }
     }
+    /*
     __sync_fetch_and_add(&TOTAL_PQ_INSERT_TIME,(int)total_pq_insert_time);
     __sync_fetch_and_add(&TOTAL_PQ_REMOVE_TIME,(int)total_pq_remove_time);
     __sync_fetch_and_add(&TOTAL_LB_DIST_CALC_TIME,(int)total_lb_dist_calc_time);
-    __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);
+    __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);*/
 }
-
 
 void* exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata)
 {
@@ -3028,6 +3043,7 @@ void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *inde
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     }
+    __sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
     if(distance < bsf)
     {
@@ -3078,6 +3094,7 @@ void insert_tree_node_m_hybridpqueue_time(float *paa,isax_node *node,isax_index 
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     }
+    __sync_fetch_and_add(&LBDcalculationnumber,1);
     gettimeofday(&current_time, NULL);
     *time_lb += ((int)(current_time.tv_sec*1000000 + (current_time.tv_usec)) - (int)(lb_dist_time_start.tv_sec*1000000 + (lb_dist_time_start.tv_usec)));
 

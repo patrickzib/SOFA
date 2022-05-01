@@ -463,10 +463,20 @@ float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node,
             distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
             if (distmin<bsf)
             {
-                float dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
+		float dist;
+                if(index->settings->SIMD_flag)
+            	{
+            		dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
+                                               index->settings->timeseries_size, bsf);
+            	}
+            	else
+            	{
+			dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                        index->settings->timeseries_size, bsf);
-                __sync_fetch_and_add(&RDcalculationnumber,1);
-                if (dist < bsf) {
+		}
+		__sync_fetch_and_add(&RDcalculationnumber,1);
+		
+		if (dist < bsf) {
                     bsf = dist;
                 }
             }
@@ -501,11 +511,22 @@ float calculate_node_distance2_inmemory_SFA_gettime (isax_index *index, isax_nod
             if (distmin<bsf)
             {
                 gettimeofday(&real_dist_time_start, NULL);
-
-                float dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
+		float dist;
+                if(index->settings->SIMD_flag)
+            	{
+            		dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
+                                               index->settings->timeseries_size, bsf);
+            	}
+            	else
+            	{
+		
+			dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                        index->settings->timeseries_size, bsf);
-                __sync_fetch_and_add(&RDcalculationnumber,1);
-                if (dist < bsf) {
+		}
+		__sync_fetch_and_add(&RDcalculationnumber,1);
+                
+		
+		if (dist < bsf) {
                     bsf = dist;
                 }
                 gettimeofday(&current_time, NULL);

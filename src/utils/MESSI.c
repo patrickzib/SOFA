@@ -109,6 +109,7 @@ int main (int argc, char **argv)
     static char is_norm=0;
     static int histogram_type=1;
     static int sample_type=1;
+    static int coeff_number = 0;
 
     int calculate_thread=8;
     int  function_type =0;
@@ -165,6 +166,7 @@ int main (int argc, char **argv)
             {"is-norm", no_argument, 0, '9'},
             {"histogram-type", required_argument, 0, 'A'},
             {"sample-type", required_argument, 0, 'C'},
+            {"coeff-number", required_argument, 0, 'D'},
             {NULL, 0, NULL, 0}
         };
 
@@ -294,6 +296,9 @@ int main (int argc, char **argv)
             case 'C':
                 sample_type = atoi(optarg);
                 break;
+            case 'D':
+                coeff_number = atoi(optarg);
+                break;
             case 'h':
 #ifdef BENCHMARK
                 printf(PRODUCT);
@@ -339,6 +344,7 @@ int main (int argc, char **argv)
                 \t\t\tuniform sampling: 2\n\
                 \t\t\trandom sampling: 3\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
+                \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between paa_segments/2 and timeseries-size/2)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
@@ -580,6 +586,7 @@ int main (int argc, char **argv)
             calculate_thread=24;
             maxquerythread=24;
     }
+    //new control type for gruenau1-server with 36 cores on 2 CPUs
     else if (cpu_control_type==362)
     {
             CPU_SET(0, &mask);
@@ -763,38 +770,80 @@ int main (int argc, char **argv)
     	   system(rm_command);
            
         }
-
+        //check if paa_segments size is at most timeseries_size
         if(paa_segments>time_series_size)
         {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
+        //check is coeff_number is at between paa_segments/2 and timeseries_size/2
+        if(coeff_number != 0 && (coeff_number<paa_segments/2 || coeff_number>time_series_size/2))
+        {
+        	if(coeff_number<paa_segments || coeff_number>time_series_size)
+    		{
+    			fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", paa_segments, time_series_size);
+    			return -1;
+    		}
+    		else if(coeff_number%2 != 0)
+    		{
+    			fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
+    			return -1;
+    		}   
+        }
 
+        //get current time for logfiles
         time(&time_now);
 
         char time_str[20];
 		time_now = time(NULL);
 		strftime(time_str, 20, "%Y_%m_%d_%H:%M:%S", localtime(&time_now));
 
+		//concatenate names for logfile directories
+		char log_file_directory[FILENAME_LENGTH];
         char log_filename[FILENAME_LENGTH];
         char log_filename_tree[FILENAME_LENGTH];
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
+        strcat(strcpy(log_file_directory,getenv("HOME")),"/MESSI_logs");
         strcat(strcpy(log_filename,getenv("HOME")),"/MESSI_logs/settings");
         strcat(strcpy(log_filename_tree,getenv("HOME")),"/MESSI_logs/tree");
         strcat(strcpy(log_filename_index,getenv("HOME")),"/MESSI_logs/index");
         strcat(strcpy(log_filename_query,getenv("HOME")),"/MESSI_logs/query");
 
+        //check if logfile directories exist, create them if neccessary
+        struct stat st = {0};
+
+        if (stat(log_file_directory, &st) == -1) 
+        {
+        	mkdir(log_file_directory, 0777);
+        }
+        if (stat(log_filename, &st) == -1) 
+        {
+        	mkdir(log_filename, 0777);
+        }
+        if (stat(log_filename_tree, &st) == -1) 
+        {
+        	mkdir(log_filename_tree, 0777);
+        }
+        if (stat(log_filename_index, &st) == -1) 
+        {
+        	mkdir(log_filename_index, 0777);
+        }
+        if (stat(log_filename_query, &st) == -1) 
+        {
+        	mkdir(log_filename_query, 0777);
+        }
+/*
         mkdir(log_filename, 0777);
         mkdir(log_filename_tree, 0777);
         mkdir(log_filename_index, 0777);
         mkdir(log_filename_query, 0777);
-
+*/
+        //concatenate actual file names
         strcat(log_filename,"/MESSI_SETTINGS_");
         strcat(log_filename,time_str);
         strcat(log_filename,".csv");
-
 
         strcat(log_filename_tree,"/MESSI_TREE_");
         strcat(log_filename_tree,time_str);
@@ -810,9 +859,9 @@ int main (int argc, char **argv)
 
         strcat(index_directory,time_str);
 
+        //create logfiles
         FILE *logfile;
         logfile = fopen(log_filename,"w");
-
         
         FILE *logfile_tree;
         logfile_tree = fopen(log_filename_tree,"w");
@@ -847,8 +896,8 @@ int main (int argc, char **argv)
                                                                             sample_size,        //sample_size for MCB
                                                                             is_norm,            //input normalized for fft
                                                                             histogram_type,     //histogram type for binning
-                                                                            sample_type			//sampling type
-                                                                            );
+                                                                            sample_type,		//sampling type
+                                                                            coeff_number);		//coeff number
     	
         
         if(!inmemory_flag)
@@ -881,20 +930,29 @@ int main (int argc, char **argv)
         else {*/
         /// ########################################
         
-        //SFA
-        if(inmemory_flag && (function_type==4 || function_type==5))
+        //MESSI-SFA: in-memory flag set with function-type 4
+        if(inmemory_flag && function_type==4)
         {
             //initialize bins
             sfa_bins_init(idx);
             
             //set bins
-            sfa_set_bins(idx, dataset, dataset_size, maxquerythread);
-
+            if(idx->settings->coeff_number!=0)
+            {
+            	sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread);
+            }
+            else
+            {
+            	sfa_set_bins(idx, dataset, dataset_size, maxquerythread);
+            }
+            
             //build index            
             index_creation_pRecBuf(dataset, dataset_size, idx);
 
+            //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
 
+            //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             
@@ -905,7 +963,7 @@ int main (int argc, char **argv)
 
         else if (inmemory_flag)
         {
-            // MESSI: paralllel in memory index creation 
+            // MESSI: parallel in memory index creation 
             index_creation_pRecBuf(dataset, dataset_size, idx);
 
 			calculate_average_depth(logfile_tree, idx);
@@ -962,6 +1020,7 @@ int main (int argc, char **argv)
                 {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParGISG_openmp_inmemory);
                 }
+                //MESSI-mq: in-memory flag set with function-type 3
                 else if(function_type==3)
                 {
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_MESSI);
@@ -1013,9 +1072,11 @@ int main (int argc, char **argv)
             }
         }
 
+        //save querying stats
         SAVE_STATS_TOTAL(logfile_query, queries_size)
         PRINT_STATS(0.00f)
 
+        //save index and get size for analysis
         index_mRecBuf_write(idx);
 
     	struct stat stat_index;

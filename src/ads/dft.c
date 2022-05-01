@@ -1,8 +1,8 @@
 //
 //  dft.c
-//  sfa C version
+//  sfa C version for MESSI
 //
-//  Created by Karima Echihabi on 18/12/2016
+//  Based on dft code by Karima Echihabi on 18/12/2016
 //  Copyright 2016 Paris Descartes University. All rights reserved.
 //  
 //
@@ -18,11 +18,14 @@
 
 #include "ads/dft.h"
 
+/*
+    This function calculates the FFT coefficients for a given time series
+*/
 void fft_from_ts(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward)
 {
     unsigned long ts_length = index->settings->timeseries_size;
     int paa_segments = index->settings->paa_segments;
-      
+
     fftwf_execute (plan_forward);
 	   
     ts_out[0][1] = 0;
@@ -51,13 +54,16 @@ void fft_from_ts(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type 
     return;
 }
 
+/*
+    This function calculates the FFT coefficients for a given time series with coeff-number cofficients
+*/
 void fft_from_ts_all_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward)
 {
     unsigned long ts_length = index->settings->timeseries_size;
     int coeff_number = index->settings->coeff_number;
-      
+
     fftwf_execute (plan_forward);
-       
+
     ts_out[0][1] = 0;
 
     int j = 0;
@@ -84,6 +90,9 @@ void fft_from_ts_all_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out
     return;
 }
 
+/*
+    This function calculates the FFT coefficients for a given time series with coeff-number cofficients
+*/
 void fft_from_ts_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward)
 {
     unsigned long ts_length = index->settings->timeseries_size;
@@ -120,7 +129,8 @@ void fft_from_ts_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts
 }
 
 /*
-  The current transform is pointed to by dft_mem_array
+    This function discretized FFT coefficients with the intervals from MCB
+    The current transform is pointed to by dft_mem_array
 */
 void sfa_from_fft(isax_index * index, ts_type * cur_transform, unsigned char * cur_sfa_word)
 {
@@ -141,6 +151,9 @@ void sfa_from_fft(isax_index * index, ts_type * cur_transform, unsigned char * c
     }
 }
 
+/*
+    This function creates an SFA representation of a time series 
+*/
 enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward)
 {
 

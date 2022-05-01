@@ -165,7 +165,6 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
     int q_loaded = 0; 
     ts_type * ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type * paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
 
     node_list nodelist;
     nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->paa_segments));
