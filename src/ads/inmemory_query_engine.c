@@ -459,8 +459,17 @@ float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node,
         
         __sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i=0; i<node->buffer->partial_buffer_size; i++) {
-
-            distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
+            
+            if(index->settings->SIMD_flag)
+            {
+                distmin = minidist_fft_to_isax_rawa_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
+            }
+            else
+            {
+                distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
+            }
+            
+            
             if (distmin<bsf)
             {
 		float dist;
@@ -503,8 +512,14 @@ float calculate_node_distance2_inmemory_SFA_gettime (isax_index *index, isax_nod
 
             gettimeofday(&lb_dist_time_start, NULL);
 
-            distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
-
+            if(index->settings->SIMD_flag)
+            {
+                distmin = minidist_fft_to_isax_rawa_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
+            }
+            else
+            {
+                distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],index->settings->max_sax_cardinalities, bsf);
+            }
             gettimeofday(&current_time, NULL);
             *time_lb += ((int)(current_time.tv_sec*1000000 + (current_time.tv_usec)) - (int)(lb_dist_time_start.tv_sec*1000000 + (lb_dist_time_start).tv_usec));    
 

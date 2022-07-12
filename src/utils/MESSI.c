@@ -955,6 +955,10 @@ int main (int argc, char **argv)
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
+            for (int i = 0; i < paa_segments; i++)
+            {
+                memcpy(&idx->binsv[i*(idx->settings->sax_alphabet_cardinality-1)],idx->bins[i],sizeof(ts_type)*(idx->settings->sax_alphabet_cardinality-1));
+            }
             
             //perform queries
             isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_MESSI);

@@ -102,6 +102,7 @@ typedef struct {
     ts_type *answer;
 
     ts_type **bins;
+    ts_type *binsv;
     ts_type norm_factor;
 
     int * coefficients;
