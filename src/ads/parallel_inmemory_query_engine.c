@@ -3043,7 +3043,7 @@ void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *inde
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     }
-    __sync_fetch_and_add(&LBDcalculationnumber,1);
+    //__sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
     if(distance < bsf)
     {

@@ -1388,10 +1388,10 @@ ts_type minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *
         
         __m256i region_lowerbinv0=_mm256_add_epi32 (offsetv0, region_lowerv_0);
         __m256i region_lowerbinv1=_mm256_add_epi32 (offsetv1, region_lowerv_1);
-        __m256i region_lowerbinvv0=_mm256_sub_epi32 (region_lowerbinv0,bit1v);
-        __m256i region_lowerbinvv1=_mm256_sub_epi32 (region_lowerbinv1,bit1v);
+        region_lowerbinv0=_mm256_sub_epi32 (region_lowerbinv0,bit1v);
+        region_lowerbinv1=_mm256_sub_epi32 (region_lowerbinv1,bit1v);
         //__m256 lsax_breakpoints_shiftv_0 _mm256_i32gather_ps (sax_breakpoints, __m256i vindex, const int scale)
-        __m256 lsax_breakpoints_shiftv_0 =_mm256_i32gather_ps (index->binsv,region_lowerbinvv0, 4);
+        __m256 lsax_breakpoints_shiftv_0 =_mm256_i32gather_ps (index->binsv,region_lowerbinv0, 4);
         /*__m256 lsax_breakpoints_shiftv_0= _mm256_set_ps (index->binsv[region_lower[7]+7*(index->settings->sax_alphabet_cardinality-1) -1],
                                                         index->binsv[region_lower[6]+6*(index->settings->sax_alphabet_cardinality-1) -1], 
                                                         index->binsv[region_lower[5]+5*(index->settings->sax_alphabet_cardinality-1) -1],
@@ -1401,7 +1401,7 @@ ts_type minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *
                                                         index->binsv[region_lower[1]+1*(index->settings->sax_alphabet_cardinality-1) -1],
                                                         index->binsv[region_lower[0] - 1]);
 */
-        __m256 lsax_breakpoints_shiftv_1 =_mm256_i32gather_ps (index->binsv,region_lowerbinvv1, 4);
+        __m256 lsax_breakpoints_shiftv_1 =_mm256_i32gather_ps (index->binsv,region_lowerbinv1, 4);
         /*__m256 lsax_breakpoints_shiftv_1= _mm256_set_ps (index->binsv[region_lower[15]+15*(index->settings->sax_alphabet_cardinality-1) -1],
                                                         index->binsv[region_lower[14] +14*(index->settings->sax_alphabet_cardinality-1)-1], 
                                                         index->binsv[region_lower[13]+13*(index->settings->sax_alphabet_cardinality-1)-1],
