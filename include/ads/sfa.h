@@ -39,6 +39,7 @@ ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, s
 ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 
 long random_at_most(long max);
 
