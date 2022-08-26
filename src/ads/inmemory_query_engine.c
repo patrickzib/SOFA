@@ -326,7 +326,7 @@ float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_
     {
         int i;
         
-        __sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
+        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i=0; i<node->buffer->partial_buffer_size; i++) {
 
             if(index->settings->SIMD_flag)
@@ -342,7 +342,7 @@ float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_
                 {
                     float dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                            index->settings->timeseries_size, bsf);
-                    __sync_fetch_and_add(&RDcalculationnumber,1);
+                    //__sync_fetch_and_add(&RDcalculationnumber,1);
                     if (dist < bsf) {
                         bsf = dist;
                     }
@@ -360,7 +360,7 @@ float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_
                 {
                     float dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                            index->settings->timeseries_size, bsf);
-                    __sync_fetch_and_add(&RDcalculationnumber,1);
+                    //__sync_fetch_and_add(&RDcalculationnumber,1);
                     if (dist < bsf) {
                         bsf = dist;
                     }
@@ -457,7 +457,7 @@ float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node,
     {
         int i;
         
-        __sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
+        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i=0; i<node->buffer->partial_buffer_size; i++) {
             
             if(index->settings->SIMD_flag)
@@ -483,7 +483,7 @@ float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node,
 			dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                        index->settings->timeseries_size, bsf);
 		}
-		__sync_fetch_and_add(&RDcalculationnumber,1);
+		//__sync_fetch_and_add(&RDcalculationnumber,1);
 		
 		if (dist < bsf) {
                     bsf = dist;
@@ -538,7 +538,7 @@ float calculate_node_distance2_inmemory_SFA_gettime (isax_index *index, isax_nod
 			dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]), 
                                        index->settings->timeseries_size, bsf);
 		}
-		__sync_fetch_and_add(&RDcalculationnumber,1);
+		//__sync_fetch_and_add(&RDcalculationnumber,1);
                 
 		
 		if (dist < bsf) {
