@@ -1355,7 +1355,7 @@ query_result exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa
                                                          index->settings->mindist_sqrt) <= bsf_distance) {
             ts_buffer=&rawfile[j*index->settings->timeseries_size];
             float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
-            //__sync_fetch_and_add(&RDcalculationnumber,1);
+            __sync_fetch_and_add(&RDcalculationnumber,1);
             if(dist < bsf_distance) {
                 //omp_set_lock(&bsflock);
                 bsf_distance = dist;
@@ -3043,7 +3043,7 @@ void insert_tree_node_m_hybridpqueue(float *paa,isax_node *node,isax_index *inde
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     }
-    //__sync_fetch_and_add(&LBDcalculationnumber,1);
+    __sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
     if(distance < bsf)
     {

@@ -679,6 +679,8 @@ void sfa_print_bins(isax_index *index)
 	{
 		fprintf(stderr, "Using Equi-width histograms\n");
 	}
+
+    /*
     int paa_segments = index->settings->paa_segments;
     fprintf(stderr,"[\n");
     for (int i = 0; i < paa_segments; ++i)
@@ -695,6 +697,7 @@ void sfa_print_bins(isax_index *index)
         fprintf(stderr,";\n");
     }
     fprintf(stderr,"]\n");
+    */
 }
 
 void free_dft_memory(isax_index *index, ts_type **dft_mem_array)
