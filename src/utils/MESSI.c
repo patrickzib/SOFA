@@ -52,12 +52,12 @@
 #define FILENAME_LENGTH 256
 
 isax_index *idx;
-void     INThandler(int);
+
+void INThandler(int);
 
 
-int main (int argc, char **argv)
-{
-	signal(SIGINT, INThandler);
+int main(int argc, char **argv) {
+    signal(SIGINT, INThandler);
 
 #ifndef BENCHMARK
     printf(PRODUCT);
@@ -78,10 +78,10 @@ int main (int argc, char **argv)
     strcpy(query_directory, getenv("HOME"));
     strcat(query_directory, "/data/query");
 
-    static char * dataset = data_directory;
-    static char * queries = query_directory;
-    static char * index_path = index_directory;
-    static char * labelset = index_directory;
+    static char *dataset = data_directory;
+    static char *queries = query_directory;
+    static char *index_path = index_directory;
+    static char *labelset = index_directory;
     //static int dataset_size = 20100;//1000000;
     //static int dataset_size =   1000000;//simple2
     static long int dataset_size = 6000000;//testbench
@@ -104,83 +104,83 @@ int main (int argc, char **argv)
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
     static int cpu_control_type = 81;
-    static char inmemory_flag=0;
-    static char SIMD_flag=0;
-    static char is_norm=0;
-    static int histogram_type=1;
-    static int sample_type=1;
+    static char inmemory_flag = 0;
+    static char SIMD_flag = 0;
+    static char is_norm = 0;
+    static int histogram_type = 1;
+    static int sample_type = 1;
     static int coeff_number = 0;
+    static int filetype_int = 0;
 
-    int calculate_thread=8;
-    int  function_type =0;
-    N_PQUEUE =1;
-    maxreadthread=5;
-    read_block_length=20000;
-    int k_size=0;
-    long int labelsize=1;
-    int topk=0;
-    int dtwwindowsize=0;
-    int sample_size=1;
+    int calculate_thread = 8;
+    int function_type = 0;
+    N_PQUEUE = 1;
+    maxreadthread = 5;
+    read_block_length = 20000;
+    int k_size = 0;
+    long int labelsize = 1;
+    int topk = 0;
+    int dtwwindowsize = 0;
+    int sample_size = 1;
 
     time_t time_now;
 
-    while (1)
-    {
-        static struct option long_options[] =  {
-            {"use-index", no_argument, 0, 'a'},
-            {"initial-lbl-size", required_argument, 0, 'b'},
-            {"complete-type", required_argument, 0, 'c'},
-            {"dataset", required_argument, 0, 'd'},
-            {"total-loaded-leaves", required_argument, 0, 'e'},
-            {"flush-limit", required_argument, 0, 'f'},
-            {"aggressive-check", no_argument, 0, 'g'},
-            {"help", no_argument, 0, 'h'},
-            {"initial-fbl-size", required_argument, 0, 'i'},
-            {"serial", no_argument, 0, 'j'},
-            {"queries-size", required_argument, 0, 'k'},
-            {"leaf-size", required_argument, 0, 'l'},
-            {"min-leaf-size", required_argument, 0, 'm'},
-            {"tight-bound", no_argument, 0, 'n'},
-            {"read-thread", required_argument, 0, 'o'},
-            {"index-path", required_argument, 0, 'p'},
-            {"queries", required_argument, 0, 'q'},
-            {"read-block", required_argument, 0, 'r'},
-            {"minimum-distance", required_argument, 0, 's'},
-            {"timeseries-size", required_argument, 0, 't'},
-            {"min-checked-leaves", required_argument, 0, 'u'},
-            {"in-memory", no_argument, 0, 'v'},
-            {"cpu-type", required_argument, 0, 'w'},
-            {"sax-cardinality", required_argument, 0, 'x'},
-            {"paa-segments", required_argument, 0, 'B'},
-            {"function-type", required_argument, 0, 'y'},
-            {"dataset-size", required_argument, 0, 'z'},
-            {"k-size", required_argument, 0, '0'},
-            {"knn-label-set", required_argument, 0, '1'},
-            {"knn-label-size", required_argument, 0, '2'},
-            {"knn", no_argument, 0, '3'},
-            {"topk", no_argument, 0, '4'},
-            {"dtwwindowsize", required_argument, 0, '5'},
-            {"queue-number", required_argument, 0, '6'},
-            {"SIMD", no_argument, 0, '7'},
-            {"sample-size", required_argument, 0, '8'},
-            {"is-norm", no_argument, 0, '9'},
-            {"histogram-type", required_argument, 0, 'A'},
-            {"sample-type", required_argument, 0, 'C'},
-            {"coeff-number", required_argument, 0, 'D'},
-            {NULL, 0, NULL, 0}
+    while (1) {
+        static struct option long_options[] = {
+                {"use-index",           no_argument,       0,    'a'},
+                {"initial-lbl-size",    required_argument, 0,    'b'},
+                {"complete-type",       required_argument, 0,    'c'},
+                {"dataset",             required_argument, 0,    'd'},
+                {"total-loaded-leaves", required_argument, 0,    'e'},
+                {"flush-limit",         required_argument, 0,    'f'},
+                {"aggressive-check",    no_argument,       0,    'g'},
+                {"help",                no_argument,       0,    'h'},
+                {"initial-fbl-size",    required_argument, 0,    'i'},
+                {"serial",              no_argument,       0,    'j'},
+                {"queries-size",        required_argument, 0,    'k'},
+                {"leaf-size",           required_argument, 0,    'l'},
+                {"min-leaf-size",       required_argument, 0,    'm'},
+                {"tight-bound",         no_argument,       0,    'n'},
+                {"read-thread",         required_argument, 0,    'o'},
+                {"index-path",          required_argument, 0,    'p'},
+                {"queries",             required_argument, 0,    'q'},
+                {"read-block",          required_argument, 0,    'r'},
+                {"minimum-distance",    required_argument, 0,    's'},
+                {"timeseries-size",     required_argument, 0,    't'},
+                {"min-checked-leaves",  required_argument, 0,    'u'},
+                {"in-memory",           no_argument,       0,    'v'},
+                {"cpu-type",            required_argument, 0,    'w'},
+                {"sax-cardinality",     required_argument, 0,    'x'},
+                {"paa-segments",        required_argument, 0,    'B'},
+                {"function-type",       required_argument, 0,    'y'},
+                {"dataset-size",        required_argument, 0,    'z'},
+                {"k-size",              required_argument, 0,    '0'},
+                {"knn-label-set",       required_argument, 0,    '1'},
+                {"knn-label-size",      required_argument, 0,    '2'},
+                {"knn",                 no_argument,       0,    '3'},
+                {"topk",                no_argument,       0,    '4'},
+                {"dtwwindowsize",       required_argument, 0,    '5'},
+                {"queue-number",        required_argument, 0,    '6'},
+                {"SIMD",                no_argument,       0,    '7'},
+                {"sample-size",         required_argument, 0,    '8'},
+                {"is-norm",             no_argument,       0,    '9'},
+                {"histogram-type",      required_argument, 0,    'A'},
+                {"sample-type",         required_argument, 0,    'C'},
+                {"coeff-number",        required_argument, 0,    'D'},
+                {"filetype-int",        no_argument,       0,    'E'},
+                {NULL,                  0,                 NULL, 0}
         };
 
         /* getopt_long stores the option index here. */
         int option_index = 0;
-        int c = getopt_long (argc, argv, "",
-                             long_options, &option_index);
+        int c = getopt_long(argc, argv, "",
+                            long_options, &option_index);
         if (c == -1)
             break;
-        switch (c)
-        {
-        	case 'j':
-        		serial_scan = 1;
-        		break;
+        switch (c) {
+            case 'j':
+                serial_scan = 1;
+                break;
             case 'g':
                 aggressive_check = 1;
                 break;
@@ -230,7 +230,7 @@ int main (int argc, char **argv)
                 break;
 
             case 'B':
-            	paa_segments = atoi(optarg);
+                paa_segments = atoi(optarg);
 
             case 'l':
                 leaf_size = atoi(optarg);
@@ -249,8 +249,8 @@ int main (int argc, char **argv)
                 break;
 
             case 'u':
-            	min_checked_leaves = atoi(optarg);
-            	break;
+                min_checked_leaves = atoi(optarg);
+                break;
             case 'w':
                 cpu_control_type = atoi(optarg);
                 break;
@@ -274,18 +274,18 @@ int main (int argc, char **argv)
                 labelset = optarg;
                 break;
             case '2':
-                labelsize =  atoi(optarg);
+                labelsize = atoi(optarg);
             case '3':
-               knnlabel=1;
-               break;
+                knnlabel = 1;
+                break;
             case '4':
-               topk=1;
-               break;
+                topk = 1;
+                break;
             case '5':
-                dtwwindowsize =  atoi(optarg);
+                dtwwindowsize = atoi(optarg);
                 break;
             case '6':
-                N_PQUEUE =  atoi(optarg);
+                N_PQUEUE = atoi(optarg);
                 break;
             case '8':
                 sample_size = atoi(optarg);
@@ -298,6 +298,9 @@ int main (int argc, char **argv)
                 break;
             case 'D':
                 coeff_number = atoi(optarg);
+                break;
+            case 'E':
+                filetype_int = 1;
                 break;
             case 'h':
 #ifdef BENCHMARK
@@ -343,6 +346,7 @@ int main (int argc, char **argv)
                 \t\t\tfirst-n-values sampling: 1\n\
                 \t\t\tuniform sampling: 2\n\
                 \t\t\trandom sampling: 3\n\
+                \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
                 \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between paa_segments/2 and timeseries-size/2)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
@@ -386,66 +390,55 @@ int main (int argc, char **argv)
                 break;
         }
     }
+
     INIT_STATS();
-	cpu_set_t mask,get;
+
+    cpu_set_t mask, get;
     CPU_ZERO(&mask);
     CPU_ZERO(&get);
-    if(cpu_control_type==21)
-    {
+    if (cpu_control_type == 21) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
-        calculate_thread=2;
-        maxquerythread=2;
-    }
-    else if(cpu_control_type==22)
-    {
+        calculate_thread = 2;
+        maxquerythread = 2;
+    } else if (cpu_control_type == 22) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
-        calculate_thread=2;
-        maxquerythread=2;
-    }
-    else if(cpu_control_type==41)
-    {
+        calculate_thread = 2;
+        maxquerythread = 2;
+    } else if (cpu_control_type == 41) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
         CPU_SET(4, &mask);
         CPU_SET(6, &mask);
-	    calculate_thread=4;
-        maxquerythread=4;
-    }
-    else if(cpu_control_type==42)
-    {
+        calculate_thread = 4;
+        maxquerythread = 4;
+    } else if (cpu_control_type == 42) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
         CPU_SET(2, &mask);
         CPU_SET(3, &mask);
-        calculate_thread=4;
-        maxquerythread=4;
-    }
-    else if(cpu_control_type==61)
-    {
+        calculate_thread = 4;
+        maxquerythread = 4;
+    } else if (cpu_control_type == 61) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
         CPU_SET(4, &mask);
         CPU_SET(6, &mask);
         CPU_SET(8, &mask);
         CPU_SET(10, &mask);
-        calculate_thread=6;
-        maxquerythread=6;
-    }
-    else if(cpu_control_type==62)
-    {
+        calculate_thread = 6;
+        maxquerythread = 6;
+    } else if (cpu_control_type == 62) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
         CPU_SET(2, &mask);
         CPU_SET(3, &mask);
         CPU_SET(4, &mask);
         CPU_SET(5, &mask);
-        calculate_thread=6;
-        maxquerythread=6;
-    }
-    else if (cpu_control_type==81)
-    {
+        calculate_thread = 6;
+        maxquerythread = 6;
+    } else if (cpu_control_type == 81) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
         CPU_SET(4, &mask);
@@ -454,11 +447,9 @@ int main (int argc, char **argv)
         CPU_SET(10, &mask);
         CPU_SET(12, &mask);
         CPU_SET(14, &mask);
-        calculate_thread=8;
-        maxquerythread=8;
-    }
-    else if (cpu_control_type==82)
-    {
+        calculate_thread = 8;
+        maxquerythread = 8;
+    } else if (cpu_control_type == 82) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
         CPU_SET(2, &mask);
@@ -467,11 +458,9 @@ int main (int argc, char **argv)
         CPU_SET(5, &mask);
         CPU_SET(6, &mask);
         CPU_SET(7, &mask);
-        calculate_thread=8;
-        maxquerythread=8;
-    }
-    else if (cpu_control_type==101)
-    {
+        calculate_thread = 8;
+        maxquerythread = 8;
+    } else if (cpu_control_type == 101) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
         CPU_SET(4, &mask);
@@ -482,11 +471,9 @@ int main (int argc, char **argv)
         CPU_SET(14, &mask);
         CPU_SET(16, &mask);
         CPU_SET(18, &mask);
-        calculate_thread=10;
-        maxquerythread=10;
-    }
-    else if (cpu_control_type==102)
-    {
+        calculate_thread = 10;
+        maxquerythread = 10;
+    } else if (cpu_control_type == 102) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
         CPU_SET(2, &mask);
@@ -497,11 +484,9 @@ int main (int argc, char **argv)
         CPU_SET(7, &mask);
         CPU_SET(8, &mask);
         CPU_SET(9, &mask);
-        calculate_thread=10;
-        maxquerythread=10;
-    }
-    else if (cpu_control_type==121)
-    {
+        calculate_thread = 10;
+        maxquerythread = 10;
+    } else if (cpu_control_type == 121) {
         CPU_SET(0, &mask);
         CPU_SET(2, &mask);
         CPU_SET(4, &mask);
@@ -514,11 +499,9 @@ int main (int argc, char **argv)
         CPU_SET(18, &mask);
         CPU_SET(20, &mask);
         CPU_SET(22, &mask);
-        calculate_thread=12;
-        maxquerythread=12;
-    }
-    else if (cpu_control_type==122)
-    {
+        calculate_thread = 12;
+        maxquerythread = 12;
+    } else if (cpu_control_type == 122) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
         CPU_SET(2, &mask);
@@ -531,308 +514,260 @@ int main (int argc, char **argv)
         CPU_SET(9, &mask);
         CPU_SET(10, &mask);
         CPU_SET(11, &mask);
-        calculate_thread=12;
-        maxquerythread=12;
-    }
-    else if (cpu_control_type==182)
-    {
-            CPU_SET(0, &mask);
-            CPU_SET(1, &mask);
-            CPU_SET(2, &mask);
-            CPU_SET(3, &mask);
-            CPU_SET(4, &mask);
-            CPU_SET(5, &mask);
-            CPU_SET(6, &mask);
-            CPU_SET(7, &mask);
-            CPU_SET(8, &mask);
-            CPU_SET(9, &mask);
-            CPU_SET(10, &mask);
-            CPU_SET(11, &mask);
-            CPU_SET(12, &mask);
-            CPU_SET(13, &mask);
-            CPU_SET(14, &mask);
-            CPU_SET(15, &mask);
-            CPU_SET(16, &mask);
-            CPU_SET(17, &mask);
-            calculate_thread=18;
-            maxquerythread=18;
-    }
-    else if (cpu_control_type==242)
-    {
-            CPU_SET(0, &mask);
-            CPU_SET(1, &mask);
-            CPU_SET(2, &mask);
-            CPU_SET(3, &mask);
-            CPU_SET(4, &mask);
-            CPU_SET(5, &mask);
-            CPU_SET(6, &mask);
-            CPU_SET(7, &mask);
-            CPU_SET(8, &mask);
-            CPU_SET(9, &mask);
-            CPU_SET(10, &mask);
-            CPU_SET(11, &mask);
-            CPU_SET(12, &mask);
-            CPU_SET(13, &mask);
-            CPU_SET(14, &mask);
-            CPU_SET(15, &mask);
-            CPU_SET(16, &mask);
-            CPU_SET(17, &mask);
-            CPU_SET(18, &mask);
-            CPU_SET(19, &mask);
-            CPU_SET(20, &mask);
-            CPU_SET(21, &mask);
-            CPU_SET(22, &mask);
-            CPU_SET(23, &mask);
-            calculate_thread=24;
-            maxquerythread=24;
+        calculate_thread = 12;
+        maxquerythread = 12;
+    } else if (cpu_control_type == 182) {
+        CPU_SET(0, &mask);
+        CPU_SET(1, &mask);
+        CPU_SET(2, &mask);
+        CPU_SET(3, &mask);
+        CPU_SET(4, &mask);
+        CPU_SET(5, &mask);
+        CPU_SET(6, &mask);
+        CPU_SET(7, &mask);
+        CPU_SET(8, &mask);
+        CPU_SET(9, &mask);
+        CPU_SET(10, &mask);
+        CPU_SET(11, &mask);
+        CPU_SET(12, &mask);
+        CPU_SET(13, &mask);
+        CPU_SET(14, &mask);
+        CPU_SET(15, &mask);
+        CPU_SET(16, &mask);
+        CPU_SET(17, &mask);
+        calculate_thread = 18;
+        maxquerythread = 18;
+    } else if (cpu_control_type == 242) {
+        CPU_SET(0, &mask);
+        CPU_SET(1, &mask);
+        CPU_SET(2, &mask);
+        CPU_SET(3, &mask);
+        CPU_SET(4, &mask);
+        CPU_SET(5, &mask);
+        CPU_SET(6, &mask);
+        CPU_SET(7, &mask);
+        CPU_SET(8, &mask);
+        CPU_SET(9, &mask);
+        CPU_SET(10, &mask);
+        CPU_SET(11, &mask);
+        CPU_SET(12, &mask);
+        CPU_SET(13, &mask);
+        CPU_SET(14, &mask);
+        CPU_SET(15, &mask);
+        CPU_SET(16, &mask);
+        CPU_SET(17, &mask);
+        CPU_SET(18, &mask);
+        CPU_SET(19, &mask);
+        CPU_SET(20, &mask);
+        CPU_SET(21, &mask);
+        CPU_SET(22, &mask);
+        CPU_SET(23, &mask);
+        calculate_thread = 24;
+        maxquerythread = 24;
     }
     //new control type for gruenau1-server with 36 cores on 2 CPUs
-    else if (cpu_control_type==362)
-    {
-            CPU_SET(0, &mask);
-            CPU_SET(1, &mask);
-            CPU_SET(2, &mask);
-            CPU_SET(3, &mask);
-            CPU_SET(4, &mask);
-            CPU_SET(5, &mask);
-            CPU_SET(6, &mask);
-            CPU_SET(7, &mask);
-            CPU_SET(8, &mask);
-            CPU_SET(9, &mask);
-            CPU_SET(10, &mask);
-            CPU_SET(11, &mask);
-            CPU_SET(12, &mask);
-            CPU_SET(13, &mask);
-            CPU_SET(14, &mask);
-            CPU_SET(15, &mask);
-            CPU_SET(16, &mask);
-            CPU_SET(17, &mask);
-            CPU_SET(18, &mask);
-            CPU_SET(19, &mask);
-            CPU_SET(20, &mask);
-            CPU_SET(21, &mask);
-            CPU_SET(22, &mask);
-            CPU_SET(23, &mask);
-            CPU_SET(24, &mask);
-            CPU_SET(25, &mask);
-            CPU_SET(26, &mask);
-            CPU_SET(27, &mask);
-            CPU_SET(28, &mask);
-            CPU_SET(29, &mask);
-            CPU_SET(30, &mask);
-            CPU_SET(31, &mask);
-            CPU_SET(32, &mask);
-            CPU_SET(33, &mask);
-            CPU_SET(34, &mask);
-            CPU_SET(35, &mask);
-            calculate_thread=36;
-            maxquerythread=36;
-    }
-    else if(cpu_control_type==1)
-    {
+    else if (cpu_control_type == 362) {
+        CPU_SET(0, &mask);
+        CPU_SET(1, &mask);
+        CPU_SET(2, &mask);
+        CPU_SET(3, &mask);
+        CPU_SET(4, &mask);
+        CPU_SET(5, &mask);
+        CPU_SET(6, &mask);
+        CPU_SET(7, &mask);
+        CPU_SET(8, &mask);
+        CPU_SET(9, &mask);
+        CPU_SET(10, &mask);
+        CPU_SET(11, &mask);
+        CPU_SET(12, &mask);
+        CPU_SET(13, &mask);
+        CPU_SET(14, &mask);
+        CPU_SET(15, &mask);
+        CPU_SET(16, &mask);
+        CPU_SET(17, &mask);
+        CPU_SET(18, &mask);
+        CPU_SET(19, &mask);
+        CPU_SET(20, &mask);
+        CPU_SET(21, &mask);
+        CPU_SET(22, &mask);
+        CPU_SET(23, &mask);
+        CPU_SET(24, &mask);
+        CPU_SET(25, &mask);
+        CPU_SET(26, &mask);
+        CPU_SET(27, &mask);
+        CPU_SET(28, &mask);
+        CPU_SET(29, &mask);
+        CPU_SET(30, &mask);
+        CPU_SET(31, &mask);
+        CPU_SET(32, &mask);
+        CPU_SET(33, &mask);
+        CPU_SET(34, &mask);
+        CPU_SET(35, &mask);
+        calculate_thread = 36;
+        maxquerythread = 36;
+    } else if (cpu_control_type == 1) {
+        calculate_thread = 1;
+        maxquerythread = 1;
+    } else {
+        calculate_thread = cpu_control_type;
+        maxquerythread = cpu_control_type;
 
-        calculate_thread=1;
-        maxquerythread=1;
-    }
-    else
-    {
-        calculate_thread=cpu_control_type;
-        maxquerythread=cpu_control_type;
-
-        for (int i = 0; i < cpu_control_type; i++)
-        {
+        for (int i = 0; i < cpu_control_type; i++) {
             //CPU_SET(i, &mask);
         }
     }
 
-
-    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) 
-    {
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
         fprintf(stderr, "set thread affinity failed\n");
     }
 
-    if (pthread_getaffinity_np(pthread_self(), sizeof(get), &get) < 0) 
-    {
+    if (pthread_getaffinity_np(pthread_self(), sizeof(get), &get) < 0) {
         fprintf(stderr, "get thread affinity failed\n");
     }
-    if (use_index) 
-    {
-    	isax_index *idx = index_read(index_path);
-    	idx->settings->tight_bound = tight_bound;
-    	idx->settings->aggressive_check = aggressive_check;
-    	idx->settings->total_loaded_leaves = total_loaded_leaves;
+    if (use_index) {
+        isax_index *idx = index_read(index_path);
+        idx->settings->tight_bound = tight_bound;
+        idx->settings->aggressive_check = aggressive_check;
+        idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
-    	print_settings(idx->settings);
+        print_settings(idx->settings);
         //fprintf(stderr,"total_records: %ld\n", idx->total_records);
         //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
+         //create_wedges(idx, NULL);
 
-    	//create_wedges(idx, NULL);
- 
-    	char sanity_test = 0;
-    	if(sanity_test)
-        {
-    		cache_sax_file(idx);
-            isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &sanity_check_query);
-		}
-    	else 
-        {
-    		if(serial_scan) 
-            {
-    			cache_sax_file(idx);
-                if(knnlabel)
-                {
-                    if(function_type==0)
-                    {
-                        isax_knn_query_binary_file(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,labelsize, &exact_topk_serial); //ADS+ knn
-                    }
-                    else if(function_type==1)
-                    {
-                        isax_knn_query_binary_file(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,labelsize, &exact_topk_serial_ParIS); //ParIS knn
+        char sanity_test = 0;
+        if (sanity_test) {
+            cache_sax_file(idx);
+            isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                   &sanity_check_query);
+        } else {
+            if (serial_scan) {
+                cache_sax_file(idx);
+                if (knnlabel) {
+                    if (function_type == 0) {
+                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                                   min_checked_leaves, k_size, labelsize,
+                                                   &exact_topk_serial); //ADS+ knn
+                    } else if (function_type == 1) {
+                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                                   min_checked_leaves, k_size, labelsize,
+                                                   &exact_topk_serial_ParIS); //ParIS knn
                     }
 
-                }
-                else if(topk)
-                {
-                    if(function_type==0)
-                    {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size, &exact_topk_serial);//ADS+ topk
+                } else if (topk) {
+                    if (function_type == 0) {
+                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                    k_size, &exact_topk_serial);//ADS+ topk
+                    } else if (function_type == 1) {
+                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                    k_size, &exact_topk_serial_ParIS);//ParIS topk
                     }
-                    else if(function_type==1)
-                    {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size, &exact_topk_serial_ParIS);//ParIS topk
-                    }
-                }
-                else{
-                    if(function_type==0)
-                    {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);//ADS+ similarity search
-                    }
-                    else if(function_type==1)
-                    {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS);//ParIS similarity search
-                    }
-                else if(function_type==2)
-                    {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
-                    }
-                    else if(function_type==3)
-                    {
-                    //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
+                } else {
+                    if (function_type == 0) {
+                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               &exact_search_serial);//ADS+ similarity search
+                    } else if (function_type == 1) {
+                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               &exact_search_serial_ParIS);//ParIS similarity search
+                    } else if (function_type == 2) {
+                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
+                    } else if (function_type == 3) {
+                        //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
                     }
                 }
 
-			}
-			else
-            {
-                if(knnlabel)
-                {
-                    if(function_type==0)
-                    {
-                        isax_knn_query_binary_file(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,labelsize, &exact_topk);
+            } else {
+                if (knnlabel) {
+                    if (function_type == 0) {
+                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                                   min_checked_leaves, k_size, labelsize, &exact_topk);
                     }
 
-                }
-                else if(topk)
-                {
-                    if(function_type==0)
-                    {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size, &exact_topk);
+                } else if (topk) {
+                    if (function_type == 0) {
+                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                    k_size, &exact_topk);
+                    }
+                } else {
+                    if (function_type == 0) {
+                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               &exact_search);
+                    } else {
+                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               &exact_search_m);
                     }
                 }
-                else
-                {
-                if(function_type==0)
-                {
-                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search);
-                }
-                else
-                {
-                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_m);
-                }
-                }
-			}
-    	}
+            }
+        }
         PRINT_STATS(0.00f)
-    	flush_all_leaf_buffers(idx, TMP_ONLY_CLEAN);
-    	index_write(idx);
 
-    	//clear_wedges(idx, NULL);
+        flush_all_leaf_buffers(idx, TMP_ONLY_CLEAN);
+        index_write(idx);
+
+        //clear_wedges(idx, NULL);
         //printf("this is the total search time is %f\n", total_time);
-    	isax_index_destroy(idx, NULL);
-    }
-    else
-    {
+        isax_index_destroy(idx, NULL);
+    } else {
         char rm_command[256];
 
-        if(!inmemory_flag)
-    	{
+        if (!inmemory_flag) {
             sprintf(rm_command, "rm -rf %s", index_path);
-    	   system(rm_command);
-           
+            system(rm_command);
         }
         //check if paa_segments size is at most timeseries_size
-        if(paa_segments>time_series_size)
-        {
+        if (paa_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        //check is coeff_number is at between paa_segments/2 and timeseries_size/2
-        if(coeff_number != 0 && (coeff_number<paa_segments/2 || coeff_number>time_series_size/2))
-        {
-        	if(coeff_number<paa_segments || coeff_number>time_series_size)
-    		{
-    			fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", paa_segments, time_series_size);
-    			return -1;
-    		}
-    		else if(coeff_number%2 != 0)
-    		{
-    			fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
-    			return -1;
-    		}   
+        //check is coeff_number is between paa_segments/2 and timeseries_size/2
+        if (coeff_number != 0 && (coeff_number < paa_segments / 2 || coeff_number > time_series_size / 2)) {
+            if (coeff_number < paa_segments || coeff_number > time_series_size) {
+                fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", paa_segments, time_series_size);
+                return -1;
+            } else if (coeff_number % 2 != 0) {
+                fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
+                return -1;
+            }
         }
 
         //get current time for logfiles
         time(&time_now);
 
         char time_str[20];
-		time_now = time(NULL);
-		strftime(time_str, 20, "%Y_%m_%d_%H:%M:%S", localtime(&time_now));
+        time_now = time(NULL);
+        strftime(time_str, 20, "%Y_%m_%d_%H:%M:%S", localtime(&time_now));
 
-		//concatenate names for logfile directories
-		char log_file_directory[FILENAME_LENGTH];
+        //concatenate names for logfile directories
+        char log_file_directory[FILENAME_LENGTH];
         char log_filename[FILENAME_LENGTH];
         char log_filename_tree[FILENAME_LENGTH];
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
-        strcat(strcpy(log_file_directory,getenv("HOME")),"/MESSI_logs");
-        strcat(strcpy(log_filename,getenv("HOME")),"/MESSI_logs/settings");
-        strcat(strcpy(log_filename_tree,getenv("HOME")),"/MESSI_logs/tree");
-        strcat(strcpy(log_filename_index,getenv("HOME")),"/MESSI_logs/index");
-        strcat(strcpy(log_filename_query,getenv("HOME")),"/MESSI_logs/query");
+        strcat(strcpy(log_file_directory, getenv("HOME")), "/MESSI_logs");
+        strcat(strcpy(log_filename, getenv("HOME")), "/MESSI_logs/settings");
+        strcat(strcpy(log_filename_tree, getenv("HOME")), "/MESSI_logs/tree");
+        strcat(strcpy(log_filename_index, getenv("HOME")), "/MESSI_logs/index");
+        strcat(strcpy(log_filename_query, getenv("HOME")), "/MESSI_logs/query");
 
         //check if logfile directories exist, create them if neccessary
         struct stat st = {0};
 
-        if (stat(log_file_directory, &st) == -1) 
-        {
-        	mkdir(log_file_directory, 0777);
+        if (stat(log_file_directory, &st) == -1) {
+            mkdir(log_file_directory, 0777);
         }
-        if (stat(log_filename, &st) == -1) 
-        {
-        	mkdir(log_filename, 0777);
+        if (stat(log_filename, &st) == -1) {
+            mkdir(log_filename, 0777);
         }
-        if (stat(log_filename_tree, &st) == -1) 
-        {
-        	mkdir(log_filename_tree, 0777);
+        if (stat(log_filename_tree, &st) == -1) {
+            mkdir(log_filename_tree, 0777);
         }
-        if (stat(log_filename_index, &st) == -1) 
-        {
-        	mkdir(log_filename_index, 0777);
+        if (stat(log_filename_index, &st) == -1) {
+            mkdir(log_filename_index, 0777);
         }
-        if (stat(log_filename_query, &st) == -1) 
-        {
-        	mkdir(log_filename_query, 0777);
+        if (stat(log_filename_query, &st) == -1) {
+            mkdir(log_filename_query, 0777);
         }
 /*
         mkdir(log_filename, 0777);
@@ -841,81 +776,80 @@ int main (int argc, char **argv)
         mkdir(log_filename_query, 0777);
 */
         //concatenate actual file names
-        strcat(log_filename,"/MESSI_SETTINGS_");
-        strcat(log_filename,time_str);
-        strcat(log_filename,".csv");
+        strcat(log_filename, "/MESSI_SETTINGS_");
+        strcat(log_filename, time_str);
+        strcat(log_filename, ".csv");
 
-        strcat(log_filename_tree,"/MESSI_TREE_");
-        strcat(log_filename_tree,time_str);
-        strcat(log_filename_tree,".csv");
+        strcat(log_filename_tree, "/MESSI_TREE_");
+        strcat(log_filename_tree, time_str);
+        strcat(log_filename_tree, ".csv");
 
-        strcat(log_filename_index,"/MESSI_INDEX_");
-        strcat(log_filename_index,time_str);
-        strcat(log_filename_index,".csv");
+        strcat(log_filename_index, "/MESSI_INDEX_");
+        strcat(log_filename_index, time_str);
+        strcat(log_filename_index, ".csv");
 
-        strcat(log_filename_query,"/MESSI_QUERY_");
-        strcat(log_filename_query,time_str);
-        strcat(log_filename_query,".csv");
+        strcat(log_filename_query, "/MESSI_QUERY_");
+        strcat(log_filename_query, time_str);
+        strcat(log_filename_query, ".csv");
 
-        strcat(index_directory,time_str);
+        strcat(index_directory, time_str);
 
         //create logfiles
         FILE *logfile;
-        logfile = fopen(log_filename,"w");
-        
+        logfile = fopen(log_filename, "w");
+
         FILE *logfile_tree;
-        logfile_tree = fopen(log_filename_tree,"w");
+        logfile_tree = fopen(log_filename_tree, "w");
 
         FILE *logfile_index;
-        logfile_index = fopen(log_filename_index,"w");
+        logfile_index = fopen(log_filename_index, "w");
 
         FILE *logfile_query;
-        logfile_query = fopen(log_filename_query,"w");
+        logfile_query = fopen(log_filename_query, "w");
 
         SET_LOGFILE(logfile_query);
 
-        fprintf(logfile,"MESSI SETTINGS\nFunction type,%d\nSIMD,%u\ntimeseries length,%d\npaa segments,%d\nisax-cardinality,%d\nleaf size,%d\nsample-size,%d\nsample type,%d\n",
-        			function_type,SIMD_flag,time_series_size,paa_segments,sax_cardinality,leaf_size,sample_size,sample_type);
+        fprintf(logfile,
+                "MESSI SETTINGS\nFunction type,%d\nSIMD,%u\ntimeseries length,%d\npaa segments,%d\nisax-cardinality,%d\nleaf size,%d\nsample-size,%d\nsample type,%d\n",
+                function_type, SIMD_flag, time_series_size, paa_segments, sax_cardinality, leaf_size, sample_size,
+                sample_type);
 
-    	isax_index_settings * index_settings = isax_index_settings_init(index_path,             // INDEX DIRECTORY
-    	                                                                    time_series_size,   // TIME SERIES SIZE
-    	                                                                    paa_segments,       // PAA SEGMENTS
-    	                                                                    sax_cardinality,    // SAX CARDINALITY IN BITS
-    	                                                                    leaf_size,          // LEAF SIZE
-    	                                                                    min_leaf_size,      // MIN LEAF SIZE
-    	                                                                    initial_lbl_size,   // INITIAL LEAF BUFFER SIZE
-    	                                                                    flush_limit,        // FLUSH LIMIT
-    	                                                                    initial_fbl_size,   // INITIAL FBL BUFFER SIZE
-    	                                                                    total_loaded_leaves,// Leaves to load at each fetch
-    																		tight_bound,		// Tightness of leaf bounds
-    																		aggressive_check,	// aggressive check
-    																		1,                  // new index
-                                                                            function_type,      //function_type
-                                                                            inmemory_flag,      //inmemory_flag
-                                                                            SIMD_flag,          //SIMD_flag
-                                                                            sample_size,        //sample_size for MCB
-                                                                            is_norm,            //input normalized for fft
-                                                                            histogram_type,     //histogram type for binning
-                                                                            sample_type,		//sampling type
-                                                                            coeff_number);		//coeff number
-    	
-        
-        if(!inmemory_flag)
-        {
+        isax_index_settings *index_settings = isax_index_settings_init(index_path,             // INDEX DIRECTORY
+                                                                       time_series_size,   // TIME SERIES SIZE
+                                                                       paa_segments,       // PAA SEGMENTS
+                                                                       sax_cardinality,    // SAX CARDINALITY IN BITS
+                                                                       leaf_size,          // LEAF SIZE
+                                                                       min_leaf_size,      // MIN LEAF SIZE
+                                                                       initial_lbl_size,   // INITIAL LEAF BUFFER SIZE
+                                                                       flush_limit,        // FLUSH LIMIT
+                                                                       initial_fbl_size,   // INITIAL FBL BUFFER SIZE
+                                                                       total_loaded_leaves,// Leaves to load at each fetch
+                                                                       tight_bound,        // Tightness of leaf bounds
+                                                                       aggressive_check,   // aggressive check
+                                                                       1,         // new index
+                                                                       function_type,      //function_type
+                                                                       inmemory_flag,      //inmemory_flag
+                                                                       SIMD_flag,          //SIMD_flag
+                                                                       sample_size,        //sample_size for MCB
+                                                                       is_norm,            //input normalized for fft
+                                                                       histogram_type,     //histogram type for binning
+                                                                       sample_type,        //sampling type
+                                                                       coeff_number);      //coeff number
+
+
+        if (!inmemory_flag) {
             idx = isax_index_init(index_settings);
             print_settings(idx->settings);
-        }
-        else
-        {
+        } else {
             idx = isax_index_init_inmemory(index_settings);
             print_settings(idx->settings);
         }
-    	
-        #ifdef CLUSTERED
+
+#ifdef CLUSTERED
         char s[255];
         sprintf(s, "rm -rf %s.*", dataset);
         system(s);
-        #endif
+#endif
 
         COUNT_TOTAL_TIME_START
 
@@ -929,25 +863,21 @@ int main (int argc, char **argv)
         }
         else {*/
         /// ########################################
-        
+
         //MESSI-SFA: in-memory flag set with function-type 4
-        if(inmemory_flag && function_type==4)
-        {
+        if (inmemory_flag && function_type == 4) {
             //initialize bins
             sfa_bins_init(idx);
-            
+
             //set bins
-            if(idx->settings->coeff_number!=0)
-            {
-            	sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread);
+            if (idx->settings->coeff_number != 0) {
+                sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread, filetype_int);
+            } else {
+                sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int);
             }
-            else
-            {
-            	sfa_set_bins(idx, dataset, dataset_size, maxquerythread);
-            }
-            
+
             //build index            
-            index_creation_pRecBuf(dataset, dataset_size, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, idx);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -955,94 +885,71 @@ int main (int argc, char **argv)
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < paa_segments; i++)
-            {
-                memcpy(&idx->binsv[i*(idx->settings->sax_alphabet_cardinality-1)],idx->bins[i],sizeof(ts_type)*(idx->settings->sax_alphabet_cardinality-1));
+            for (int i = 0; i < paa_segments; i++) {
+                memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
+                       sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
-            
+
             //perform queries
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_MESSI);
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                               filetype_int, &exact_search_MESSI);
 
-        }
-
-        else if (inmemory_flag)
-        {
+        } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
-            index_creation_pRecBuf(dataset, dataset_size, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, idx);
 
-			calculate_average_depth(logfile_tree, idx);
+            calculate_average_depth(logfile_tree, idx);
 
-			INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            
-            //dINIT_STATS()
-            if(knnlabel)
-            {
-                if(function_type==1)
-                {
-                    isax_knn_query_binary_file(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,2000, &exact_search_serial_topk_inmemory);
+
+            //INIT_STATS()
+            if (knnlabel) {
+                if (function_type == 1) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, 2000, &exact_search_serial_topk_inmemory);
+                } else if (function_type == 2) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, 2000, &exact_topk_serial_ParIS_inmemory);
+                } else if (function_type == 3) {
+                    isax_knn_query_binary_file_traditional(queries, labelset, queries_size, idx, minimum_distance,
+                                                           min_checked_leaves, k_size, 2000,
+                                                           &exact_topk_MESSImq_inmemory);
                 }
-                else if(function_type==2)
-                {
-                    isax_knn_query_binary_file(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,2000, &exact_topk_serial_ParIS_inmemory);
-                }                
-                else if(function_type==3)
-                {
-                    isax_knn_query_binary_file_traditional(queries,labelset, queries_size, idx, minimum_distance, min_checked_leaves,k_size,2000, &exact_topk_MESSImq_inmemory);
-                }
-            }
-            else
-            {
-                if(function_type==0)
-                {
+            } else {
+                if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);
-                }
-                else if(function_type==1)
-                {
-                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_parads_inmemory);
-                }
-                else if(function_type==4)
-                {
+                } else if (function_type == 1) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_parads_inmemory);
+                } else if (function_type == 4) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory_openmp);
-                }
-                else if(function_type==7)
-                {
+                } else if (function_type == 7) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_inmemory);
-                }
-                else if(function_type==2)
-                {
-                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_inmemory);
-                }
-                else if(function_type==5)
-                {
+                } else if (function_type == 2) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial_ParIS_inmemory);
+                } else if (function_type == 5) {
                     //bf=1;
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS2_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_ParISnew_inmemory_hybrid_workstealing);
-                }
-                else if(function_type==6)
-                {
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, &exact_search_ParISnew_inmemory_hybrid_workstealing);
+                } else if (function_type == 6) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParGISG_openmp_inmemory);
                 }
-                //MESSI-mq: in-memory flag set with function-type 3
-                else if(function_type==3)
-                {
-                    isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_MESSI);
+                    //MESSI-mq: in-memory flag set with function-type 3
+                else if (function_type == 3) {
+                    isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, &exact_search_MESSI);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
-                }
-                else if(function_type==8)
-                {
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_ParISnew_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_ParISnew_inmemory_workstealing);
-                }
-                else if(function_type==9)
-                {
-                   // isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParGIS_openmp_inmemory);
-                }
-                else if(function_type==10)
-                {
-                    
+                } else if (function_type == 8) {
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, &exact_search_ParISnew_inmemory);
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, &exact_search_ParISnew_inmemory_workstealing);
+                } else if (function_type == 9) {
+                    // isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, &exact_search_serial_ParGIS_openmp_inmemory);
+                } else if (function_type == 10) {
+
                     //index_generate_inmemory_pRecBuf(dataset, dataset_size, idx);
                     //COUNT_QUEUE_TIME_START
                     //flush_pRecBuf_inmemory((parallel_first_buffer_layer*) idx->fbl, idx);
@@ -1055,24 +962,19 @@ int main (int argc, char **argv)
                 }
             }
 
-        }
-        else
-        {   
+        } else {
             // ParIS/ParIS+ on disk index creation
-            if(function_type==0)
-            {
+            if (function_type == 0) {
                 // ADS+ index creation
                 isax_index_binary_file(dataset, dataset_size, idx);
 
                 flush_fbl(idx->fbl, idx);
-            }
-            else if(function_type==1)
-            {
-                isax_index_binary_file_m(dataset, dataset_size, idx,calculate_thread);// ParIS indexing program in parallel
-            }
-            else if(function_type==2)
-            {
-                isax_index_binary_file_m_new(dataset, dataset_size, idx,calculate_thread);//ParIS+ indexing program in parallel
+            } else if (function_type == 1) {
+                isax_index_binary_file_m(dataset, dataset_size, idx,
+                                         calculate_thread);// ParIS indexing program in parallel
+            } else if (function_type == 2) {
+                isax_index_binary_file_m_new(dataset, dataset_size, idx,
+                                             calculate_thread);//ParIS+ indexing program in parallel
             }
         }
 
@@ -1081,90 +983,79 @@ int main (int argc, char **argv)
         PRINT_STATS(0.00f)
 
         //save index and get size for analysis
-        index_mRecBuf_write(idx);
+        //index_mRecBuf_write(idx);
 
-    	struct stat stat_index;
-    	struct stat stat_adaptive;
+        struct stat stat_index;
+        struct stat stat_adaptive;
 
-    	get_index_size(idx, &stat_index, &stat_adaptive);
+        get_index_size(idx, &stat_index, &stat_adaptive);
 
-    	fprintf(stderr, "\nindex size: %ld\n", (long int)stat_index.st_size);
-    	fprintf(logfile_index, "%ld\n", (long int)stat_index.st_size);
-        
+        fprintf(stderr, "\nindex size: %ld\n", (long int) stat_index.st_size);
+        fprintf(logfile_index, "%ld\n", (long int) stat_index.st_size);
+
         fclose(logfile);
         fclose(logfile_tree);
         fclose(logfile_query);
-    	fclose(logfile_index);
+        fclose(logfile_index);
 
         float distance = 0;
         FLUSHES++;
-        
+
         COUNT_TOTAL_TIME_END
         //PRINT_STATS(distance)
 
         COUNT_TOTAL_TIME_START
-        if(complete_type == 1) {
-        	fprintf(stderr,">>> Completing index.\n");
-        	complete_index(idx, dataset_size);
-        }
-        else if(complete_type == 2) {
-        	fprintf(stderr,">>> Completing index.\n");
+        if (complete_type == 1) {
+            fprintf(stderr, ">>> Completing index.\n");
+            complete_index(idx, dataset_size);
+        } else if (complete_type == 2) {
+            fprintf(stderr, ">>> Completing index.\n");
             complete_index_leafs(idx);
         }
         COUNT_TOTAL_TIME_END
 
-        if(!inmemory_flag)
-        {
-            index_write(idx); 
+        if (!inmemory_flag) {
+            index_write(idx);
             isax_index_destroy(idx, NULL);
             PRINT_STATS(distance)
 
-        }
-        else
-        {
+        } else {
             free(rawfile);
 
-            if(function_type==4)
-            {
+            if (function_type == 4) {
                 sfa_free_bins(idx);
-                isax_index_pRecBuf_destroy(idx, NULL,maxquerythread);
-            }
-            else if(function_type==3)
-            {
-                isax_index_pRecBuf_destroy(idx, NULL,maxquerythread);
-            }
-            else
-            {
+                isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
+            } else if (function_type == 3) {
+                isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
+            } else {
                 //isax_index_destroy(idx, NULL);
                 MESSI2_index_destroy(idx, NULL);
             }
         }
 
-	    printf("\n");
+        printf("\n");
 
     }
 
     return 0;
 }
-        
-void  INThandler(int sig)
-{
-     char  c;
 
-     signal(sig, SIG_IGN);
-     fprintf(stderr, "Do you really want to quit? [y/n] ");
-     c = getchar();
-     if (c == 'y' || c == 'Y') {
-    	 c = getchar();
-    	 fprintf(stderr, "Do you want to save the index? [y/n] ");
-    	 c = getchar();
-    	 if (c == 'y' || c == 'Y') {
-    		 flush_fbl(idx->fbl, idx);
-    		 index_write(idx);
-    	 }
-    	 exit(0);
-     }
-     else
-    signal(SIGINT, INThandler);
+void INThandler(int sig) {
+    char c;
+
+    signal(sig, SIG_IGN);
+    fprintf(stderr, "Do you really want to quit? [y/n] ");
+    c = getchar();
+    if (c == 'y' || c == 'Y') {
+        c = getchar();
+        fprintf(stderr, "Do you want to save the index? [y/n] ");
+        c = getchar();
+        if (c == 'y' || c == 'Y') {
+            flush_fbl(idx->fbl, idx);
+            index_write(idx);
+        }
+        exit(0);
+    } else
+        signal(SIGINT, INThandler);
     getchar(); // Get new line character
 }

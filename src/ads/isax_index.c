@@ -134,7 +134,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 
     settings->timeseries_size = timeseries_size;
     settings->paa_segments = paa_segments;
-    settings->ts_values_per_paa_segment = timeseries_size/paa_segments;
+    settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) paa_segments);
     settings->max_leaf_size = max_leaf_size;
     settings->min_leaf_size = min_leaf_size;
     settings->initial_leaf_buffer_size = initial_leaf_buffer_size;
@@ -2076,7 +2076,8 @@ void complete_index(isax_index *index, int ts_num)
         
         if(sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment, 
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                       index->settings->timeseries_size) == SUCCESS)
         {
 
             root_mask_type first_bit_mask = 0x00;

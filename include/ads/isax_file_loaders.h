@@ -30,7 +30,7 @@ void isax_query_binary_file(const char *ifilename, int q_num,
 						    int min_checked_leaves,
                             query_result (*search_function)(ts_type*, ts_type*, isax_index*, float, int));
 void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
-                            float minimum_distance, int min_checked_leaves,
+                            float minimum_distance, int min_checked_leaves, int filetype_int,
                             query_result (*search_function)(ts_type*, ts_type*, isax_index*,node_list*, float, int));
 void isax_query_binary_file_batch(const char *ifilename, int q_num,
 							isax_index *index, float minimum_distance,

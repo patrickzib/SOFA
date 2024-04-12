@@ -1562,7 +1562,8 @@ void* indexbulkloadingworker(void *transferdata)
         {
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                           index->settings->timeseries_size) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
                 memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
@@ -1604,7 +1605,8 @@ void* indexbulkloadingworker_new2(void *transferdata)
         {
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                           index->settings->timeseries_size) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
                 memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
@@ -1648,7 +1650,8 @@ void* indexbulkloadingworker_new(void *transferdata)
         {
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                           index->settings->timeseries_size) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
                 memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
@@ -1714,7 +1717,8 @@ void* indexbulkloadingworker_new(void *transferdata)
 
         if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                       index->settings->timeseries_size) == SUCCESS)
         {
             *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
             
@@ -1784,7 +1788,8 @@ void* indexbulkloadingworker_pRecBuf(void *transferdata)
         {
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                           index->settings->timeseries_size) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
                 memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
@@ -1837,7 +1842,8 @@ void* indexbulkloadingworker_2RecBuf(void *transferdata)
         {
             if(sax_from_ts((ts+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                           index->settings->timeseries_size) == SUCCESS)
             {
                 *pos=readpos +index->settings->timeseries_size*sizeof(ts_type)*i;
                 memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
@@ -3604,7 +3610,8 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
     #endif
         if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings->ts_values_per_paa_segment,
                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality) == SUCCESS)
+                       index->settings->sax_bit_cardinality,
+                       index->settings->timeseries_size) == SUCCESS)
         {
             *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
             

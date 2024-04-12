@@ -25,7 +25,7 @@ void index_creation_m_gpu(const char *ifilename, long int ts_num, isax_index *in
 void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_mix(const char *ifilename, long int ts_num, isax_index *index);
-void index_creation_pRecBuf(const char *ifilename, long int ts_num, isax_index *index);
+void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, isax_index *index);
 void index_creation_pRecBuf_new(const char *ifilename, long int ts_num, isax_index *index);
 void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isax_index *index);
 void* indexbulkloadingworker_inmemory(void *transferdata);

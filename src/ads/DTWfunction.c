@@ -354,15 +354,18 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
                     
                 
             paa_from_ts(upperLemire, paaUpperLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment);
+                        index->settings->ts_values_per_paa_segment,
+                        index->settings->timeseries_size);
             paa_from_ts(lowerLemire, paaLowerLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment);
+                        index->settings->ts_values_per_paa_segment,
+                        index->settings->timeseries_size);
 
 
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment);
+                    index->settings->ts_values_per_paa_segment,
+                    index->settings->timeseries_size);
         COUNT_TOTAL_TIME_START
                 query_result result = exact_DTW_serial_ParIS_inmemory(ts, paa,paaUpperLemQuery,paaLowerLemQuery, index, minimum_distance, min_checked_leaves,warpWind);
 

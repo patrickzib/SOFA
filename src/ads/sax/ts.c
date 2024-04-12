@@ -22,13 +22,12 @@
  @param const char * delims
  @return *ts
  */
-void ts_parse_str(char ts_str[], ts_type * ts_out, int ts_size, const char * delims)
-{
-    int index=0;
-    char *result = strtok( ts_str, delims );
-	while( result != NULL ) {
-		ts_out[index] = atof(result);
-		result = strtok( NULL, delims );
+void ts_parse_str(char ts_str[], ts_type *ts_out, int ts_size, const char *delims) {
+    int index = 0;
+    char *result = strtok(ts_str, delims);
+    while (result != NULL) {
+        ts_out[index] = atof(result);
+        result = strtok(NULL, delims);
 #ifdef SANITY_CHECK
         if (index >= ts_size)
         {
@@ -37,76 +36,89 @@ void ts_parse_str(char ts_str[], ts_type * ts_out, int ts_size, const char * del
         }
 #endif
         index++;
-	}
+    }
     free(result);
 }
 
-float ts_euclidean_distance(ts_type * t, ts_type * s, int size, float bound) {
+float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
-    while (size > 0 && distance <bound) {
+    while (size > 0 && distance < bound) {
         size--;
         distance += (t[size] - s[size]) * (t[size] - s[size]);
 
     }
-
 //    distance = sqrtf(distance);
-    
     return distance;
 }
-float ts_euclidean_distance_SIMD(ts_type * t, ts_type * s, int size, float bound) {
+
+float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
-    int i =0;
+    int i = 0;
     float distancef[8];
 
-__m256 v_t,v_s,v_d,distancev;
-    while (size > 0 && distance <bound) {
-        v_t=_mm256_loadu_ps (&t[i]);
-        v_s=_mm256_loadu_ps (&s[i]);
-        
-        v_d= _mm256_sub_ps (v_t,v_s);
+    //int size2 = size;
 
-        v_d=_mm256_mul_ps (v_d,v_d);
-        size-=8;
+    __m256 v_t, v_s, v_d, distancev;
+    while (size >= 8 && distance < bound) {
+        v_t = _mm256_loadu_ps(&t[i]);
+        v_s = _mm256_loadu_ps(&s[i]);
 
-        i=i+8;
-        distancev = _mm256_hadd_ps (v_d, v_d);
-        distancev = _mm256_hadd_ps (distancev, distancev);
-        _mm256_storeu_ps (distancef ,distancev);
-        distance +=distancef[0]+distancef[4];
+        v_d = _mm256_sub_ps(v_t, v_s);
+
+        v_d = _mm256_mul_ps(v_d, v_d);
+        size -= 8;
+
+        i = i + 8;
+        distancev = _mm256_hadd_ps(v_d, v_d);
+        distancev = _mm256_hadd_ps(distancev, distancev);
+        _mm256_storeu_ps(distancef, distancev);
+        distance += distancef[0] + distancef[4];
 
     }
 
-//    distance = sqrtf(distance);
-    
+    // Remaining values, if length is not divisible by 8!
+    while (size > 0 && distance < bound) {
+        size--;
+        distance += (t[size] - s[size]) * (t[size] - s[size]);
+    }
+
+    //    distance = sqrtf(distance);
+
+    //float dist2 = ts_euclidean_distance(t, s, size2, bound);
+    //if (distance!=dist2 && dist2 < bound) {
+    //    printf("Distances do not match, %0.1f, %0.1f", distance, dist2);
+    //    exit(1);
+    //}
+
+
     return distance;
 }
-float ts_euclidean_distance_neSIMD(ts_type * t, ts_type * s, int size, float bound) {
+
+float ts_euclidean_distance_neSIMD(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
-    int i =0;
+    int i = 0;
     float distancef[8];
 
-    __m256 v_fd,v_t,v_s,v_d,distancev;
+    __m256 v_fd, v_t, v_s, v_d, distancev;
 
-    v_fd=_mm256_setzero_ps ();
+    v_fd = _mm256_setzero_ps();
     while (size > 0) {
-        v_t=_mm256_loadu_ps (&t[i]);
-        v_s=_mm256_loadu_ps (&s[i]);
-        
-        v_d= _mm256_sub_ps (v_t,v_s);
+        v_t = _mm256_loadu_ps(&t[i]);
+        v_s = _mm256_loadu_ps(&s[i]);
 
-        v_fd=_mm256_add_ps (v_fd,_mm256_mul_ps (v_d,v_d));
-        size-=8;
+        v_d = _mm256_sub_ps(v_t, v_s);
 
-        i=i+8;
+        v_fd = _mm256_add_ps(v_fd, _mm256_mul_ps(v_d, v_d));
+        size -= 8;
 
-
+        i = i + 8;
     }
 
-//    distance = sqrtf(distance);
-    distancev = _mm256_hadd_ps (v_fd, v_fd);
-    distancev = _mm256_hadd_ps (distancev, distancev);
-    _mm256_storeu_ps (distancef ,distancev);
-    distance +=distancef[0]+distancef[4];
+    //    distance = sqrtf(distance);
+    distancev = _mm256_hadd_ps(v_fd, v_fd);
+    distancev = _mm256_hadd_ps(distancev, distancev);
+    _mm256_storeu_ps(distancef, distancev);
+    distance += distancef[0] + distancef[4];
     return distance;
 }
 
@@ -115,10 +127,9 @@ float ts_euclidean_distance_neSIMD(ts_type * t, ts_type * s, int size, float bou
  @param ts *ts
  @param int size
 */
-void ts_print(ts_type *ts, int size) 
-{
+void ts_print(ts_type *ts, int size) {
     int i;
-    for (i=0; i < size; i++) {
+    for (i = 0; i < size; i++) {
         printf("%lf", ts[i]);
     }
     printf("\n");

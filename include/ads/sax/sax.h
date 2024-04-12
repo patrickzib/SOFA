@@ -12,9 +12,9 @@
 #include "ts.h"
 
 enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment, 
-            int segments, int cardinality, int bit_cardinality);
+            int segments, int cardinality, int bit_cardinality, int timeseries_size);
 enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment, 
-            int segments, int cardinality, int bit_cardinality);
+            int segments, int cardinality, int bit_cardinality, int timeseries_size);
 enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment, 
             int segments, int cardinality, int bit_cardinality);
 void sax_print(sax_type *sax, int segments, int cardinality);
@@ -66,8 +66,9 @@ float   minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
                            float ratio_sqrt,
                            float bsf);
                            
-enum response paa_from_ts (ts_type *ts_in, ts_type *paa_out, int segments, int ts_values_per_segment);
+enum response paa_from_ts (ts_type *ts_in, ts_type *paa_out, int segments,
+                           int ts_values_per_segment, int timeseries_size);
 enum response sax_from_paa (ts_type *paa, sax_type *sax, int segments, 
                             int cardinality, int bit_cardinality);
-                            //float* bsearchsimdpaa(float paaseg, float* sax_breakpoints, int candinalityoffset);
+//float* bsearchsimdpaa(float paaseg, float* sax_breakpoints, int candinalityoffset);
 #endif
