@@ -111,6 +111,7 @@ int main(int argc, char **argv) {
     static int sample_type = 1;
     static int coeff_number = 0;
     static int filetype_int = 0;
+    static int apply_znorm = 0;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -168,6 +169,7 @@ int main(int argc, char **argv) {
                 {"sample-type",         required_argument, 0,    'C'},
                 {"coeff-number",        required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
+                {"apply-z-norm",        no_argument,       0,    'F'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -302,6 +304,10 @@ int main(int argc, char **argv) {
             case 'E':
                 filetype_int = 1;
                 break;
+            case 'F':
+                apply_znorm = 1;
+                break;
+
             case 'h':
 #ifdef BENCHMARK
                 printf(PRODUCT);
@@ -347,6 +353,7 @@ int main(int argc, char **argv) {
                 \t\t\tuniform sampling: 2\n\
                 \t\t\trandom sampling: 3\n\
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
+                \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
                 \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between paa_segments/2 and timeseries-size/2)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
@@ -369,6 +376,7 @@ int main(int argc, char **argv) {
                 \t\t\t\t\t181: 18 core in 1 CPU\n\
                 \t\t\t\t\t182: 18 core in 2 CPUs\n\
                 \t\t\t\t\t242: 24 core in 2 CPUs\n\
+                \t\t\t\t\t242: 36 core in 2 CPUs\n\
                 \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 ");
                 return 0;
@@ -834,7 +842,8 @@ int main(int argc, char **argv) {
                                                                        is_norm,            //input normalized for fft
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
-                                                                       coeff_number);      //coeff number
+                                                                       coeff_number       //coeff number
+                                                                       );
 
 
         if (!inmemory_flag) {
@@ -871,13 +880,13 @@ int main(int argc, char **argv) {
 
             //set bins
             if (idx->settings->coeff_number != 0) {
-                sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread, filetype_int);
+                sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
             } else {
-                sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int);
+                sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
             }
 
             //build index            
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -892,11 +901,11 @@ int main(int argc, char **argv) {
 
             //perform queries
             isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               filetype_int, &exact_search_MESSI);
+                                               filetype_int, apply_znorm, &exact_search_MESSI);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
 
             calculate_average_depth(logfile_tree, idx);
 
@@ -933,21 +942,21 @@ int main(int argc, char **argv) {
                 } else if (function_type == 5) {
                     //bf=1;
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS2_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, &exact_search_ParISnew_inmemory_hybrid_workstealing);
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, apply_znorm, &exact_search_ParISnew_inmemory_hybrid_workstealing);
                 } else if (function_type == 6) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParGISG_openmp_inmemory);
                 }
                     //MESSI-mq: in-memory flag set with function-type 3
                 else if (function_type == 3) {
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, &exact_search_MESSI);
+                                                       filetype_int, apply_znorm, &exact_search_MESSI);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
                 } else if (function_type == 8) {
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, &exact_search_ParISnew_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, &exact_search_ParISnew_inmemory_workstealing);
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, znorm, &exact_search_ParISnew_inmemory);
+                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, znorm, &exact_search_ParISnew_inmemory_workstealing);
                 } else if (function_type == 9) {
-                    // isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, &exact_search_serial_ParGIS_openmp_inmemory);
+                    // isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, znorm, &exact_search_serial_ParGIS_openmp_inmemory);
                 } else if (function_type == 10) {
 
                     //index_generate_inmemory_pRecBuf(dataset, dataset_size, idx);

@@ -435,7 +435,6 @@ float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, 
                                                    index->settings->max_sax_cardinalities, bsf);
             }
 
-
             if (distmin < bsf) {
                 float dist;
                 if (index->settings->SIMD_flag) {

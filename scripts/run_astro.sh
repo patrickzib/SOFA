@@ -1,6 +1,15 @@
 #!/bin/sh
 set -e
 
+if [ -z $1 ]; then
+    echo "Parameter cpu-type is empty"
+    exit 1
+fi
+if [ -z $2 ]; then
+    echo "Parameter queue-number is empty"
+    exit 1
+fi
+
 
 # SFA parameters:
 # --histogram-type

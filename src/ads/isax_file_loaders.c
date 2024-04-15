@@ -21,6 +21,7 @@
 #include <unistd.h>
 #include <math.h>
 
+#include "ads/calc_utils.h"
 #include "ads/isax_node.h"
 #include "ads/isax_index.h"
 #include "ads/isax_query_engine.h"
@@ -134,7 +135,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 }
 
 void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
-                                        float minimum_distance, int min_checked_leaves, int filetype_int,
+                                        float minimum_distance, int min_checked_leaves, int filetype_int, int apply_znorm,
                                         query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *,
                                                                         float, int)) {
 
@@ -173,7 +174,7 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
 
     }
 
-    fprintf(stderr, "the node node_amount is %d\n", nodelist.node_amount);
+    fprintf(stderr, ">>> node_amount is %d\n", nodelist.node_amount);
 
     ts_type *ts_fftw;
     fftwf_complex *ts_out;
@@ -197,15 +198,23 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
         transform = fftwf_malloc(sizeof(ts_type) * ts_length);
     }
 
-    fprintf(stderr, ">>> Converting queries to int\n");
 
     while (q_loaded < q_num) {
         COUNT_INPUT_TIME_START
 
         if (filetype_int) {
+            if (apply_znorm) {
+                fprintf(stderr, ">>> Converting queries int to float and applying z-norm\n");
+            } else {
+                fprintf(stderr, ">>> Converting queries int to float\n");
+            }
             fread(ts_int32, sizeof(file_type), ts_length, ifile);
             for (int i = 0; i < ts_length; ++i) {
                 ts[i] = (ts_type) ts_int32[i];
+            }
+            // apply z-normalization
+            if (apply_znorm) {
+                znorm(ts, ts_length);
             }
         } else {
             fread(ts, sizeof(ts_type), ts_length, ifile);

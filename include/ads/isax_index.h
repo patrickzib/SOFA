@@ -77,6 +77,8 @@ typedef struct {
     int sample_type;
     int coeff_number;
 
+    // int filetype_int;
+
 } isax_index_settings;
 
 typedef struct {

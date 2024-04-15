@@ -5,6 +5,7 @@
 //  Created by Kostas Zoumpatianos and Botao Peng, March 2020
 //
 #include "config.h"
+#include <math.h>
 
 #ifndef isax_globals_h
 #define isax_globals_h
@@ -70,6 +71,7 @@ void* LOGFILE;
 	for (mask__i=0; mask__i < index->settings->paa_segments; mask__i++) \
 		if(index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & sax_array[mask__i]) \
 			mask |= index->settings->bit_masks[index->settings->paa_segments - mask__i - 1];  
+
 
 ///// BENCHMARKING /////
 #ifdef BENCHMARK

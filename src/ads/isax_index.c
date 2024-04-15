@@ -138,8 +138,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->max_leaf_size = max_leaf_size;
     settings->min_leaf_size = min_leaf_size;
     settings->initial_leaf_buffer_size = initial_leaf_buffer_size;
+	// settings->filetype_int = filetype_int;
 
-	
 	settings->tight_bound = tight_bound;
     settings->aggressive_check = aggressive_check;
 	
@@ -2384,6 +2384,7 @@ void index_mRecBuf_write(isax_index *index)
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
     int new_index = 0;
+
     // SETTINGS DATA
     fwrite(&raw_filename_size, sizeof(int), 1, file);
     fwrite(index->settings->raw_filename, sizeof(char), raw_filename_size, file);
@@ -2738,38 +2739,71 @@ void clear_wedges(isax_index *index, isax_node *node) {
 }
 
 void print_settings(isax_index_settings *settings) {
-	fprintf(stderr,"############ ParIS SETTINGS ############\n");
+	fprintf(stderr,"############ Index SETTINGS ############\n");
 	fprintf(stderr,"## [FILE SETTINGS]\n");
 	fprintf(stderr,"## raw_filename:\t%s\n",settings->raw_filename);
 	fprintf(stderr,"## root_directory:\t%s\n",settings->root_directory);
+    // fprintf(stderr,"## Dataset is int8:\t%s\n", settings->filetype_int);
 
-	fprintf(stderr,"## \n## [DATA TYPE SETTINGS]\n");
-	fprintf(stderr,"## timeseries_size:\t%d\n",settings->timeseries_size);
+    fprintf(stderr,"## \n## [DATA TYPE SETTINGS]\n");
+	fprintf(stderr,"## timeseries_size:    \t%d\n",settings->timeseries_size);
 	fprintf(stderr,"## partial_record_size:\t%d\n",settings->partial_record_size);
-	fprintf(stderr,"## full_record_size:\t%d\n",settings->full_record_size);
-	fprintf(stderr,"## position_byte_size:\t%d\n",settings->position_byte_size);
-	fprintf(stderr,"## sax_byte_size:\t%d\n",settings->sax_byte_size);
-	fprintf(stderr,"## ts_byte_size:\t%d\n",settings->ts_byte_size);
-
+	fprintf(stderr,"## full_record_size:   \t%d\n",settings->full_record_size);
+	fprintf(stderr,"## position_byte_size: \t%d\n",settings->position_byte_size);
+	fprintf(stderr,"## sax_byte_size:      \t%d\n",settings->sax_byte_size);
+	fprintf(stderr,"## ts_byte_size:       \t%d\n",settings->ts_byte_size);
 
 	fprintf(stderr,"## \n## [BUFFER SETTINGS]\n");
-	fprintf(stderr, "## initial_fbl_buffer_size:\t%d\n", settings->initial_fbl_buffer_size);
-	fprintf(stderr, "## initial_leaf_buffer_size:\t%d\n", settings->initial_leaf_buffer_size);
-	fprintf(stderr,"## max_total_buffer_size:\t%d\n",settings->max_total_buffer_size);
+	fprintf(stderr, "## initial_fbl_buffer_size: \t%d\n", settings->initial_fbl_buffer_size);
+	fprintf(stderr, "## initial_leaf_buffer_size: \t%d\n", settings->initial_leaf_buffer_size);
+	fprintf(stderr,"## max_total_buffer_size:     \t%d\n",settings->max_total_buffer_size);
 	fprintf(stderr,"## max_total_full_buffer_size:\t%d\n",settings->max_total_full_buffer_size);
 
 	fprintf(stderr,"## \n## [LEAF SETTINGS]\n");
 	fprintf(stderr, "## max_leaf_size:\t%d\n", settings->max_leaf_size);
 	fprintf(stderr, "## min_leaf_size:\t%d\n",settings->min_leaf_size);
 
-	fprintf(stderr,"## \n## [SAX SETTINGS]\n");
-	fprintf(stderr,"## paa_segments:\t%d\n",settings->paa_segments);
-	fprintf(stderr,"## sax_alphabet_card.:\t%d\n",settings->sax_alphabet_cardinality);
-	fprintf(stderr,"## sax_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
+	fprintf(stderr,"## \n## [Symbolic Transform SETTINGS]\n");
+    if (settings->SIMD_flag) {
+        fprintf(stderr,"## Using SIMD         \t%c\n",    settings->SIMD_flag);
+    }
+
+    if (settings->function_type == 3) {
+        fprintf(stderr,"## Using MESSI + SAX. \n");
+        fprintf(stderr,"## \n## [SAX SETTINGS]\n");
+        fprintf(stderr,"## paa_segments:       \t%d\n",settings->paa_segments);
+        fprintf(stderr,"## sax_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
+        fprintf(stderr,"## sax_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
+    }
+    else if (settings->function_type == 4) {
+        fprintf(stderr, "## Using MESSI + SFA. \n");
+        fprintf(stderr,"## dft_coefficients:       \t%d\n",settings->paa_segments);
+        fprintf(stderr,"## sfa_alphabet_card.:     \t%d\n",settings->sax_alphabet_cardinality);
+        fprintf(stderr,"## sfa_bit_cardinality:    \t%d\n",settings->sax_bit_cardinality);
+
+        fprintf(stderr,"## \n## [SFA SETTINGS]\n");
+        fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
+        fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->coeff_number > 0);
+        if (settings->histogram_type==3) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
+        } else if (settings->histogram_type==4) {
+            fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        }
+
+        if (settings->sample_type == 1) {
+            fprintf(stderr,"## Sampling Type:  \t first-n-values\n");
+        } else if (settings->sample_type == 2) {
+            fprintf(stderr, "## Sampling Type: \t uniform sampling\n");
+        } else if (settings->sample_type == 3) {
+            fprintf(stderr, "## Sampling Type: \t random sampling\n");
+        }
+        fprintf(stderr,"## Sampling Size:  \t%d\n", settings->sample_size);
+
+    }
 
 	fprintf(stderr,"## \n## [QUERY ANSWERING SETTINGS]\n");
-	fprintf(stderr, "## aggressive_check:\t%d\n", settings->aggressive_check);
-	fprintf(stderr,"## tight_bound:\t%d\n",settings->tight_bound);
+	fprintf(stderr, "## aggressive_check:  \t%d\n", settings->aggressive_check);
+	fprintf(stderr,"## tight_bound:        \t%d\n",settings->tight_bound);
 	fprintf(stderr,"## total_loaded_leaves:\t%d\n",settings->total_loaded_leaves);
 	fprintf(stderr,"######################################\n");
 

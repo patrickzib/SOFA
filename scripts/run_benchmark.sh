@@ -1,30 +1,37 @@
 #!/bin/bash
 set -e
 
+# turingANNs
+#./run_turingANNs_norm.sh 9 9
+#./copy_files.sh turingANNs_norm 9
+#./run_turingANNs_norm.sh 18 18
+#./copy_files.sh turingANNs_norm 18
+./run_turingANNs_norm.sh 36 36
+./copy_files.sh turingANNs_norm 36
+
 # BigANN
-./run_bigann.sh 9 9
-./copy_files.sh BIGANN 9
-./run_bigann.sh 18 18
-./copy_files.sh BIGANN 18
-./run_bigann.sh 36 36
-./copy_files.sh BIGANN 36
+#./run_bigann_norm.sh 9 9
+#./copy_files.sh BIGANN_norm 9
+#./run_bigann_norm.sh 18 18
+#./copy_files.sh BIGANN_norm 18
+./run_bigann_norm.sh 36 36
+./copy_files.sh BIGANN_norm 36
 
 # spacev1B
-./run_spaceV1B.sh 9 9
-./copy_files.sh SPACEV1B 9
-./run_spaceV1B.sh 18 18
-./copy_files.sh SPACEV1B 18
-./run_spaceV1B.sh 36 36
-./copy_files.sh SPACEV1B 36
+#./run_spaceV1B_norm.sh 9 9
+#./copy_files.sh SPACEV1B_norm 9
+#./run_spaceV1B_norm.sh 18 18
+#./copy_files.sh SPACEV1B_norm 18
+./run_spaceV1B_norm.sh 36 36
+./copy_files.sh SPACEV1B_norm 36
 
 # text-to-image
-./run_text_to_image.sh 9 9
-./copy_files.sh SPACEV1B 9
-./run_text_to_image.sh 18 18
-./copy_files.sh SPACEV1B 18
-./run_text_to_image.sh 36 36
-./copy_files.sh SPACEV1B 36
-
+#./run_text_to_image_norm.sh 9 9
+#./copy_files.sh TEXTTOIMAGE_norm 9
+#./run_text_to_image_norm.sh 18 18
+#./copy_files.sh TEXTTOIMAGE_norm 18
+./run_text_to_image_norm.sh 36 36
+./copy_files.sh TEXTTOIMAGE_norm 36
 
 # SEISMIC
 #./run_seismic001.sh 9 9

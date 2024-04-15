@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
+#include "ads/calc_utils.h"
 #include "ads/isax_index.h"
 #include "ads/dft.h"
 
@@ -88,7 +89,8 @@ void sfa_free_bins(isax_index *index) {
 /*
   In this function, the intervals are caluclated (multiple coeff. binning) and saved to bins
 */
-void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread, int filetype_int) {
+void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
+                  int filetype_int, int apply_znorm) {
     int paa_segments = index->settings->paa_segments;
     int ts_length = index->settings->timeseries_size;
     unsigned int sample_size = index->settings->sample_size;
@@ -143,6 +145,7 @@ void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int
         }
 
         input_data[i].filetype_int = filetype_int;
+        input_data[i].apply_znorm = apply_znorm;
         input_data[i].ts = ts;
         input_data[i].ts_out = ts_out;
         input_data[i].plan_forward = plan_forward;
@@ -204,7 +207,8 @@ void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int
   The coefficients with the highest variance in the intervals are chosen and these values are saved to bins
 */
 void
-sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread, int filetype_int) {
+sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
+                   int filetype_int, int apply_znorm) {
     int paa_segments = index->settings->paa_segments;
     int coeff_number = index->settings->coeff_number;
     int ts_length = index->settings->timeseries_size;
@@ -260,6 +264,8 @@ sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, in
 
         input_data[i].ts = ts;
         input_data[i].filetype_int = filetype_int;
+        input_data[i].apply_znorm = apply_znorm;
+
         input_data[i].ts_out = ts_out;
         input_data[i].plan_forward = plan_forward;
         input_data[i].transform = transform;
@@ -364,7 +370,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     /*
     fprintf(stderr, "Variance: ");
-    for (int i = 0; i < coeff_number / 2; ++i) {
+    for (int i = 0; i < coeff_number; ++i) {
         // fprintf(stderr, "%.3f\tposition %d\n", var_coeff_index[i].variance, var_coeff_index[i].coeff_index);
         fprintf(stderr, "%.4f, ", var_coeff_index[i].variance);
     }
@@ -373,7 +379,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     qsort(var_coeff_index, coeff_number / 2, sizeof(var_coeff_index[0]), compare_var);
 
-    fprintf(stderr, "Indices Sorted:\n");
+    fprintf(stderr, "Best Indices Sorted:\n");
     for (int i = 0; i < coeff_number / 2; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index, var_coeff_index[i].variance);
     }
@@ -382,13 +388,15 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     for (int i = 0; i < paa_segments / 2; ++i) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
-    qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
 
+    // TODO sorting needed?
+    qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
     fprintf(stderr, "SFA HIGHEST VARIANCE COEFFS SORTED: ");
     for (int i = 0; i < paa_segments / 2; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
+
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
     for (int k = 0; k < paa_segments; ++k) {
@@ -422,6 +430,7 @@ void *set_bins_worker_dft(void *transferdata) {
     unsigned long ts_length = index->settings->timeseries_size;
     int paa_segments = index->settings->paa_segments;
     int filetype_int = bins_data->filetype_int;
+    int apply_znorm = bins_data->apply_znorm;
 
     // fprintf(stderr, "Filetype %d\n", filetype_int);
 
@@ -465,6 +474,10 @@ void *set_bins_worker_dft(void *transferdata) {
             fread(ts_orig1, sizeof(file_type), ts_length, ifile);
             for (int j = 0; j < ts_length; ++j) {
                 ts[j] = (ts_type) ts_orig1[j];
+            }
+            // apply z-normalization
+            if (apply_znorm) {
+                znorm(ts, ts_length);
             }
         } else {
             fread(ts_orig2, sizeof(ts_type), ts_length, ifile);
@@ -511,6 +524,7 @@ void *set_bins_worker_dft_coeff(void *transferdata) {
 
     unsigned long start_index = start_number * ts_length * sizeof(ts_type);
     int filetype_int = bins_data->filetype_int;
+    int apply_znorm = bins_data->apply_znorm;
 
     // fprintf(stderr, "Filetype %d\n", filetype_int);
 
@@ -553,6 +567,10 @@ void *set_bins_worker_dft_coeff(void *transferdata) {
             fread(ts_orig1, sizeof(file_type), ts_length, ifile);
             for (int j = 0; j < ts_length; ++j) {
                 ts[j] = (ts_type) ts_orig1[j];
+            }
+            // apply z-normalization
+            if (apply_znorm) {
+                znorm(ts, ts_length);
             }
         } else {
             fread(ts_orig2, sizeof(ts_type), ts_length, ifile);
@@ -764,13 +782,13 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
             return distance;
         }
 
-        if (index->settings->coeff_number == 0) {
-            // if no variance-based coefficient selection is chosen
-            // skip the imaginary part of the first coefficient
-            i += 2;
-        } else {
-            i += 1;
-        }
+        //if (index->settings->coeff_number == 0) {
+        // if no variance-based coefficient selection is chosen
+        // skip the imaginary part of the first coefficient
+        i = 2;
+        //} else {
+        //    i = 1;
+        // }
     }
 
     for (; i < number_of_segments; i++) {
@@ -867,13 +885,13 @@ ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, s
             return distance;
         }
 
-        if (index->settings->coeff_number == 0) {
+        //if (index->settings->coeff_number == 0) {
             // if no variance-based coefficient selection is chosen
             // skip the imaginary part of the first coefficient
-            i += 2;
-        } else {
-            i += 1;
-        }
+        i = 2;
+        //} else {
+        //    i = 1;
+        //}
     }
 
     for (; i < number_of_segments; i++) {
@@ -1019,13 +1037,13 @@ ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_typ
             return distance;
         }
 
-        if (index->settings->coeff_number == 0) {
+        //if (index->settings->coeff_number == 0) {
             // if no variance-based coefficient selection is chosen
             // skip the imaginary part of the first coefficient
-            i += 2;
-        } else {
-            i += 1;
-        }
+        i = 2;
+        //} else {
+        //    i += 1;
+        //}
 
     }
     sax_type c_cv[number_of_segments];
@@ -1037,7 +1055,7 @@ ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_typ
     }
     sax_type region_lowerv[number_of_segments];
     sax_type region_upperv[number_of_segments];
-    // i = 1;
+    i = 2;
     for (; i < number_of_segments; i++) {
         region_lowerv[i] = (vv[i] << (c_m - c_cv[i]));
         region_upperv[i] = (~((int) MAXFLOAT << (c_m - c_cv[i])) | region_lowerv[i]);
