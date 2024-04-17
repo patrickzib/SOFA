@@ -1,37 +1,37 @@
-#!/bin/bash
+s#!/bin/bash
 set -e
 
-# turingANNs
+# turingANNs - ne
 #./run_turingANNs_norm.sh 9 9
-#./copy_files.sh turingANNs_norm 9
+#./copy_files.sh turingANNs_ne 9
 #./run_turingANNs_norm.sh 18 18
-#./copy_files.sh turingANNs_norm 18
+#./copy_files.sh turingANNs_ne 18
 ./run_turingANNs_norm.sh 36 36
-./copy_files.sh turingANNs_norm 36
+./copy_files.sh turingANNs_ne 36
 
-# BigANN
+# BigANN - ne
 #./run_bigann_norm.sh 9 9
-#./copy_files.sh BIGANN_norm 9
+#./copy_files.sh BIGANN_ne 9
 #./run_bigann_norm.sh 18 18
-#./copy_files.sh BIGANN_norm 18
+#./copy_files.sh BIGANN_ne 18
 ./run_bigann_norm.sh 36 36
-./copy_files.sh BIGANN_norm 36
+./copy_files.sh BIGANN_ne 36
 
-# spacev1B
+# spacev1B - ne
 #./run_spaceV1B_norm.sh 9 9
-#./copy_files.sh SPACEV1B_norm 9
+#./copy_files.sh SPACEV1B_ne 9
 #./run_spaceV1B_norm.sh 18 18
-#./copy_files.sh SPACEV1B_norm 18
+#./copy_files.sh SPACEV1B_ne 18
 ./run_spaceV1B_norm.sh 36 36
-./copy_files.sh SPACEV1B_norm 36
+./copy_files.sh SPACEV1B_ne 36
 
-# text-to-image
+# text-to-image - ne
 #./run_text_to_image_norm.sh 9 9
-#./copy_files.sh TEXTTOIMAGE_norm 9
+#./copy_files.sh TEXTTOIMAGE_ne 9
 #./run_text_to_image_norm.sh 18 18
-#./copy_files.sh TEXTTOIMAGE_norm 18
+#./copy_files.sh TEXTTOIMAGE_ne 18
 ./run_text_to_image_norm.sh 36 36
-./copy_files.sh TEXTTOIMAGE_norm 36
+./copy_files.sh TEXTTOIMAGE_ne 36
 
 # SEISMIC
 #./run_seismic001.sh 9 9
@@ -67,7 +67,7 @@ set -e
 
 # SIFT1B
 #./run_sift1b.sh 9 9
-#./copy_files.sh SIFT1b 9 
+#./copy_files.sh SIFT1b 9
 #./run_sift1b.sh 18 18
 #./copy_files.sh SIFT1b 18
 #./run_sift1b.sh 36 36
@@ -75,23 +75,23 @@ set -e
 
 # DEEP1B
 #./run_deep1b.sh 9 9
-#./copy_files.sh DEEP1b 9 
+#./copy_files.sh DEEP1b 9
 #./run_deep1b.sh 18 18
 #./copy_files.sh DEEP1b 18
 #./run_deep1b.sh 36 36
-#./copy_files.sh DEEP1b 36 
+#./copy_files.sh DEEP1b 36
 
 # SCEDC
 #./run_scedc.sh 9 9
-#./copy_files.sh SCEDC 9 
+#./copy_files.sh SCEDC 9
 #./run_scedc.sh 18 18
 #./copy_files.sh SCEDC 18
 #./run_scedc.sh 36 36
-#./copy_files.sh SCEDC 36 
+#./copy_files.sh SCEDC 36
 
 # ASTRO
 #./run_astro.sh 9 9
-#./copy_files.sh ASTRO 9 
+#./copy_files.sh ASTRO 9
 #./run_astro.sh 18 18
 #./copy_files.sh ASTRO 18
 #./run_astro.sh 36 36
