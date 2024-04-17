@@ -139,7 +139,7 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
                                         query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *,
                                                                         float, int)) {
 
-    fprintf(stderr, ">>> Performing queries isax_query_binary_file_traditional in file: %s\n", ifilename);
+    fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
     FILE *ifile;
     ifile = fopen(ifilename, "rb");

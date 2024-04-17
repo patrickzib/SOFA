@@ -879,11 +879,7 @@ int main(int argc, char **argv) {
             sfa_bins_init(idx);
 
             //set bins
-            if (idx->settings->coeff_number != 0) {
-                sfa_set_bins_coeff(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
-            } else {
-                sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
-            }
+            sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index            
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
@@ -991,8 +987,9 @@ int main(int argc, char **argv) {
         SAVE_STATS_TOTAL(logfile_query, queries_size)
         PRINT_STATS(0.00f)
 
+        /* Do not store index for now
         //save index and get size for analysis
-        //index_mRecBuf_write(idx);
+        index_mRecBuf_write(idx);
 
         struct stat stat_index;
         struct stat stat_adaptive;
@@ -1001,6 +998,7 @@ int main(int argc, char **argv) {
 
         fprintf(stderr, "\nindex size: %ld\n", (long int) stat_index.st_size);
         fprintf(logfile_index, "%ld\n", (long int) stat_index.st_size);
+        */
 
         fclose(logfile);
         fclose(logfile_tree);

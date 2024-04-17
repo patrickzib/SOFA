@@ -134,7 +134,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 
     settings->timeseries_size = timeseries_size;
     settings->paa_segments = paa_segments;
-    settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) paa_segments);
+    // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) paa_segments);
+    settings->ts_values_per_paa_segment =timeseries_size/ paa_segments;
     settings->max_leaf_size = max_leaf_size;
     settings->min_leaf_size = min_leaf_size;
     settings->initial_leaf_buffer_size = initial_leaf_buffer_size;
@@ -2741,7 +2742,9 @@ void clear_wedges(isax_index *index, isax_node *node) {
 void print_settings(isax_index_settings *settings) {
 	fprintf(stderr,"############ Index SETTINGS ############\n");
 	fprintf(stderr,"## [FILE SETTINGS]\n");
-	fprintf(stderr,"## raw_filename:\t%s\n",settings->raw_filename);
+    if (settings->raw_filename) {
+	    fprintf(stderr,"## raw_filename:\t%s\n",settings->raw_filename);
+    }
 	fprintf(stderr,"## root_directory:\t%s\n",settings->root_directory);
     // fprintf(stderr,"## Dataset is int8:\t%s\n", settings->filetype_int);
 
@@ -2765,7 +2768,7 @@ void print_settings(isax_index_settings *settings) {
 
 	fprintf(stderr,"## \n## [Symbolic Transform SETTINGS]\n");
     if (settings->SIMD_flag) {
-        fprintf(stderr,"## Using SIMD         \t%c\n",    settings->SIMD_flag);
+        fprintf(stderr,"## Using SIMD:        \t%c\n",    settings->SIMD_flag);
     }
 
     if (settings->function_type == 3) {
@@ -2777,9 +2780,9 @@ void print_settings(isax_index_settings *settings) {
     }
     else if (settings->function_type == 4) {
         fprintf(stderr, "## Using MESSI + SFA. \n");
-        fprintf(stderr,"## dft_coefficients:       \t%d\n",settings->paa_segments);
-        fprintf(stderr,"## sfa_alphabet_card.:     \t%d\n",settings->sax_alphabet_cardinality);
-        fprintf(stderr,"## sfa_bit_cardinality:    \t%d\n",settings->sax_bit_cardinality);
+        fprintf(stderr,"## dft_coefficients:   \t%d\n",settings->paa_segments);
+        fprintf(stderr,"## sfa_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
+        fprintf(stderr,"## sfa_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
 
         fprintf(stderr,"## \n## [SFA SETTINGS]\n");
         fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
@@ -2791,13 +2794,13 @@ void print_settings(isax_index_settings *settings) {
         }
 
         if (settings->sample_type == 1) {
-            fprintf(stderr,"## Sampling Type:  \t first-n-values\n");
+            fprintf(stderr,"## Sampling Type:                        \tfirst-n-values\n");
         } else if (settings->sample_type == 2) {
-            fprintf(stderr, "## Sampling Type: \t uniform sampling\n");
+            fprintf(stderr, "## Sampling Type:                       \tuniform sampling\n");
         } else if (settings->sample_type == 3) {
-            fprintf(stderr, "## Sampling Type: \t random sampling\n");
+            fprintf(stderr, "## Sampling Type:                       \trandom sampling\n");
         }
-        fprintf(stderr,"## Sampling Size:  \t%d\n", settings->sample_size);
+        fprintf(stderr,"## Sampling Size:                            \t%d\n", settings->sample_size);
 
     }
 

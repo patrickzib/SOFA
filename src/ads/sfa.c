@@ -18,7 +18,9 @@
 #include "immintrin.h"
 
 #ifdef VALUES
+
 #include <values.h>
+
 #endif
 
 #include <sys/stat.h>
@@ -33,6 +35,7 @@
 #include "ads/dft.h"
 
 #include "ads/sfa.h"
+#include "include/ads/isax_index.h"
 
 /*
   This functions allocates a two dimensional array
@@ -45,7 +48,7 @@ enum response sfa_bins_init(isax_index *index) {
     int paa_segments = index->settings->paa_segments;
 
     index->bins = NULL;
-    index->bins = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
+    index->bins = (ts_type **) calloc(paa_segments, sizeof(ts_type *));
     index->binsv = (ts_type *) calloc(paa_segments * (num_symbols - 1), sizeof(ts_type));
     if (index == NULL) {
         fprintf(stderr, "Error in sfa.c: Could not allocate memory for bins structure.\n");
@@ -67,7 +70,7 @@ enum response sfa_bins_init(isax_index *index) {
     for (int j = 0; j < paa_segments * (num_symbols - 1); ++j) {
         index->binsv[j] = FLT_MAX;
     }
-    fprintf(stderr, "Initialized bins[%d][%d] \n", paa_segments, num_symbols - 1);
+    fprintf(stderr, ">>> SFA: Initialized bins[%d][%d] \n", paa_segments, num_symbols - 1);
 
     if (index->settings->coeff_number != 0) {
         index->coefficients = calloc(paa_segments / 2, sizeof(int));
@@ -86,138 +89,36 @@ void sfa_free_bins(isax_index *index) {
     free(index->bins);
 }
 
-/*
-  In this function, the intervals are caluclated (multiple coeff. binning) and saved to bins
-*/
-void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
-                  int filetype_int, int apply_znorm) {
-    int paa_segments = index->settings->paa_segments;
-    int ts_length = index->settings->timeseries_size;
-    unsigned int sample_size = index->settings->sample_size;
-
-    fprintf(stderr, ">>> Binning: %s\n", ifilename);
-    COUNT_BINNING_TIME_START
-
-    //alocate dft_mem_array for to savetime series from sampling
-    ts_type **dft_mem_array = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
-    for (int k = 0; k < paa_segments; ++k) {
-        dft_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
-    }
-
-    //build the bins out of a sample of the data
-    //read whole sample in memory
-    pthread_t threadid[maxquerythread];
-    bins_data_inmemory *input_data = malloc(sizeof(bins_data_inmemory) * (maxquerythread));
-
-    ts_type *ts;
-    fftwf_complex *ts_out;
-    fftwf_plan plan_forward;
-    ts_type *transform;
-
-    for (int i = 0; i < maxquerythread; i++) {
-        //create FFTW-objects for the threads
-        ts = fftwf_malloc(sizeof(ts_type) * ts_length);
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts, ts_out, FFTW_ESTIMATE);
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
-
-        input_data[i].index = index;
-        input_data[i].dft_mem_array = dft_mem_array;
-        input_data[i].filename = ifilename;
-        input_data[i].workernumber = i;
-        input_data[i].records = sample_size / maxquerythread;
-        input_data[i].records_offset = sample_size / maxquerythread;
-
-        //first-n-sampling
-        if (index->settings->sample_type == 1) {
-            input_data[i].start_number = i * (sample_size / maxquerythread);
-            input_data[i].stop_number = (i + 1) * (sample_size / maxquerythread);
-        }
-            //uniform sampling
-        else if (index->settings->sample_type == 2) {
-            input_data[i].start_number = i * (ts_num / maxquerythread);
-            input_data[i].stop_number = (i + 1) * (ts_num / maxquerythread);
-        }
-            //random sampling
-        else if (index->settings->sample_type == 3) {
-            input_data[i].start_number = 0;
-            input_data[i].stop_number = ts_num;
-        }
-
-        input_data[i].filetype_int = filetype_int;
-        input_data[i].apply_znorm = apply_znorm;
-        input_data[i].ts = ts;
-        input_data[i].ts_out = ts_out;
-        input_data[i].plan_forward = plan_forward;
-        input_data[i].transform = transform;
-    }
-
-    // reset values for last worker to keep lost segments at the end
-    input_data[maxquerythread - 1].records = sample_size - (maxquerythread - 1) * (sample_size / maxquerythread);
-
-    if (index->settings->sample_type == 1) {
-        input_data[maxquerythread - 1].stop_number = sample_size;
-    } else if (index->settings->sample_type == 2) {
-        input_data[maxquerythread - 1].stop_number = ts_num;
-    }
-
-    // initiate worker threads for sampling values and calculating FFTs
-    for (int i = 0; i < maxquerythread; i++) {
-        pthread_create(&(threadid[i]), NULL, set_bins_worker_dft, (void *) &(input_data[i]));
-    }
-
-    // wait for the finish of other threads
-    for (int i = 0; i < maxquerythread; i++) {
-        pthread_join(threadid[i], NULL);
-    }
-
-    for (int i = 0; i < maxquerythread; i++) {
-        fftwf_destroy_plan(input_data[i].plan_forward);
-        fftwf_free(input_data[i].ts);
-        fftwf_free(input_data[i].ts_out);
-        fftwf_free(input_data[i].transform);
-
-        input_data[i].start_number = i * (paa_segments / maxquerythread);
-        input_data[i].stop_number = (i + 1) * (paa_segments / maxquerythread);
-    }
-
-    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (paa_segments / maxquerythread);
-    input_data[maxquerythread - 1].stop_number = paa_segments;
-
-    //initiate worker threads for splitting coefficients into intervals
-    for (int i = 0; i < maxquerythread; i++) {
-        pthread_create(&(threadid[i]), NULL, order_divide_worker, (void *) &(input_data[i]));
-    }
-    //wait for the finish of other threads
-    for (int i = 0; i < maxquerythread; i++) {
-        pthread_join(threadid[i], NULL);
-    }
-
-    free(input_data);
-    free_dft_memory(index, dft_mem_array);
-
-    COUNT_BINNING_TIME_END
-
-    sfa_print_bins(index);
-    fprintf(stderr, ">>> Finished binning\n");
-}
 
 /*
   In this function, the intervals are caluclated (multiple coeff. binning).
-  The coefficients with the highest variance in the intervals are chosen and these values are saved to bins
+  The coefficients with the highest variance or the first ones are chosen and
+  these values are saved to bins
 */
-void
-sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
-                   int filetype_int, int apply_znorm) {
+void sfa_set_bins(
+        isax_index *index, const char *ifilename,
+        long int ts_num, int maxquerythread,
+        int filetype_int, int apply_znorm) {
+
     int paa_segments = index->settings->paa_segments;
-    int coeff_number = index->settings->coeff_number;
+    int coeff_number = 0;
     int ts_length = index->settings->timeseries_size;
     unsigned int sample_size = index->settings->sample_size;
+    int use_variance = index->settings->coeff_number > 0;
+
+    // a) select best coefficients based no variance
+    if (use_variance) {
+        coeff_number = index->settings->coeff_number;
+    }
+        // b) use the first coefficients
+    else {
+        coeff_number = index->settings->paa_segments;
+    }
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
 
-    ts_type **dft_mem_array = (ts_type **) calloc(coeff_number, sizeof(ts_type * ));
+    ts_type **dft_mem_array = (ts_type **) calloc(coeff_number, sizeof(ts_type *));
     for (int k = 0; k < coeff_number; ++k) {
         dft_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
@@ -282,7 +183,7 @@ sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, in
 
     // initiate worker threads for sampling values and calculating FFTs
     for (int i = 0; i < maxquerythread; i++) {
-        pthread_create(&(threadid[i]), NULL, set_bins_worker_dft_coeff, (void *) &(input_data[i]));
+        pthread_create(&(threadid[i]), NULL, set_bins_worker_dft, (void *) &(input_data[i]));
     }
 
     // wait for the finish of other threads
@@ -290,13 +191,13 @@ sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, in
         pthread_join(threadid[i], NULL);
     }
 
-    // calculate coefficient-wise variance
-    ts_type **dft_mem_array_coeff = calculate_variance_coeff(index, dft_mem_array);
+    ts_type **dft_mem_array_coeff;
+    if (use_variance) {
+        // calculate coefficient-wise variance
+        dft_mem_array_coeff = calculate_variance_coeff(index, dft_mem_array);
 
-    for (int i = 0; i < coeff_number; ++i) {
-        free(dft_mem_array[i]);
+        free_dft_memory(index, coeff_number, dft_mem_array);
     }
-    free(dft_mem_array);
 
     for (int i = 0; i < maxquerythread; i++) {
         fftwf_destroy_plan(input_data[i].plan_forward);
@@ -304,10 +205,13 @@ sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, in
         fftwf_free(input_data[i].ts_out);
         fftwf_free(input_data[i].transform);
 
-        input_data[i].dft_mem_array = dft_mem_array_coeff;
-
         input_data[i].start_number = i * (paa_segments / maxquerythread);
         input_data[i].stop_number = (i + 1) * (paa_segments / maxquerythread);
+
+        if (use_variance) {
+            // replace with new ordering
+            input_data[i].dft_mem_array = dft_mem_array_coeff;
+        }
     }
 
     input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (paa_segments / maxquerythread);
@@ -323,7 +227,12 @@ sfa_set_bins_coeff(isax_index *index, const char *ifilename, long int ts_num, in
     }
 
     free(input_data);
-    free_dft_memory(index, dft_mem_array_coeff);
+
+    if (use_variance) {
+        free_dft_memory(index, index->settings->paa_segments, dft_mem_array_coeff);
+    } else {
+        free_dft_memory(index, index->settings->paa_segments, dft_mem_array);
+    }
 
     COUNT_BINNING_TIME_END
 
@@ -379,7 +288,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     qsort(var_coeff_index, coeff_number / 2, sizeof(var_coeff_index[0]), compare_var);
 
-    fprintf(stderr, "Best Indices Sorted:\n");
+    fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
     for (int i = 0; i < coeff_number / 2; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index, var_coeff_index[i].variance);
     }
@@ -389,16 +298,17 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
-    // TODO sorting needed?
+    /*
+     * // sorting needed?
     qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
-    fprintf(stderr, "SFA HIGHEST VARIANCE COEFFS SORTED: ");
+    fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
     for (int i = 0; i < paa_segments / 2; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
+    */
 
-
-    ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
+    ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type *));
     for (int k = 0; k < paa_segments; ++k) {
         dft_mem_array_coeff[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
@@ -416,7 +326,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 }
 
 /*
-    Worker method for sampling values, calculating FFT coefficients and saving them to dft_mem_array
+    Worker method for sampling values, calculating FFT coefficients (the first coeff_number coefficients) and saving them to dft_mem_array
 */
 void *set_bins_worker_dft(void *transferdata) {
     struct bins_data_inmemory *bins_data = (bins_data_inmemory *) transferdata;
@@ -428,105 +338,20 @@ void *set_bins_worker_dft(void *transferdata) {
     unsigned long stop_number = bins_data->stop_number;
 
     unsigned long ts_length = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
-    int filetype_int = bins_data->filetype_int;
-    int apply_znorm = bins_data->apply_znorm;
 
-    // fprintf(stderr, "Filetype %d\n", filetype_int);
-
-    unsigned long start_index = start_number * ts_length * sizeof(ts_type);
-
-    FILE *ifile;
-    ifile = fopen(bins_data->filename, "rb");
-    fseek(ifile, start_index, SEEK_SET);
-
-    unsigned long skip_elements;
-    long records = bins_data->records;
-
-    //set number of elements to skip for uniform sampling
-    if (index->settings->sample_type == 2) {
-        skip_elements = (((stop_number - start_number) / records) - 1) * ts_length * sizeof(ts_type);
+    int coeff_number = 0;
+    // Variance based coefficients
+    if (index->settings->coeff_number > 0) {
+        coeff_number = index->settings->coeff_number;
     }
-
-    ts_type *ts = bins_data->ts;
-    fftwf_complex *ts_out = bins_data->ts_out;
-    fftwf_plan plan_forward = bins_data->plan_forward;
-    ts_type *transform = bins_data->transform;
-
-    file_type *ts_orig1;
-    ts_type *ts_orig2;
-
-    if (filetype_int) {
-        ts_orig1 = (file_type *) calloc(index->settings->timeseries_size, sizeof(file_type));
-    } else {
-        ts_orig2 = (ts_type *) calloc(index->settings->timeseries_size, sizeof(ts_type));
+        // first coefficients
+    else {
+        coeff_number = index->settings->paa_segments;
     }
-
-    for (int i = 0; i < records; ++i) {
-        //choose random position for random sampling
-        if (index->settings->sample_type == 3) {
-            //long int position = (rand()%(stop_number-start_number+1)+start_number);
-            long int position = start_number + random_at_most(records);
-            fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
-        }
-
-        if (filetype_int) {
-            fread(ts_orig1, sizeof(file_type), ts_length, ifile);
-            for (int j = 0; j < ts_length; ++j) {
-                ts[j] = (ts_type) ts_orig1[j];
-            }
-            // apply z-normalization
-            if (apply_znorm) {
-                znorm(ts, ts_length);
-            }
-        } else {
-            fread(ts_orig2, sizeof(ts_type), ts_length, ifile);
-            for (int j = 0; j < ts_length; ++j) {
-                ts[j] = ts_orig2[j];
-            }
-        }
-
-
-        fft_from_ts(index, ts, ts_out, transform, plan_forward);
-
-        for (int j = 0; j < paa_segments; ++j) {
-            ts_type value = (ts_type) roundf(transform[j] * 100.0) / 100.0;
-            dft_mem_array[j][i + (bins_data->workernumber * bins_data->records_offset)] = value;
-        }
-
-        //skip elements for uniform sampling
-        if (index->settings->sample_type == 2) {
-            fseek(ifile, skip_elements, SEEK_CUR);
-        }
-    }
-    if (filetype_int) {
-        free(ts_orig1);
-    } else {
-        free(ts_orig2);
-    }
-    fclose(ifile);
-}
-
-/*
-    Worker method for sampling values, calculating FFT coefficients (the first coeff_number coefficients) and saving them to dft_mem_array
-*/
-void *set_bins_worker_dft_coeff(void *transferdata) {
-    struct bins_data_inmemory *bins_data = (bins_data_inmemory *) transferdata;
-
-    ts_type **dft_mem_array = bins_data->dft_mem_array;
-
-    isax_index *index = ((bins_data_inmemory *) transferdata)->index;
-    unsigned long start_number = bins_data->start_number;
-    unsigned long stop_number = bins_data->stop_number;
-
-    unsigned long ts_length = index->settings->timeseries_size;
-    int coeff_number = index->settings->coeff_number;
 
     unsigned long start_index = start_number * ts_length * sizeof(ts_type);
     int filetype_int = bins_data->filetype_int;
     int apply_znorm = bins_data->apply_znorm;
-
-    // fprintf(stderr, "Filetype %d\n", filetype_int);
 
     FILE *ifile;
     ifile = fopen(bins_data->filename, "rb");
@@ -540,6 +365,8 @@ void *set_bins_worker_dft_coeff(void *transferdata) {
     //set number of elements to skip for uniform sampling
     if (index->settings->sample_type == 2) {
         skip_elements = (((stop_number - start_number) / records) - 1);
+
+        // TODO skip_elements = (((stop_number - start_number) / records) - 1) * ts_length * sizeof(ts_type);
     }
 
     ts_type *ts = bins_data->ts;
@@ -594,6 +421,14 @@ void *set_bins_worker_dft_coeff(void *transferdata) {
                 fprintf(stderr, "pos %lu; stop_number %lu\n", position_count, stop_number);
             }
         }
+
+        /*
+            // TODO which one is correct? above or this?
+            // skip elements for uniform sampling
+            if (index->settings->sample_type == 2) {
+                fseek(ifile, skip_elements, SEEK_CUR);
+            }
+         */
     }
 
     if (filetype_int) {
@@ -624,35 +459,28 @@ void *order_divide_worker(void *transferdata) {
         cur_coeff_line = (ts_type *) dft_mem_array[j];
         qsort(cur_coeff_line, sample_size, sizeof(ts_type), &compare_ts_type);
     }
-    //equi-depth splitting
+    // equi-depth splitting
     if (index->settings->histogram_type == 1) {
+        int num_symbols = index->settings->sax_alphabet_cardinality;
         ts_type depth = (ts_type) sample_size / index->settings->sax_alphabet_cardinality;
 
         for (int i = start_number; i < stop_number; ++i) {
+            float bin_index = 0.0;
             cur_coeff_line = dft_mem_array[i];
-
-            int pos = 0;
-            int count = 0;
-            for (int j = 0; j < sample_size; ++j) {
-                ++count;
-                unsigned int ceiling = ceil(depth * (pos + 1));
-                if (count > ceiling && (pos == 0 || index->bins[i][pos - 1] != cur_coeff_line[j])) {
-                    index->bins[i][pos] = cur_coeff_line[j];
-                    pos++;
-                }
+            for (int j = 0; j < num_symbols - 1; ++j) {
+                bin_index += depth;
+                index->bins[i][j] = cur_coeff_line[(int) bin_index];
             }
         }
     }
-        //equi-width splitting
+    // equi-width splitting
     else if (index->settings->histogram_type == 2) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
 
         for (int i = start_number; i < stop_number; ++i) {
             cur_coeff_line = dft_mem_array[i];
-
             ts_type first = cur_coeff_line[0];
             ts_type last = cur_coeff_line[sample_size - 1];
-
             ts_type interval_width = (last - first) / (ts_type) num_symbols;
             for (int j = 0; j < num_symbols - 1; ++j) {
                 index->bins[i][j] = interval_width * (j + 1) + first;
@@ -666,12 +494,13 @@ void *order_divide_worker(void *transferdata) {
     Method for printing the discretization intervals to the console
 */
 void sfa_print_bins(isax_index *index) {
-    fprintf(stderr, "Sample size %u\n", index->settings->sample_size);
+    fprintf(stderr, ">>> SFA: Sample size %u\n", index->settings->sample_size);
     if (index->settings->histogram_type == 1) {
-        fprintf(stderr, "Using Equi-depth histograms\n");
+        fprintf(stderr, ">>> SFA: Using Equi-depth histograms\n");
     } else if (index->settings->histogram_type == 2) {
-        fprintf(stderr, "Using Equi-width histograms\n");
+        fprintf(stderr, ">>> SFA: Using Equi-width histograms\n");
     }
+
 
     /*
     int paa_segments = index->settings->paa_segments;
@@ -683,19 +512,20 @@ void sfa_print_bins(isax_index *index) {
         {
             ts_type value = roundf(index->bins[i][j]*100.0)/100.0;
             if (value == FLT_MAX)	  
-	            fprintf(stderr,", Inf\t\n");
+	            fprintf(stderr,",Inf\n");
 	        else
-	            fprintf(stderr,",\t%g\t",value);
+	            fprintf(stderr,",%g",value);
         }
         fprintf(stderr,";\n");
     }
     fprintf(stderr,"]\n");
     */
+
 }
 
-void free_dft_memory(isax_index *index, ts_type **dft_mem_array) {
-    int paa_segments = index->settings->paa_segments;
-    for (int k = 0; k < paa_segments; ++k) {
+void free_dft_memory(isax_index *index, int coeff_number, ts_type **dft_mem_array) {
+    // int paa_segments = index->settings->paa_segments;
+    for (int k = 0; k < coeff_number; ++k) {
         free(dft_mem_array[k]);
     }
     free(dft_mem_array);
@@ -728,55 +558,55 @@ int compare_int(const void *a, const void *b) {
     return *ia - *ib;
 }
 
+ts_type
+get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sax_type c_c,
+                sax_type c_m, int max_cardinality, float factor) {
+    sax_type region_lower = (v << (c_m - c_c));
+    sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
+
+    ts_type distance = 0.0;
+    float breakpoint_lower = 0.0;
+    float breakpoint_upper = 0.0;
+
+    if (region_lower == 0) {
+        breakpoint_lower = MINVAL;
+    } else {
+        breakpoint_lower = bins[region_lower - 1];
+    }
+    if (region_upper == max_cardinality - 1) {
+        breakpoint_upper = MAXVAL;
+    } else {
+        breakpoint_upper = bins[region_upper];
+    }
+
+    if (breakpoint_lower > fft) {
+        ts_type value = breakpoint_lower - fft;
+        distance += factor * value * value;
+    } else if (breakpoint_upper < fft) {
+        ts_type value = (fft - breakpoint_upper);
+        distance += factor * value * value;
+    }
+    return distance;
+}
+
 /*
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
 ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
-    int min_val = MINVAL;
-    int max_val = MAXVAL;
-
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
 
     ts_type distance = 0.0;
-    ts_type value;
-
     int i = 0;
 
     //special case: for not normalized time series, the first coefficient has to be treated spacially
     //for normalized data, this part is skipped
     if (!index->settings->is_norm &&
         (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
-        sax_type c_c = sax_cardinalities[i];
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-
-        sax_type region_lower = (v << (c_m - c_c));
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-
-        float breakpoint_lower;
-        float breakpoint_upper;
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = index->bins[i][region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = index->bins[i][region_upper];
-        }
-
-        //real part for first coeff. is added without factor 2
-        if (breakpoint_lower > fft[i]) {
-            distance = breakpoint_lower - fft[i];
-            distance *= distance;
-        } else if (breakpoint_upper < fft[i]) {
-            distance = (fft[i] - breakpoint_upper);
-            distance *= distance;
-        }
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 0.0);
 
         if (distance > bsf) {
             return distance;
@@ -792,34 +622,9 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
     }
 
     for (; i < number_of_segments; i++) {
-        sax_type c_c = sax_cardinalities[i];
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-
-        sax_type region_lower = (v << (c_m - c_c));
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-
-        float breakpoint_lower;
-        float breakpoint_upper;
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = index->bins[i][region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = index->bins[i][region_upper];
-        }
-
-        if (breakpoint_lower > fft[i]) {
-            value = breakpoint_lower - fft[i];
-            distance += 2 * value * value;
-        } else if (breakpoint_upper < fft[i]) {
-            value = (fft[i] - breakpoint_upper);
-            distance += 2 * value * value;
-        }
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 2.0);
 
         if (distance > bsf) {
             return distance;
@@ -833,61 +638,28 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
 ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
-    int min_val = MINVAL;
-    int max_val = MAXVAL;
-
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
 
     ts_type distance = 0.0;
-    ts_type value;
-
     int i = 0;
 
-    //special case: for not normalized time series, the first coefficient has to be treated spacially
+    //special case: for not normalized time series, the first coefficient has to be treated specially
     //for normalized data, this part is skipped
-    if (!index->settings->is_norm && (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
-        sax_type c_c = sax_cardinalities[i];
-
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-
-        sax_type region_lower = (v << (c_m - c_c));
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-
-        float breakpoint_lower = 0;
-        float breakpoint_upper = 0;
-
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = index->bins[i][region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = index->bins[i][region_upper];
-        }
-
-        //real part for first coeff. is added without factor 2
-        if (breakpoint_lower > fft[i]) {
-
-            distance = breakpoint_lower - fft[i];
-            distance *= distance;
-        } else if (breakpoint_upper < fft[i]) {
-            distance = (fft[i] - breakpoint_upper);
-            distance *= distance;
-        }
+    if (!index->settings->is_norm &&
+        (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 0.0);
 
         if (distance > bsf) {
             return distance;
         }
 
         //if (index->settings->coeff_number == 0) {
-            // if no variance-based coefficient selection is chosen
-            // skip the imaginary part of the first coefficient
+        // if no variance-based coefficient selection is chosen
+        // skip the imaginary part of the first coefficient
         i = 2;
         //} else {
         //    i = 1;
@@ -895,36 +667,9 @@ ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, s
     }
 
     for (; i < number_of_segments; i++) {
-
-        sax_type c_c = sax_cardinalities[i];
-
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-
-        sax_type region_lower = (v << (c_m - c_c));
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-
-        float breakpoint_lower;
-        float breakpoint_upper;
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = index->bins[i][region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = index->bins[i][region_upper];
-        }
-
-        if (breakpoint_lower > fft[i]) {
-            value = breakpoint_lower - fft[i];
-            distance += 2 * value * value;
-        } else if (breakpoint_upper < fft[i]) {
-            value = (fft[i] - breakpoint_upper);
-            distance += 2 * value * value;
-        }
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 2.0);
 
         if (distance > bsf) {
             return distance;
@@ -987,59 +732,28 @@ long random_at_most(long max) {
 
 ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities,
                                           float bsf) {
-    int min_val = MINVAL;
-    int max_val = MAXVAL;
 
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
 
     ts_type distance = 0.0;
-    ts_type value;
-
     int i = 0;
 
     //special case: for not normalized time series, the first coefficient has to be treated specially
     //for normalized data, this part is skipped
     if (!index->settings->is_norm && (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
-        sax_type c_c = sax_cardinalities[i];
-
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-
-        sax_type region_lower = (v << (c_m - c_c));
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-
-        float breakpoint_lower;
-        float breakpoint_upper;
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = index->bins[i][region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = index->bins[i][region_upper];
-        }
-
-        //real part for first coeff. is added without factor 2
-        if (breakpoint_lower > fft[i]) {
-            distance = breakpoint_lower - fft[i];
-            distance *= distance;
-        } else if (breakpoint_upper < fft[i]) {
-            distance = (fft[i] - breakpoint_upper);
-            distance *= distance;
-        }
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 0.0);
 
         if (distance > bsf) {
             return distance;
         }
 
         //if (index->settings->coeff_number == 0) {
-            // if no variance-based coefficient selection is chosen
-            // skip the imaginary part of the first coefficient
+        // if no variance-based coefficient selection is chosen
+        // skip the imaginary part of the first coefficient
         i = 2;
         //} else {
         //    i += 1;
@@ -1066,12 +780,12 @@ ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_typ
 
     for (; i < number_of_segments; i++) {
         if (region_lowerv[i] == 0) {
-            breakpoint_lowerv[i] = min_val;
+            breakpoint_lowerv[i] = MINVAL;
         } else {
             breakpoint_lowerv[i] = index->bins[i][region_lowerv[i] - 1];
         }
         if (region_upperv[i] == max_cardinality - 1) {
-            breakpoint_upperv[i] = max_val;
+            breakpoint_upperv[i] = MAXVAL;
         } else {
             breakpoint_upperv[i] = index->bins[i][region_upperv[i]];
         }
@@ -1221,11 +935,6 @@ minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
     __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
             _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
             _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
-
-
-
-
-
 
 
     //dis
