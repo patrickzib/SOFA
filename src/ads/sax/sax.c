@@ -307,7 +307,7 @@ float minidist_paa_to_isax(float *paa, sax_type *sax,
                            float ratio_sqrt) {
     //fprintf(stderr, "paa mindist\n");
 
-    float distance = 0;
+    float distance = 0.0;
     // TODO: Store offset in index settings. and pass index settings as parameter.
 
     int offset = ((max_cardinality - 1) * (max_cardinality - 2)) / 2;
@@ -317,7 +317,6 @@ float minidist_paa_to_isax(float *paa, sax_type *sax,
     for (i = 0; i < number_of_segments; i++) {
 
         sax_type c_c = sax_cardinalities[i];
-
         sax_type c_m = max_bit_cardinality;
         sax_type v = sax[i];
 

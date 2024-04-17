@@ -45,7 +45,6 @@ float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
     while (size > 0 && distance < bound) {
         size--;
         distance += (t[size] - s[size]) * (t[size] - s[size]);
-
     }
 //    distance = sqrtf(distance);
     return distance;
@@ -55,8 +54,7 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
     float distance = 0;
     int i = 0;
     float distancef[8];
-
-    //int size2 = size;
+    int size2 = size;
 
     __m256 v_t, v_s, v_d, distancev;
     while (size >= 8 && distance < bound) {
@@ -64,7 +62,6 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
         v_s = _mm256_loadu_ps(&s[i]);
 
         v_d = _mm256_sub_ps(v_t, v_s);
-
         v_d = _mm256_mul_ps(v_d, v_d);
         size -= 8;
 
@@ -73,16 +70,13 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
         distancev = _mm256_hadd_ps(distancev, distancev);
         _mm256_storeu_ps(distancef, distancev);
         distance += distancef[0] + distancef[4];
-
     }
 
     // Remaining values, if length is not divisible by 8!
-    while (size > 0 && distance < bound) {
-        size--;
-        distance += (t[size] - s[size]) * (t[size] - s[size]);
+    while (i < size2 && distance < bound) {
+        distance += (t[i] - s[i]) * (t[i] - s[i]);
+        i++;
     }
-
-    //    distance = sqrtf(distance);
 
     //float dist2 = ts_euclidean_distance(t, s, size2, bound);
     //if (distance!=dist2 && dist2 < bound) {
@@ -90,6 +84,7 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
     //    exit(1);
     //}
 
+    //    distance = sqrtf(distance);
 
     return distance;
 }
@@ -107,7 +102,6 @@ float ts_euclidean_distance_neSIMD(ts_type *t, ts_type *s, int size, float bound
         v_s = _mm256_loadu_ps(&s[i]);
 
         v_d = _mm256_sub_ps(v_t, v_s);
-
         v_fd = _mm256_add_ps(v_fd, _mm256_mul_ps(v_d, v_d));
         size -= 8;
 
