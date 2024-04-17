@@ -158,8 +158,9 @@ am_lib_libads_a_OBJECTS =  \
 	src/ads/lib_libads_a-parallel_index_engine.$(OBJEXT) \
 	src/ads/lib_libads_a-parallel_query_engine.$(OBJEXT) \
 	src/ads/lib_libads_a-inmemory_topk_engine.$(OBJEXT) \
-	src/ads/lib_libads_a-dft.$(OBJEXT) \
-	src/ads/lib_libads_a-sfa.$(OBJEXT)
+	src/ads/sfa/lib_libads_a-dft.$(OBJEXT) \
+	src/ads/sfa/lib_libads_a-sfa.$(OBJEXT) \
+	src/ads/lib_libads_a-calc_utils.$(OBJEXT)
 lib_libads_a_OBJECTS = $(am_lib_libads_a_OBJECTS)
 PROGRAMS = $(bin_PROGRAMS)
 am_bin_MESSI_OBJECTS = src/utils/bin_MESSI-MESSI.$(OBJEXT)
@@ -332,7 +333,6 @@ pdfdir = @pdfdir@
 prefix = @prefix@
 program_transform_name = @program_transform_name@
 psdir = @psdir@
-runstatedir = @runstatedir@
 sbindir = @sbindir@
 sharedstatedir = @sharedstatedir@
 srcdir = @srcdir@
@@ -344,12 +344,12 @@ top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS}
 lib_LIBRARIES = lib/libads.a
-lib_libads_a_SOURCES = src/ads/isax_file_loaders.c src/ads/isax_first_buffer_layer.c src/ads/isax_index.c src/ads/isax_node.c src/ads/isax_node_buffer.c src/ads/isax_node_record.c src/ads/isax_node_split.c src/ads/isax_query_engine.c src/ads/isax_visualize_index.c src/ads/pqueue.c src/ads/sax/sax.c src/ads/sax/ts.c src/ads/inmemory_query_engine.c src/ads/parallel_inmemory_query_engine.c src/ads/inmemory_index_engine.c src/ads/parallel_index_engine.c src/ads/parallel_query_engine.c src/ads/inmemory_topk_engine.c src/ads/dft.c src/ads/sfa.c
-lib_libads_a_CFLAGS = -I/opt/local/include -Iinclude/ -march=native -mavx -mavx2 -msse3 -fopenmp
+lib_libads_a_SOURCES = src/ads/isax_file_loaders.c src/ads/isax_first_buffer_layer.c src/ads/isax_index.c src/ads/isax_node.c src/ads/isax_node_buffer.c src/ads/isax_node_record.c src/ads/isax_node_split.c src/ads/isax_query_engine.c src/ads/isax_visualize_index.c src/ads/pqueue.c src/ads/sax/sax.c src/ads/sax/ts.c src/ads/inmemory_query_engine.c src/ads/parallel_inmemory_query_engine.c src/ads/inmemory_index_engine.c src/ads/parallel_index_engine.c src/ads/parallel_query_engine.c src/ads/inmemory_topk_engine.c src/ads/sfa/dft.c src/ads/sfa/sfa.c src/ads/calc_utils.c
+lib_libads_a_CFLAGS = -I/opt/local/include -Iinclude/ -I/vol/home-vol3/wbi/schaefpa/fftw-3.3.10/include -march=native -mavx -mavx2 -msse3 -fopenmp
 bin_MESSI_SOURCES = src/utils/MESSI.c
-bin_MESSI_CFLAGS = -I/opt/local/include -Iinclude/ -I/usr/local/include/ -march=native
+bin_MESSI_CFLAGS = -I/opt/local/include -I/usr/include/ -Iinclude/ -I/usr/local/include/ -I/vol/home-vol3/wbi/schaefpa/fftw-3.3.10/include -march=native
 bin_MESSI_LDADD = -lm -lreadline -lads -lfftw3f -lm -lpthread
-bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ -mavx -mavx2 -msse3 -fopenmp
+bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ -L/vol/home-vol3/wbi/schaefpa/fftw-3.3.10/.libs  -mavx -mavx2 -msse3 -fopenmp
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -482,9 +482,17 @@ src/ads/lib_libads_a-parallel_query_engine.$(OBJEXT):  \
 	src/ads/$(am__dirstamp) src/ads/$(DEPDIR)/$(am__dirstamp)
 src/ads/lib_libads_a-inmemory_topk_engine.$(OBJEXT):  \
 	src/ads/$(am__dirstamp) src/ads/$(DEPDIR)/$(am__dirstamp)
-src/ads/lib_libads_a-dft.$(OBJEXT): src/ads/$(am__dirstamp) \
-	src/ads/$(DEPDIR)/$(am__dirstamp)
-src/ads/lib_libads_a-sfa.$(OBJEXT): src/ads/$(am__dirstamp) \
+src/ads/sfa/$(am__dirstamp):
+	@$(MKDIR_P) src/ads/sfa
+	@: > src/ads/sfa/$(am__dirstamp)
+src/ads/sfa/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/ads/sfa/$(DEPDIR)
+	@: > src/ads/sfa/$(DEPDIR)/$(am__dirstamp)
+src/ads/sfa/lib_libads_a-dft.$(OBJEXT): src/ads/sfa/$(am__dirstamp) \
+	src/ads/sfa/$(DEPDIR)/$(am__dirstamp)
+src/ads/sfa/lib_libads_a-sfa.$(OBJEXT): src/ads/sfa/$(am__dirstamp) \
+	src/ads/sfa/$(DEPDIR)/$(am__dirstamp)
+src/ads/lib_libads_a-calc_utils.$(OBJEXT): src/ads/$(am__dirstamp) \
 	src/ads/$(DEPDIR)/$(am__dirstamp)
 lib/$(am__dirstamp):
 	@$(MKDIR_P) lib
@@ -556,12 +564,13 @@ mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 	-rm -f src/ads/*.$(OBJEXT)
 	-rm -f src/ads/sax/*.$(OBJEXT)
+	-rm -f src/ads/sfa/*.$(OBJEXT)
 	-rm -f src/utils/*.$(OBJEXT)
 
 distclean-compile:
 	-rm -f *.tab.c
 
-@AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-dft.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-inmemory_index_engine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-inmemory_query_engine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-inmemory_topk_engine.Po@am__quote@
@@ -578,9 +587,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-parallel_inmemory_query_engine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-parallel_query_engine.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-pqueue.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@src/ads/$(DEPDIR)/lib_libads_a-sfa.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/sax/$(DEPDIR)/lib_libads_a-sax.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/ads/sax/$(DEPDIR)/lib_libads_a-ts.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/utils/$(DEPDIR)/bin_MESSI-MESSI.Po@am__quote@
 
 .c.o:
@@ -851,33 +861,47 @@ src/ads/lib_libads_a-inmemory_topk_engine.obj: src/ads/inmemory_topk_engine.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-inmemory_topk_engine.obj `if test -f 'src/ads/inmemory_topk_engine.c'; then $(CYGPATH_W) 'src/ads/inmemory_topk_engine.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/inmemory_topk_engine.c'; fi`
 
-src/ads/lib_libads_a-dft.o: src/ads/dft.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-dft.o -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-dft.Tpo -c -o src/ads/lib_libads_a-dft.o `test -f 'src/ads/dft.c' || echo '$(srcdir)/'`src/ads/dft.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-dft.Tpo src/ads/$(DEPDIR)/lib_libads_a-dft.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/dft.c' object='src/ads/lib_libads_a-dft.o' libtool=no @AMDEPBACKSLASH@
+src/ads/sfa/lib_libads_a-dft.o: src/ads/sfa/dft.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/sfa/lib_libads_a-dft.o -MD -MP -MF src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Tpo -c -o src/ads/sfa/lib_libads_a-dft.o `test -f 'src/ads/sfa/dft.c' || echo '$(srcdir)/'`src/ads/sfa/dft.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Tpo src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa/dft.c' object='src/ads/sfa/lib_libads_a-dft.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-dft.o `test -f 'src/ads/dft.c' || echo '$(srcdir)/'`src/ads/dft.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/sfa/lib_libads_a-dft.o `test -f 'src/ads/sfa/dft.c' || echo '$(srcdir)/'`src/ads/sfa/dft.c
 
-src/ads/lib_libads_a-dft.obj: src/ads/dft.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-dft.obj -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-dft.Tpo -c -o src/ads/lib_libads_a-dft.obj `if test -f 'src/ads/dft.c'; then $(CYGPATH_W) 'src/ads/dft.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/dft.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-dft.Tpo src/ads/$(DEPDIR)/lib_libads_a-dft.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/dft.c' object='src/ads/lib_libads_a-dft.obj' libtool=no @AMDEPBACKSLASH@
+src/ads/sfa/lib_libads_a-dft.obj: src/ads/sfa/dft.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/sfa/lib_libads_a-dft.obj -MD -MP -MF src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Tpo -c -o src/ads/sfa/lib_libads_a-dft.obj `if test -f 'src/ads/sfa/dft.c'; then $(CYGPATH_W) 'src/ads/sfa/dft.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa/dft.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Tpo src/ads/sfa/$(DEPDIR)/lib_libads_a-dft.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa/dft.c' object='src/ads/sfa/lib_libads_a-dft.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-dft.obj `if test -f 'src/ads/dft.c'; then $(CYGPATH_W) 'src/ads/dft.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/dft.c'; fi`
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/sfa/lib_libads_a-dft.obj `if test -f 'src/ads/sfa/dft.c'; then $(CYGPATH_W) 'src/ads/sfa/dft.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa/dft.c'; fi`
 
-src/ads/lib_libads_a-sfa.o: src/ads/sfa.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-sfa.o -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-sfa.Tpo -c -o src/ads/lib_libads_a-sfa.o `test -f 'src/ads/sfa.c' || echo '$(srcdir)/'`src/ads/sfa.c
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-sfa.Tpo src/ads/$(DEPDIR)/lib_libads_a-sfa.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa.c' object='src/ads/lib_libads_a-sfa.o' libtool=no @AMDEPBACKSLASH@
+src/ads/sfa/lib_libads_a-sfa.o: src/ads/sfa/sfa.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/sfa/lib_libads_a-sfa.o -MD -MP -MF src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Tpo -c -o src/ads/sfa/lib_libads_a-sfa.o `test -f 'src/ads/sfa/sfa.c' || echo '$(srcdir)/'`src/ads/sfa/sfa.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Tpo src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa/sfa.c' object='src/ads/sfa/lib_libads_a-sfa.o' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-sfa.o `test -f 'src/ads/sfa.c' || echo '$(srcdir)/'`src/ads/sfa.c
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/sfa/lib_libads_a-sfa.o `test -f 'src/ads/sfa/sfa.c' || echo '$(srcdir)/'`src/ads/sfa/sfa.c
 
-src/ads/lib_libads_a-sfa.obj: src/ads/sfa.c
-@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-sfa.obj -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-sfa.Tpo -c -o src/ads/lib_libads_a-sfa.obj `if test -f 'src/ads/sfa.c'; then $(CYGPATH_W) 'src/ads/sfa.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa.c'; fi`
-@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-sfa.Tpo src/ads/$(DEPDIR)/lib_libads_a-sfa.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa.c' object='src/ads/lib_libads_a-sfa.obj' libtool=no @AMDEPBACKSLASH@
+src/ads/sfa/lib_libads_a-sfa.obj: src/ads/sfa/sfa.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/sfa/lib_libads_a-sfa.obj -MD -MP -MF src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Tpo -c -o src/ads/sfa/lib_libads_a-sfa.obj `if test -f 'src/ads/sfa/sfa.c'; then $(CYGPATH_W) 'src/ads/sfa/sfa.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa/sfa.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Tpo src/ads/sfa/$(DEPDIR)/lib_libads_a-sfa.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/sfa/sfa.c' object='src/ads/sfa/lib_libads_a-sfa.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-sfa.obj `if test -f 'src/ads/sfa.c'; then $(CYGPATH_W) 'src/ads/sfa.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa.c'; fi`
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/sfa/lib_libads_a-sfa.obj `if test -f 'src/ads/sfa/sfa.c'; then $(CYGPATH_W) 'src/ads/sfa/sfa.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/sfa/sfa.c'; fi`
+
+src/ads/lib_libads_a-calc_utils.o: src/ads/calc_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-calc_utils.o -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Tpo -c -o src/ads/lib_libads_a-calc_utils.o `test -f 'src/ads/calc_utils.c' || echo '$(srcdir)/'`src/ads/calc_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Tpo src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/calc_utils.c' object='src/ads/lib_libads_a-calc_utils.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-calc_utils.o `test -f 'src/ads/calc_utils.c' || echo '$(srcdir)/'`src/ads/calc_utils.c
+
+src/ads/lib_libads_a-calc_utils.obj: src/ads/calc_utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -MT src/ads/lib_libads_a-calc_utils.obj -MD -MP -MF src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Tpo -c -o src/ads/lib_libads_a-calc_utils.obj `if test -f 'src/ads/calc_utils.c'; then $(CYGPATH_W) 'src/ads/calc_utils.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/calc_utils.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Tpo src/ads/$(DEPDIR)/lib_libads_a-calc_utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/ads/calc_utils.c' object='src/ads/lib_libads_a-calc_utils.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(lib_libads_a_CFLAGS) $(CFLAGS) -c -o src/ads/lib_libads_a-calc_utils.obj `if test -f 'src/ads/calc_utils.c'; then $(CYGPATH_W) 'src/ads/calc_utils.c'; else $(CYGPATH_W) '$(srcdir)/src/ads/calc_utils.c'; fi`
 
 src/utils/bin_MESSI-MESSI.o: src/utils/MESSI.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(bin_MESSI_CFLAGS) $(CFLAGS) -MT src/utils/bin_MESSI-MESSI.o -MD -MP -MF src/utils/$(DEPDIR)/bin_MESSI-MESSI.Tpo -c -o src/utils/bin_MESSI-MESSI.o `test -f 'src/utils/MESSI.c' || echo '$(srcdir)/'`src/utils/MESSI.c
@@ -1154,6 +1178,8 @@ distclean-generic:
 	-rm -f src/ads/$(am__dirstamp)
 	-rm -f src/ads/sax/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/ads/sax/$(am__dirstamp)
+	-rm -f src/ads/sfa/$(DEPDIR)/$(am__dirstamp)
+	-rm -f src/ads/sfa/$(am__dirstamp)
 	-rm -f src/utils/$(DEPDIR)/$(am__dirstamp)
 	-rm -f src/utils/$(am__dirstamp)
 
@@ -1167,7 +1193,7 @@ clean-am: clean-binPROGRAMS clean-generic clean-libLIBRARIES \
 
 distclean: distclean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
-	-rm -rf src/ads/$(DEPDIR) src/ads/sax/$(DEPDIR) src/utils/$(DEPDIR)
+	-rm -rf src/ads/$(DEPDIR) src/ads/sax/$(DEPDIR) src/ads/sfa/$(DEPDIR) src/utils/$(DEPDIR)
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
@@ -1215,7 +1241,7 @@ installcheck-am:
 maintainer-clean: maintainer-clean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
-	-rm -rf src/ads/$(DEPDIR) src/ads/sax/$(DEPDIR) src/utils/$(DEPDIR)
+	-rm -rf src/ads/$(DEPDIR) src/ads/sax/$(DEPDIR) src/ads/sfa/$(DEPDIR) src/utils/$(DEPDIR)
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 

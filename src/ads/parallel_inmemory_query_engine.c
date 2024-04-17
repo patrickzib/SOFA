@@ -24,8 +24,8 @@
 #include "ads/isax_first_buffer_layer.h"
 #include "ads/pqueue.h"
 #include "ads/sax/sax.h"
-#include "ads/sfa.h"
-#include "ads/dft.h"
+#include "ads/sfa/sfa.h"
+#include "ads/sfa/dft.h"
 #include "ads/isax_node_split.h"
 #include "ads/inmemory_topk_engine.h"
 

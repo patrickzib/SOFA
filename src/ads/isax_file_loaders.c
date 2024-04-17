@@ -31,7 +31,7 @@
 #include "ads/inmemory_index_engine.h"
 #include "ads/inmemory_query_engine.h"
 #include "ads/sax/ts.h"
-#include "ads/dft.h"
+#include "ads/sfa/dft.h"
 
 void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
                             float minimum_distance, int min_checked_leaves,
@@ -89,14 +89,12 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
             for (int j = 0; j < index->settings->timeseries_size; ++j) {
                 ts_fftw[j] = ts[j];
             }
-            if (index->settings->coeff_number != 0) {
-                fft_from_ts_coeff(index, ts_fftw, ts_out, transform, plan_forward);
-            } else {
-                fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
-            }
+            int best_only = index->settings->coeff_number != 0;
+            fft_from_ts(index, ts_fftw, index->settings->paa_segments, best_only, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
                 paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
+                // paa[i] = (ts_type) transform[i];
             }
         }
 
@@ -212,12 +210,13 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
             for (int i = 0; i < ts_length; ++i) {
                 ts[i] = (ts_type) ts_int32[i];
             }
-            // apply z-normalization
-            if (apply_znorm) {
-                znorm(ts, ts_length);
-            }
         } else {
             fread(ts, sizeof(ts_type), ts_length, ifile);
+        }
+
+        // apply z-normalization
+        if (apply_znorm) {
+            znorm(ts, ts_length);
         }
 
         COUNT_INPUT_TIME_END
@@ -232,14 +231,12 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
                 ts_fftw[i] = ts[i];
             }
 
-            if (index->settings->coeff_number != 0) {
-                fft_from_ts_coeff(index, ts_fftw, ts_out, transform, plan_forward);
-            } else {
-                fft_from_ts(index, ts_fftw, ts_out, transform, plan_forward);
-            }
+            int best_only = index->settings->coeff_number != 0;
+            fft_from_ts(index, ts_fftw, index->settings->paa_segments, best_only, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
                 paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
+                // paa[i] = (ts_type) transform[i];
             }
 
 

@@ -6,7 +6,7 @@
 #include "ads/isax_query_engine.h"
 #include "ads/sax/ts.h"
 #include "ads/sax/sax.h"
-#include "ads/dft.h"
-#include "ads/sfa.h"
+#include "ads/sfa/dft.h"
+#include "ads/sfa/sfa.h"
 
 #endif 

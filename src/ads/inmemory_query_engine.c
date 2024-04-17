@@ -24,8 +24,8 @@
 #include "ads/pqueue.h"
 #include "ads/sax/sax.h"
 #include "ads/isax_node_split.h"
-#include "ads/dft.h"
-#include "ads/sfa.h"
+#include "ads/sfa/dft.h"
+#include "ads/sfa/sfa.h"
 
 #define NTHREADS 4
 int checkts = 0;

@@ -43,8 +43,8 @@
 #include "ads/parallel_index_engine.h"
 #include "ads/inmemory_topk_engine.h"
 #include "ads/DTWfunction.h"
-#include "ads/dft.h"
-#include "ads/sfa.h"
+#include "ads/sfa/dft.h"
+#include "ads/sfa/sfa.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
 //#define QUERIES_THREAD_NUMBER 4
