@@ -1,0 +1,11 @@
+# Datasets
+https://big-ann-benchmarks.com/neurips21.html
+https://ln5.sync.com/dl/0b8135230/39vxx8su-tkfi7t2s-dgsvh8rp-k8ixcs8p?sync_id=12175200410004
+
+# Code:
+https://github.com/harsha-simhadri/big-ann-benchmarks
+https://github.com/karimaechihabi/hercules/
+https://github.com/karimaechihabi/lernaean-hydra
+
+# Remote:
+https://www.informatik.hu-berlin.de/de/org/rechnerbetriebsgruppe/dienste/hpc/hardware/Zugaengliche-rechner-institut/computer-howtos

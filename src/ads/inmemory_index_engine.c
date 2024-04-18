@@ -22,7 +22,7 @@
 #include "ads/pqueue.h"
 #include "ads/sax/sax.h"
 #include "ads/isax_node_split.h"
-#include "ads/dft.h"
+#include "ads/sfa/dft.h"
 
 
 void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index *index) {
@@ -836,17 +836,17 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
             rawfile[i] = (ts_type) rawfile_int32[i];
         }
 
-        // apply z-normalization
-        if (apply_znorm) {
-            fprintf(stderr, ">>> Applying z-norm\n");
-            for (long int i = 0; i < index->settings->timeseries_size * ts_num; i += index->settings->timeseries_size) {
-                znorm(&rawfile[i], index->settings->timeseries_size);
-            }
-        }
-
         fprintf(stderr, ">>> Conversions done.\n");
     } else {
         fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
+    }
+
+    // apply z-normalization
+    if (apply_znorm) {
+        fprintf(stderr, ">>> Applying z-norm\n");
+        for (long int i = 0; i < index->settings->timeseries_size * ts_num; i += index->settings->timeseries_size) {
+            znorm(&rawfile[i], index->settings->timeseries_size);
+        }
     }
 
     COUNT_INPUT_TIME_END

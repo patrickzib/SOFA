@@ -1,8 +1,8 @@
 #ifndef sfalib_h
 #define sfalib_h
 
-#include "../../config.h"
-#include "../../globals.h"
+#include "../../../config.h"
+#include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

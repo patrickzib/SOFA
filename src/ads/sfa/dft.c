@@ -9,24 +9,27 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include "../../config.h"
-#include "../../globals.h"
+#include "config.h"
+#include "globals.h"
 #include "ads/isax_index.h"
 #include "math.h"
 
 #include <fftw3.h>
 
-#include "ads/dft.h"
+#include "ads/sfa/dft.h"
 
 /*
     This function calculates the FFT coefficients for a given time series
 */
-void fft_from_ts(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward) {
+void fft_from_ts(
+        isax_index *index, ts_type *ts,
+        int coeff_number, int best_only,
+        fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward) {
     unsigned long ts_length = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
 
     fftwf_execute(plan_forward);
 
+    // Image part of first (DC) coefficient
     ts_out[0][1] = 0;
 
     int j = 0;
@@ -34,91 +37,39 @@ void fft_from_ts(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type 
     // if normalized, ignore first coeff and start with offset 1
     int start_offset = index->settings->is_norm ? 1 : 0;
 
-    for (int k = start_offset; k < paa_segments / 2 + start_offset; ++k) {
-        transform[j] = ts_out[k][0];
-        transform[j + 1] = ts_out[k][1];
-        j += 2;
+    if (best_only) {
+        for (int k = 0; k < coeff_number / 2; ++k, j+= 2) {
+            int coeff = index->coefficients[k] + start_offset;
+            transform[j] = ts_out[coeff][0];
+            transform[j + 1] = ts_out[coeff][1] * -1;
+        }
+    } else {
+        for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k, j+= 2) {
+            transform[j] = ts_out[k][0];
+            transform[j + 1] = ts_out[k][1] * -1;
+        }
     }
 
-    //normalizing fft result in frequency domain
-    int sign = 1;
+    // normalizing fft result in frequency domain to allow for lower bounding
     ts_type norm_factor = index->norm_factor;
-
-    for (int i = 0; i < paa_segments; ++i) {
-        transform[i] *= norm_factor * sign;
-        sign *= -1;
-    }
-    return;
-}
-
-/*
-    This function calculates the FFT coefficients for a given time series with coeff-number cofficients
-*/
-void fft_from_ts_all_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform,
-                           fftwf_plan plan_forward) {
-    unsigned long ts_length = index->settings->timeseries_size;
-    int coeff_number = index->settings->coeff_number;
-
-    fftwf_execute(plan_forward);
-
-    ts_out[0][1] = 0;
-
-    int j = 0;
-
-    //if normalized, ignore first coeff and start with offset 1
-    int start_offset = index->settings->is_norm ? 1 : 0;
-
-    for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k) {
-        transform[j] = ts_out[k][0];
-        transform[j + 1] = ts_out[k][1];
-        j += 2;
-    }
-
-    //normalizing fft result in frequency domain
-    int sign = 1;
-    ts_type norm_factor = index->norm_factor;
-
     for (int i = 0; i < coeff_number; ++i) {
-        transform[i] *= norm_factor * sign;
-        sign *= -1;
+        transform[i] *= norm_factor;
     }
     return;
 }
 
-/*
-    This function calculates the FFT coefficients for a given time series with coeff-number cofficients
-*/
-void
-fft_from_ts_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward) {
-    unsigned long ts_length = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
-
-    fftwf_execute(plan_forward);
-
-    ts_out[0][1] = 0;
-
-    int j = 0;
-
-    //if normalized, ignore first coeff and start with offset 1
-    int start_offset = index->settings->is_norm ? 1 : 0;
-
-    for (int k = 0; k < paa_segments / 2; ++k) {
-        int coeff = index->coefficients[k] + start_offset;
-
-        transform[j] = ts_out[coeff][0];
-        transform[j + 1] = ts_out[coeff][1];
-        j += 2;
+/**
+ This is used for converting to sfa
+ */
+int compare_bins(const void *a, const void *b) {
+    float *c = (float *) b - 1;
+    if (*(float *) a > *(float *) c && *(float *) a <= *(float *) b) {
+        return 0;
+    } else if (*(float *) a <= *(float *) c) {
+        return -1;
+    } else {
+        return 1;
     }
-
-    //normalizing fft result in frequency domain
-    int sign = 1;
-    ts_type norm_factor = index->norm_factor;
-
-    for (int i = 0; i < paa_segments; ++i) {
-        transform[i] *= norm_factor * sign;
-        sign *= -1;
-    }
-    return;
 }
 
 /*
@@ -128,6 +79,8 @@ fft_from_ts_coeff(isax_index *index, ts_type *ts, fftwf_complex *ts_out, ts_type
 void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_sfa_word) {
     unsigned long ts_length = index->settings->timeseries_size;
     int paa_segments = index->settings->paa_segments;
+    int cardinality = index->settings->sax_alphabet_cardinality;
+    int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
 
     for (int k = 0; k < paa_segments; ++k) {
         unsigned int c;
@@ -143,20 +96,15 @@ void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_
 /*
     This function creates an SFA representation of a time series 
 */
-enum response
-sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform,
+enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform,
             fftwf_plan plan_forward) {
 
-    if (index->settings->coeff_number != 0) {
-        fft_from_ts_coeff(index, ts_in, ts_out, transform, plan_forward);
-    } else {
-        fft_from_ts(index, ts_in, ts_out, transform, plan_forward);
-    }
+    int use_best = index->settings->coeff_number != 0;
+    fft_from_ts(index, ts_in, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
 
     ts_type *cur_coeff_line = calloc(index->settings->paa_segments, sizeof(ts_type));
-
     for (int i = 0; i < index->settings->paa_segments; ++i) {
-        cur_coeff_line[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
+        cur_coeff_line[i] = transform[i];
     }
 
     sfa_from_fft(index, cur_coeff_line, sax_out);
