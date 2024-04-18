@@ -2417,6 +2417,7 @@ void index_mRecBuf_write(isax_index *index)
 
         if(index->settings->coeff_number!=0)
         {
+            // FIXME for best_only
             fwrite(index->coefficients, sizeof(int), index->settings->paa_segments/2, file);
         }
 

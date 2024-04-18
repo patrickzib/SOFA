@@ -73,7 +73,7 @@ enum response sfa_bins_init(isax_index *index) {
     fprintf(stderr, ">>> SFA: Initialized bins[%d][%d] \n", paa_segments, num_symbols - 1);
 
     if (index->settings->coeff_number != 0) {
-        index->coefficients = calloc(paa_segments / 2, sizeof(int));
+        index->coefficients = calloc(paa_segments, sizeof(int));
     }
 
     return SUCCESS;
@@ -249,7 +249,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     int paa_segments = index->settings->paa_segments;
     unsigned int sample_size = index->settings->sample_size;
 
-    struct variance_coeff_index var_coeff_index[coeff_number / 2];
+    struct variance_coeff_index var_coeff_index[coeff_number];
 
     for (int i = 0; i < coeff_number / 2; ++i) {
         double mean_real = 0.0;
@@ -271,10 +271,10 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         var_real = var_real / (double) sample_size;
         var_imag = var_imag / (double) sample_size;
 
-        double total_var = var_real + var_imag;
-
-        var_coeff_index[i].variance = total_var;
-        var_coeff_index[i].coeff_index = i;
+        var_coeff_index[2*i].variance = var_real;
+        var_coeff_index[2*i].coeff_index = 2*i;
+        var_coeff_index[2*i+1].variance = var_imag;
+        var_coeff_index[2*i+1].coeff_index = 2*i+1;
     }
 
     /*
@@ -286,37 +286,36 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     fprintf(stderr, "\n");
     */
 
-    qsort(var_coeff_index, coeff_number / 2, sizeof(var_coeff_index[0]), compare_var);
+    fprintf(stderr, "Sorting");
+    qsort(var_coeff_index, coeff_number, sizeof(var_coeff_index[0]), compare_var);
 
     fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
-    for (int i = 0; i < coeff_number / 2; ++i) {
+    for (int i = 0; i < paa_segments; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index, var_coeff_index[i].variance);
     }
     fprintf(stderr, "\n");
 
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    for (int i = 0; i < paa_segments; ++i) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
-    // sorting needed?
-    /* qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
-    fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    // sorting needed? Yes, for distance computation when --is-norm is not set
+    qsort(index->coefficients, paa_segments, sizeof(int), compare_int);
+    fprintf(stderr, ">>> SFA: Highest Variance Coeffs Sorted: ");
+    for (int i = 0; i < paa_segments; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
-    fprintf(stderr, "\n"); */
+    fprintf(stderr, "\n");
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type *));
     for (int k = 0; k < paa_segments; ++k) {
         dft_mem_array_coeff[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
 
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    for (int i = 0; i < paa_segments; ++i) {
         int coeff = index->coefficients[i];
-
         for (int j = 0; j < sample_size; ++j) {
-            dft_mem_array_coeff[i * 2][j] = dft_mem_array[coeff * 2][j];
-            dft_mem_array_coeff[i * 2 + 1][j] = dft_mem_array[coeff * 2 + 1][j];
+            dft_mem_array_coeff[i][j] = dft_mem_array[coeff][j];
         }
     }
 
