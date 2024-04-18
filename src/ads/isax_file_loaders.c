@@ -89,12 +89,12 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
             for (int j = 0; j < index->settings->timeseries_size; ++j) {
                 ts_fftw[j] = ts[j];
             }
-            int best_only = index->settings->coeff_number != 0;
-            fft_from_ts(index, ts_fftw, index->settings->paa_segments, best_only, ts_out, transform, plan_forward);
+            int use_best = index->settings->coeff_number != 0;
+            fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
-                paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
-                // paa[i] = (ts_type) transform[i];
+                // paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
+                paa[i] = (ts_type) transform[i];
             }
         }
 
@@ -231,12 +231,12 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
                 ts_fftw[i] = ts[i];
             }
 
-            int best_only = index->settings->coeff_number != 0;
-            fft_from_ts(index, ts_fftw, index->settings->paa_segments, best_only, ts_out, transform, plan_forward);
+            int use_best = index->settings->coeff_number != 0;
+            fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
-                paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
-                // paa[i] = (ts_type) transform[i];
+                // paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
+                paa[i] = (ts_type) transform[i];
             }
 
 
