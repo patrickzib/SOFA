@@ -299,12 +299,12 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     }
 
     // sorting needed?
-    qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
+    /* qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
     fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
     for (int i = 0; i < paa_segments / 2; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
-    fprintf(stderr, "\n");
+    fprintf(stderr, "\n"); */
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type *));
     for (int k = 0; k < paa_segments; ++k) {
@@ -407,7 +407,6 @@ void *set_bins_worker_dft(void *transferdata) {
         fft_from_ts(index, ts, index->settings->coeff_number, 0, ts_out, transform, plan_forward);
 
         for (int j = 0; j < coeff_number; ++j) {
-            // ts_type value = (ts_type) roundf(transform[j] * 100.0) / 100.0;
             ts_type value = transform[j];
             dft_mem_array[j][i + (bins_data->workernumber * bins_data->records_offset)] = value;
         }

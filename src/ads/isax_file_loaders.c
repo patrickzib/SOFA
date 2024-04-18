@@ -93,7 +93,6 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
             fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
-                // paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
                 paa[i] = (ts_type) transform[i];
             }
         }
@@ -235,7 +234,6 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
             fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
 
             for (int i = 0; i < index->settings->paa_segments; ++i) {
-                // paa[i] = (ts_type) roundf(transform[i] * 100.0) / 100.0;
                 paa[i] = (ts_type) transform[i];
             }
 
