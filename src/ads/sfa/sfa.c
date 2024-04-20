@@ -604,7 +604,7 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
         (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
         distance += get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 0.0);
+                max_bit_cardinality, max_cardinality, 1.0);
 
         if (distance > bsf) {
             return distance;
@@ -649,7 +649,7 @@ ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, s
         (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
         distance += get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 0.0);
+                max_bit_cardinality, max_cardinality, 1.0);
 
         if (distance > bsf) {
             return distance;
@@ -743,7 +743,7 @@ ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_typ
     if (!index->settings->is_norm && (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
         distance += get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 0.0);
+                max_bit_cardinality, max_cardinality, 1.0);
 
         if (distance > bsf) {
             return distance;

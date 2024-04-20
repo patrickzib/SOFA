@@ -58,20 +58,6 @@ void fft_from_ts(
     return;
 }
 
-/**
- This is used for converting to sfa
- */
-int compare_bins(const void *a, const void *b) {
-    float *c = (float *) b - 1;
-    if (*(float *) a > *(float *) c && *(float *) a <= *(float *) b) {
-        return 0;
-    } else if (*(float *) a <= *(float *) c) {
-        return -1;
-    } else {
-        return 1;
-    }
-}
-
 /*
     This function discretized FFT coefficients with the intervals from MCB
     The current transform is pointed to by dft_mem_array

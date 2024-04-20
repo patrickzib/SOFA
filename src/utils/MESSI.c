@@ -45,6 +45,7 @@
 #include "ads/DTWfunction.h"
 #include "ads/sfa/dft.h"
 #include "ads/sfa/sfa.h"
+#include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
 //#define QUERIES_THREAD_NUMBER 4
@@ -331,15 +332,15 @@ int main(int argc, char **argv) {
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
-                \t--tight-bound XX\tSet for tight bounds.\n\
+                \t--tight-bound XX\t\tSet for tight bounds.\n\
                 \t--aggressive-check XX\t\tSet for aggressive check\n\
                 \t--serial\t\t\tSet for serial scan\n\
-                \t--knn\t\t\tSet for knn search\n\
+                \t--knn\t\t\t\tSet for knn search\n\
                 \t--k-size\t\t\tSet k size of knn\n\
-                \t--topk\t\t\tSet for top k search\n\
+                \t--topk\t\t\t\tSet for top k search\n\
                 \t--dtwwindowsize\t\t\tSet dtw window size\n\
                 \t--knn-label-set\t\t\tSet label set\n\
-                \t--queue-number\t\tset the number of priority queues\n\
+                \t--queue-number\t\t\tset the number of priority queues\n\
                 \t--in-memory\t\t\tSet for in-memory search\n\
                 \t--function-type\t\t\tSet for query answering type\n\
                 \t\t\tin memory  only index creation: 0\n\
@@ -376,7 +377,7 @@ int main(int argc, char **argv) {
                 \t\t\t\t\t181: 18 core in 1 CPU\n\
                 \t\t\t\t\t182: 18 core in 2 CPUs\n\
                 \t\t\t\t\t242: 24 core in 2 CPUs\n\
-                \t\t\t\t\t242: 36 core in 2 CPUs\n\
+                \t\t\t\t\t362: 36 core in 2 CPUs\n\
                 \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 ");
                 return 0;
