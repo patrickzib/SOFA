@@ -78,14 +78,7 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
         i++;
     }
 
-    //float dist2 = ts_euclidean_distance(t, s, size2, bound);
-    //if (distance!=dist2 && dist2 < bound) {
-    //    printf("Distances do not match, %0.1f, %0.1f", distance, dist2);
-    //    exit(1);
-    //}
-
     //    distance = sqrtf(distance);
-
     return distance;
 }
 
@@ -97,7 +90,7 @@ float ts_euclidean_distance_neSIMD(ts_type *t, ts_type *s, int size, float bound
     __m256 v_fd, v_t, v_s, v_d, distancev;
 
     v_fd = _mm256_setzero_ps();
-    while (size > 0) {
+    while (size > 0 && distance < bound) {
         v_t = _mm256_loadu_ps(&t[i]);
         v_s = _mm256_loadu_ps(&s[i]);
 

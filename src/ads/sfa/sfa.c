@@ -610,13 +610,13 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
             return distance;
         }
 
-        //if (index->settings->coeff_number == 0) {
-        // if no variance-based coefficient selection is chosen
-        // skip the imaginary part of the first coefficient
-        i = 2;
-        //} else {
-        //    i = 1;
-        // }
+        if (index->settings->coeff_number == 0) {
+            // if no variance-based coefficient selection is chosen
+            // skip the imaginary part of the first coefficient
+            i = 2;
+        } else {
+            i = 1;
+        }
     }
 
     for (; i < number_of_segments; i++) {
@@ -655,13 +655,13 @@ ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, s
             return distance;
         }
 
-        //if (index->settings->coeff_number == 0) {
-        // if no variance-based coefficient selection is chosen
-        // skip the imaginary part of the first coefficient
-        i = 2;
-        //} else {
-        //    i = 1;
-        //}
+        if (index->settings->coeff_number == 0) {
+            // if no variance-based coefficient selection is chosen
+            // skip the imaginary part of the first coefficient
+            i = 2;
+        } else {
+            i = 1;
+        }
     }
 
     for (; i < number_of_segments; i++) {

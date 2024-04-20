@@ -200,26 +200,27 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
         COUNT_INPUT_TIME_START
 
         if (filetype_int) {
-            if (apply_znorm) {
-                fprintf(stderr, ">>> Converting queries int to float and applying z-norm\n");
-            } else {
-                fprintf(stderr, ">>> Converting queries int to float\n");
-            }
+            // fprintf(stderr, ">>> Converting queries int8 to float\n");
             fread(ts_int32, sizeof(file_type), ts_length, ifile);
             for (int i = 0; i < ts_length; ++i) {
                 ts[i] = (ts_type) ts_int32[i];
             }
+            //  fprintf(stderr, ">>> Conversions done.\n");
+
         } else {
             fread(ts, sizeof(ts_type), ts_length, ifile);
         }
 
         // apply z-normalization
         if (apply_znorm) {
+            //fprintf(stderr, ">>> Applying z-norm\n");
             znorm(ts, ts_length);
         }
 
         COUNT_INPUT_TIME_END
-        printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
+        // printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
+        //printf("Querying for: %d", q_loaded);
+        printf("%d: ", q_loaded);
 
         COUNT_QUERYING_TIME_START
         COUNT_INIT_TIME_START
@@ -557,7 +558,10 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
         COUNT_INPUT_TIME_START
         fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
-        printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
+        // printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
+        // printf("Querying for: %d\n", q_loaded);
+        printf("%d: ", q_loaded);
+
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings->paa_segments,
                     index->settings->ts_values_per_paa_segment,

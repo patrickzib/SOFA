@@ -26,6 +26,7 @@
 ///// TYPES /////
 typedef unsigned char sax_type;
 typedef char file_type;
+// typedef signed char file_type;
 typedef float ts_type;
 typedef unsigned long long file_position_type;
 typedef unsigned long long root_mask_type;

@@ -827,15 +827,14 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     if (filetype_int) {
 
-        fprintf(stderr, ">>> Reading file as int\n");
+        fprintf(stderr, ">>> Reading file as int8\n");
         fread(rawfile_int32, sizeof(file_type), index->settings->timeseries_size * ts_num, ifile);
 
-        fprintf(stderr, ">>> Converting int to float\n");
+        fprintf(stderr, ">>> Converting int8 to float\n");
         for (long int i = 0; i < index->settings->timeseries_size * ts_num; i++) {
             // Convert int to float type
             rawfile[i] = (ts_type) rawfile_int32[i];
         }
-
         fprintf(stderr, ">>> Conversions done.\n");
     } else {
         fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
