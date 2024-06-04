@@ -927,9 +927,8 @@ minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
                                                      index->bins[8][region_upper[8]]);
 
 
-    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(max_bit_cardinality - 1));
-    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(max_bit_cardinality - 1));
-
+    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
     __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
     __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
 
@@ -1135,9 +1134,8 @@ minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax
                                                     index->binsv[region_upper[8]+8*(index->settings->sax_alphabet_cardinality-1)]);
 */
 
-    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(max_bit_cardinality - 1));
-    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(max_bit_cardinality - 1));
-
+    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
     __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
     __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
 
