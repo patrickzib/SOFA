@@ -1231,12 +1231,12 @@ minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax
                                                                            (__m256i) lsax_breakpoints_shiftv_0));
 
 
-    //uper        
+    //upper
     __m256i region_upperbinv0 = _mm256_add_epi32(offsetv0, region_upperv_0);
 
     __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(index->binsv, region_upperbinv0, 4);
 
-    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(max_bit_cardinality - 1));
+    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
 
     __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
 
@@ -1299,7 +1299,7 @@ minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax
 
     __m256i region_upperbinv1 = _mm256_add_epi32(offsetv1, region_upperv_1);
     __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(index->binsv, region_upperbinv1, 4);
-    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(max_bit_cardinality - 1));
+    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
     __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
     __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
             _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
