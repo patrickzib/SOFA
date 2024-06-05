@@ -632,8 +632,6 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 
     __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
 
-
-
     //__m256i c_cv_0 = _mm256_set_epi32 ( sax_cardinalities[7] , sax_cardinalities[6] ,sax_cardinalities[5] ,sax_cardinalities[4] , sax_cardinalities[3] ,sax_cardinalities[2] ,sax_cardinalities[1],sax_cardinalities[0]);
     //__m256i c_cv_1 = _mm256_set_epi32 ( sax_cardinalities[15], sax_cardinalities[14],sax_cardinalities[13],sax_cardinalities[12], sax_cardinalities[11],sax_cardinalities[10],sax_cardinalities[9],sax_cardinalities[8]);
     __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
@@ -682,7 +680,6 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 
 
     //lower
-
     __m256i lower_juge_zerov_0 = _mm256_cmpeq_epi32(region_lowerv_0, _mm256_setzero_si256());
     __m256i lower_juge_zerov_1 = _mm256_cmpeq_epi32(region_lowerv_1, _mm256_setzero_si256());
 
@@ -690,9 +687,6 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
     __m256i lower_juge_nzerov_1 = _mm256_andnot_si256(lower_juge_zerov_1, vectorsignbit);
 
     __m256 minvalv = _mm256_set1_ps(min_val);
-
-
-
 
     //__m256 lsax_breakpoints_shiftv_0 _mm256_i32gather_ps (sax_breakpoints, __m256i vindex, const int scale)
     __m256 lsax_breakpoints_shiftv_0 = _mm256_set_ps(sax_breakpoints[offset + region_lower[7] - 1],
@@ -720,7 +714,7 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                                                           _mm256_and_si256(lower_juge_nzerov_1,
                                                                            (__m256i) lsax_breakpoints_shiftv_1));
 
-    //uper
+    //upper
     __m256 usax_breakpoints_shiftv_0 = _mm256_set_ps(sax_breakpoints[offset + region_upper[7]],
                                                      sax_breakpoints[offset + region_upper[6]],
                                                      sax_breakpoints[offset + region_upper[5]],
@@ -752,23 +746,14 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
             _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(max_val)),
             _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
 
-
-
-
-
-
-
     //dis
     __m256 paav_0, paav_1;
-
 
     paav_0 = _mm256_loadu_ps(paa);
     paav_1 = _mm256_loadu_ps(&(paa[8]));
 
-
     __m256 dis_juge_upv_0 = _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_GT_OS);
     __m256 dis_juge_upv_1 = _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_GT_OS);
-
 
     __m256 dis_juge_lov_0 = (__m256) _mm256_and_si256((__m256i) _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_NGT_US),
                                                       (__m256i) _mm256_cmp_ps(breakpoint_upperv_0, paav_0, _CMP_LT_OS));
@@ -789,7 +774,6 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
     __m256 dis_uppv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_1, paav_1),
                                       _mm256_sub_ps(breakpoint_upperv_1, paav_1));
 
-
     __m256 distancev_0 = (__m256) _mm256_or_si256(
             _mm256_or_si256(_mm256_and_si256((__m256i) dis_juge_upv_0, (__m256i) dis_lowv_0),
                             _mm256_and_si256((__m256i) dis_juge_lov_0, (__m256i) dis_uppv_0)),
@@ -803,10 +787,8 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
     __m256 distancev2 = _mm256_hadd_ps(distancev, distancev);
     __m256 distancevf = _mm256_hadd_ps(distancev2, distancev2);
 
-
     _mm256_storeu_ps(distancef, distancevf);
     //_mm256_storeu_ps (&checkvalue[8] ,distancev_1);
-
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
