@@ -853,10 +853,10 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
 
     region_upperv_1 = _mm256_or_si256(region_upperv_1, region_lowerv_1);
 
-    region_lowerv_0 = _mm256_add_epi32(region_lowerv_0, vloweroffset);
-    region_lowerv_1 = _mm256_add_epi32(region_lowerv_1, vloweroffset);
-    region_upperv_0 = _mm256_add_epi32(region_upperv_0, vupperoffset);
-    region_upperv_1 = _mm256_add_epi32(region_upperv_1, vupperoffset);
+        __m256i region_lowerv_0_offset = _mm256_add_epi32 (region_lowerv_0, vloweroffset);
+        __m256i region_lowerv_1_offset = _mm256_add_epi32 (region_lowerv_1, vloweroffset);
+        __m256i region_upperv_0_offset = _mm256_add_epi32 (region_upperv_0, vupperoffset);
+        __m256i region_upperv_1_offset = _mm256_add_epi32 (region_upperv_1, vupperoffset);
     _mm256_storeu_si256((void *) &(region_lower[0]), region_lowerv_0);
     _mm256_storeu_si256((void *) &(region_lower[8]), region_lowerv_1);
     _mm256_storeu_si256((void *) &(region_upper[0]), region_upperv_0);
@@ -874,7 +874,7 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
     __m256 minvalv = _mm256_set1_ps(min_val);
 
 
-    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(sax_breakpoints, region_lowerv_0, 4);
+    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(sax_breakpoints, region_lowerv_0_offset, 4);
     //__m256 lsax_breakpoints_shiftv_0= _mm256_set_ps (sax_breakpoints[region_lower[7]],
     //sax_breakpoints[region_lower[6]],
     //sax_breakpoints[region_lower[5]],
@@ -883,7 +883,7 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
     //sax_breakpoints[region_lower[2]],
     //sax_breakpoints[region_lower[1]],
     //sax_breakpoints[region_lower[0]]);
-    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(sax_breakpoints, region_lowerv_1, 4);
+    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(sax_breakpoints, region_lowerv_1_offset, 4);
     //__m256 lsax_breakpoints_shiftv_1= _mm256_set_ps (sax_breakpoints[region_lower[15]],
     //sax_breakpoints[region_lower[14]],
     //sax_breakpoints[region_lower[13]],
@@ -902,7 +902,7 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                                                                            (__m256i) lsax_breakpoints_shiftv_1));
 
     //uper
-    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(sax_breakpoints, region_upperv_0, 4);
+    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(sax_breakpoints, region_upperv_0_offset, 4);
     //__m256 usax_breakpoints_shiftv_0= _mm256_set_ps (sax_breakpoints[region_upper[7]],
     //sax_breakpoints[region_upper[6]],
     //sax_breakpoints[region_upper[5]],
@@ -911,7 +911,7 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
     //sax_breakpoints[region_upper[2]],
     //sax_breakpoints[region_upper[1]],
     //sax_breakpoints[region_upper[0]]);
-    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(sax_breakpoints, region_upperv_1, 4);
+    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(sax_breakpoints, region_upperv_1_offset, 4);
     //__m256 usax_breakpoints_shiftv_1= _mm256_set_ps (sax_breakpoints[region_upper[15]],
     //sax_breakpoints[region_upper[14]],
     //sax_breakpoints[region_upper[13]],
