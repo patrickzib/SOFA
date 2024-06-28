@@ -302,17 +302,20 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
             if (index->settings->SIMD_flag) {
-                distmin = minidist_paa_to_isax_rawa_SIMD(paa, node->buffer->partial_sax_buffer[i],
-                                                         index->settings->max_sax_cardinalities,
-                                                         index->settings->sax_bit_cardinality,
-                                                         index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
-                                                         index->settings->mindist_sqrt);
+                distmin = minidist_paa_to_isax_rawa_SIMD(
+                        paa, node->buffer->partial_sax_buffer[i],
+                        index->settings->max_sax_cardinalities,
+                         index->settings->sax_bit_cardinality,
+                         index->settings->sax_alphabet_cardinality,
+                         index->settings->paa_segments, MINVAL, MAXVAL,
+                         index->settings->mindist_sqrt);
 
                 if (distmin < bsf) {
-                    float dist = ts_euclidean_distance_SIMD(query,
-                                                            &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                            index->settings->timeseries_size, bsf);
+                    float dist = ts_euclidean_distance_SIMD(
+                                query,
+                                &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                index->settings->timeseries_size, bsf);
+
                     //__sync_fetch_and_add(&RDcalculationnumber,1);
                     if (dist < bsf) {
                         bsf = dist;
@@ -339,82 +342,6 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
     return bsf;
 }
 
-float
-calculate_node_distance2_inmemory_gettime(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf,
-                                          unsigned long int *time_lb, unsigned long int *time_real) {
-    struct timeval current_time;
-    struct timeval lb_dist_time_start;
-    struct timeval real_dist_time_start;
-
-    COUNT_CHECKED_NODE()
-    float distmin;
-    // If node has buffered data
-    if (node->buffer != NULL) {
-        int i;
-
-        __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
-        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            if (index->settings->SIMD_flag) {
-                gettimeofday(&lb_dist_time_start, NULL);
-                distmin = minidist_paa_to_isax_rawa_SIMD(paa, node->buffer->partial_sax_buffer[i],
-                                                         index->settings->max_sax_cardinalities,
-                                                         index->settings->sax_bit_cardinality,
-                                                         index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
-                                                         index->settings->mindist_sqrt);
-
-                gettimeofday(&current_time, NULL);
-                *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                             (int) (lb_dist_time_start.tv_sec * 1000000 + (lb_dist_time_start.tv_usec)));
-
-                if (distmin < bsf) {
-                    gettimeofday(&real_dist_time_start, NULL);
-
-                    float dist = ts_euclidean_distance_SIMD(query,
-                                                            &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                            index->settings->timeseries_size, bsf);
-                    __sync_fetch_and_add(&RDcalculationnumber, 1);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-
-                    gettimeofday(&current_time, NULL);
-                    *time_real += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                   (int) (real_dist_time_start.tv_sec * 1000000 + (real_dist_time_start.tv_usec)));
-                }
-            } else {
-                gettimeofday(&lb_dist_time_start, NULL);
-
-                distmin = minidist_paa_to_isax_raw(paa, node->buffer->partial_sax_buffer[i],
-                                                   index->settings->max_sax_cardinalities,
-                                                   index->settings->sax_bit_cardinality,
-                                                   index->settings->sax_alphabet_cardinality,
-                                                   index->settings->paa_segments, MINVAL, MAXVAL,
-                                                   index->settings->mindist_sqrt);
-                gettimeofday(&current_time, NULL);
-                *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                             (int) (lb_dist_time_start.tv_sec * 1000000 + (lb_dist_time_start.tv_usec)));
-
-                if (distmin < bsf) {
-                    gettimeofday(&real_dist_time_start, NULL);
-
-                    float dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                       index->settings->timeseries_size, bsf);
-                    __sync_fetch_and_add(&RDcalculationnumber, 1);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-
-                    gettimeofday(&current_time, NULL);
-                    *time_real += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                   (int) (real_dist_time_start.tv_sec * 1000000 + (real_dist_time_start.tv_usec)));
-                }
-            }
-        }
-    }
-    return bsf;
-}
 
 float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft,
                                             float bsf) {
@@ -449,62 +376,6 @@ float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, 
                 if (dist < bsf) {
                     bsf = dist;
                 }
-            }
-        }
-    }
-    return bsf;
-}
-
-float
-calculate_node_distance2_inmemory_SFA_gettime(isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft,
-                                              float bsf, unsigned long int *time_lb, unsigned long int *time_real) {
-    struct timeval current_time;
-    struct timeval lb_dist_time_start;
-    struct timeval real_dist_time_start;
-
-    COUNT_CHECKED_NODE()
-    float distmin;
-    // If node has buffered data
-    if (node->buffer != NULL) {
-        int i;
-
-        __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
-        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            gettimeofday(&lb_dist_time_start, NULL);
-
-            if (index->settings->SIMD_flag) {
-                distmin = minidist_fft_to_isax_rawe_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                         index->settings->max_sax_cardinalities, bsf);
-            } else {
-                distmin = minidist_fft_to_isax_raw(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                   index->settings->max_sax_cardinalities, bsf);
-            }
-            gettimeofday(&current_time, NULL);
-            *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                         (int) (lb_dist_time_start.tv_sec * 1000000 + (lb_dist_time_start).tv_usec));
-
-            if (distmin < bsf) {
-                gettimeofday(&real_dist_time_start, NULL);
-                float dist;
-                if (index->settings->SIMD_flag) {
-                    dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                      index->settings->timeseries_size, bsf);
-                } else {
-
-                    dist = ts_euclidean_distance(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                 index->settings->timeseries_size, bsf);
-                }
-                //__sync_fetch_and_add(&RDcalculationnumber,1);
-
-
-                if (dist < bsf) {
-                    bsf = dist;
-                }
-                gettimeofday(&current_time, NULL);
-                *time_real += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                               (int) (real_dist_time_start.tv_sec * 1000000 + (real_dist_time_start).tv_usec));
-
             }
         }
     }

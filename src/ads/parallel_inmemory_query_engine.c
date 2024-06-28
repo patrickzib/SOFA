@@ -82,16 +82,22 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
         int i;
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            float dist = ts_euclidean_distance_SIMD(query, node->buffer->full_ts_buffer[i],
-                                                    index->settings->timeseries_size, bsf);
+            // float dist = ts_euclidean_distance_SIMD(query, node->buffer->full_ts_buffer[i],
+            //                                         index->settings->timeseries_size, bsf);
+            float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
+                               index->settings->timeseries_size, bsf,
+                               index->settings->SIMD_flag, index->settings->is_norm);
             if (dist < bsf) {
                 bsf = dist;
             }
         }
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            float dist = ts_euclidean_distance_SIMD(query, node->buffer->tmp_full_ts_buffer[i],
-                                                    index->settings->timeseries_size, bsf);
+            // float dist = ts_euclidean_distance_SIMD(query, node->buffer->tmp_full_ts_buffer[i],
+            //                                        index->settings->timeseries_size, bsf);
+            float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+                                index->settings->timeseries_size, bsf,
+                                index->settings->SIMD_flag, index->settings->is_norm);
             if (dist < bsf) {
                 bsf = dist;
             }
@@ -99,12 +105,14 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
-            float dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                    index->settings->timeseries_size, bsf);
+            // float dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+            //                                        index->settings->timeseries_size, bsf);
+            float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                               index->settings->timeseries_size, bsf,
+                               index->settings->SIMD_flag, index->settings->is_norm);
 
             if (dist < bsf) {
                 bsf = dist;
-
             }
         }
     }
@@ -391,9 +399,14 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
                                               index->settings->paa_segments, MINVAL, MAXVAL,
                                               index->settings->mindist_sqrt) <= approximate_result[i].distance) {
                 ts_buffer = &rawfile[j * index->settings->timeseries_size];
-                float dist = ts_euclidean_distance_SIMD(&(ts[i * index->settings->timeseries_size]), ts_buffer,
-                                                        index->settings->timeseries_size,
-                                                        approximate_result[i].distance);
+                // float dist = ts_euclidean_distance_SIMD(&(ts[i * index->settings->timeseries_size]), ts_buffer,
+                //                                         index->settings->timeseries_size,
+                //                                         approximate_result[i].distance);
+                float dist = ts_ed(&(ts[i * index->settings->timeseries_size]), ts_buffer,
+                                    index->settings->timeseries_size,
+                                    approximate_result[i].distance,
+                                    index->settings->SIMD_flag, index->settings->is_norm);
+
                 if (dist < approximate_result[i].distance) {
                     omp_set_lock(&(bsflock[i]));
                     if (dist < approximate_result[i].distance) {
@@ -440,8 +453,11 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
                                                                     sizeof(ts_type)];
             COUNT_INPUT_TIME_END
 
-            float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
-                                                    ((ParIS_LDCW_data *) worker_data)->bsfdistance);
+            // float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
+            //                                         ((ParIS_LDCW_data *) worker_data)->bsfdistance);
+            float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size,
+                                ((ParIS_LDCW_data *) worker_data)->bsfdistance,
+                                index->settings->SIMD_flag, index->settings->is_norm);
 
             if (dist < (((ParIS_LDCW_data *) worker_data)->bsfdistance)) {
                 (((ParIS_LDCW_data *) worker_data)->bsfdistance) = dist;
@@ -1134,7 +1150,11 @@ void *readworker_inmemory(void *read_pointer) {
         if (minidisvector[t] < bsf) {
             ts_buffer = &((ParIS_read_worker_data *) read_pointer)->rawfile[p * index->settings->ts_byte_size /
                                                                             sizeof(ts_type)];
-            dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+            // dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+
+            dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf,
+                         index->settings->SIMD_flag, index->settings->is_norm);
+
             if (dist < bsf) {
                 pthread_rwlock_wrlock(((ParIS_read_worker_data *) read_pointer)->lock_bsf);
                 if (dist < *(((ParIS_read_worker_data *) read_pointer)->bsf2)) {
@@ -1169,7 +1189,10 @@ void *topk_readworker_inmemory(void *read_pointer) {
         if (minidisvector[t] < bsf) {
             ts_buffer = &((ParIS_read_worker_data *) read_pointer)->rawfile[p * index->settings->ts_byte_size /
                                                                             sizeof(ts_type)];
-            dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+            // dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+            dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf,
+                         index->settings->SIMD_flag, index->settings->is_norm);
+
             if (dist <= bsf) {
                 pthread_rwlock_wrlock(((ParIS_read_worker_data *) read_pointer)->lock_bsf);
                 pqueue_bsf_insert(pq_bsf, dist, p, NULL);
@@ -1205,7 +1228,10 @@ void *readworker2_inmemory(void *read_pointer) {
         if (minidisvector[t] < bsf) {
             ts_buffer = &((ParIS_read_worker_data *) read_pointer)->rawfile[p * index->settings->ts_byte_size /
                                                                             sizeof(ts_type)];
-            dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+            // dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf);
+            dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf,
+                         index->settings->SIMD_flag, index->settings->is_norm);
+
             if (dist < bsf) {
                 pthread_rwlock_wrlock(((ParIS_read_worker_data *) read_pointer)->lock_bsf);
                 if (dist < *(((ParIS_read_worker_data *) read_pointer)->bsf2)) {
@@ -1271,7 +1297,10 @@ exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index 
                                            index->settings->paa_segments, MINVAL, MAXVAL,
                                            index->settings->mindist_sqrt) <= bsf_distance) {
             ts_buffer = &rawfile[j * index->settings->timeseries_size];
-            float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
+            // float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
+            float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf_distance,
+                               index->settings->SIMD_flag, index->settings->is_norm);
+
             //__sync_fetch_and_add(&RDcalculationnumber,1);
             if (dist < bsf_distance) {
                 //omp_set_lock(&bsflock);
@@ -1370,8 +1399,10 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
                                                    index->settings->paa_segments, MINVAL, MAXVAL,
                                                    index->settings->mindist_sqrt) <= bsf_distance) {
                     ts_buffer = &rawfile[current_buffer->pos_records[j]];
-                    float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
-                                                            bsf_distance);
+                    //float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
+                    //                                        bsf_distance);
+                    float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf_distance,
+                                       index->settings->SIMD_flag, index->settings->is_norm);
                     if (dist < bsf_distance) {
                         bsf_distance = dist;
                     }
@@ -1380,24 +1411,6 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
         }
     }
 
-    // #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
-    //for(unsigned long  j=0; j<index->sax_cache_size; j++) {
-    //  sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
-    //  if(minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
-    //                                         index->settings->sax_bit_cardinality,
-    //                                  index->settings->sax_alphabet_cardinality,
-    //                                           index->settings->paa_segments, MINVAL, MAXVAL,
-    //                                           index->settings->mindist_sqrt) <= bsf_distance) {
-    //  ts_buffer=&rawfile[j*index->settings->timeseries_size];
-    //  float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
-    //__sync_fetch_and_add(&RDcalculationnumber,1);
-    // if(dist < bsf_distance) {
-    //omp_set_lock(&bsflock);
-    //     bsf_distance = dist;
-    //omp_unset_lock(&bsflock);
-    //  }
-    // }
-    // }
     approximate_result.distance = bsf_distance;
     COUNT_CAL_TIME_END
     return approximate_result;
@@ -1471,7 +1484,9 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     for (j = 0; j < index->sax_cache_size; j++) {
         if (rdcbitmap[j]) {
             ts_buffer = &rawfile[j * index->settings->timeseries_size];
-            float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
+            // float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
+            float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, bsf_distance,
+                               index->settings->SIMD_flag, index->settings->is_norm);
             if (dist < bsf_distance) {
                 //omp_set_lock(&bsflock);
                 bsf_distance = dist;
@@ -2385,10 +2400,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                 float distance;
                 //SFA
                 if (index->settings->function_type == 4) {
-                    //distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                     distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
                 } else {
-                    //distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                     distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
                 }
 
@@ -2454,10 +2467,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                             float distance;
                             //SFA
                             if (index->settings->function_type == 4) {
-                                //distance = calculate_node_distance2_inmemory_SFA_gettime(index, n->node, ts, paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                                 distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
                             } else {
-                                //distance = calculate_node_distance2_inmemory_gettime(index, n->node, ts,paa, bsfdisntance, &total_lb_dist_calc_time, &total_real_dist_calc_time);
                                 distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
                             }
 
