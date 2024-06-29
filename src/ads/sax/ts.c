@@ -55,8 +55,8 @@ float ts_euclidean_distance_dot_product(ts_type *X, ts_type *Y, int size) {
     return result;
 }
 
-float dot_product_simd(ts_type *a, ts_type *b, int n) {
-    /*__m256 sum_vec = _mm256_setzero_ps(); // Initialize sum vector to zero
+float dot_product_simd(ts_type *X, ts_type *Y, int m) {
+    __m256 sum_vec = _mm256_setzero_ps(); // Initialize sum vector to zero
 
     int i = 0;
     // Process 8 elements at a time
@@ -77,38 +77,7 @@ float dot_product_simd(ts_type *a, ts_type *b, int n) {
         dot += X[i] * Y[i];
     }
 
-    return dot;*/
-    __m256 sum0 = _mm256_setzero_ps();  // Initialize sum registers to zero
-    __m256 sum1 = _mm256_setzero_ps();  // Using two accumulators for unrolling
-
-    int i;
-    for (i = 0; i <= n - 16; i += 16) {  // Process 16 elements at a time
-        __m256 va0 = _mm256_loadu_ps(&a[i]);
-        __m256 vb0 = _mm256_loadu_ps(&b[i]);
-        __m256 va1 = _mm256_loadu_ps(&a[i + 8]);
-        __m256 vb1 = _mm256_loadu_ps(&b[i + 8]);
-
-        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(va0, vb0));
-        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(va1, vb1));
-    }
-
-    // Handle remaining elements (less than 16)
-    for (; i < n; i++) {
-        sum0 = _mm256_add_ps(sum0, _mm256_set1_ps(a[i] * b[i]));
-    }
-
-    // Horizontally add the elements in the AVX registers
-    sum0 = _mm256_add_ps(sum0, sum1);
-    __m128 vlow = _mm256_castps256_ps128(sum0);  // Get the lower 128 bits of the result
-    __m128 vhigh = _mm256_extractf128_ps(sum0, 1);  // Get the upper 128 bits of the result
-    vlow = _mm_add_ps(vlow, vhigh);  // Sum the low and high parts
-
-    // Horizontally add the elements in the SSE register
-    vlow = _mm_hadd_ps(vlow, vlow);
-    vlow = _mm_hadd_ps(vlow, vlow);
-
-    // Extract the final result
-    return _mm_cvtss_f32(vlow);
+    return dot;
 }
 
 float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int size) {
@@ -179,7 +148,11 @@ float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char 
             return ts_euclidean_distance(t, s, size, bound);
         }
     }*/
-    return ts_euclidean_distance_dot_product_SIMD(t, s, size);
+    if (is_simd) {
+        return ts_euclidean_distance_SIMD(t, s, size, bound);
+    } else {
+        return ts_euclidean_distance(t, s, size, bound);
+    }
 }
 
 
