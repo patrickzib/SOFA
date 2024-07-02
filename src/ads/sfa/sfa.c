@@ -595,7 +595,7 @@ get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sa
 /*
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
-ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
@@ -640,7 +640,7 @@ ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_t
 /*
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
-ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+ts_type minidist_fft_to_sfa_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
@@ -733,88 +733,9 @@ long random_at_most(long max) {
     return x / bin_size;
 }
 
-ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities,
-                                          float bsf) {
-
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
-    int max_cardinality = index->settings->sax_alphabet_cardinality;
-    int number_of_segments = index->settings->paa_segments;
-
-    ts_type distance = 0.0;
-    int i = 0;
-
-    //special case: for not normalized time series, the first coefficient has to be treated specially
-    //for normalized data, this part is skipped
-    if (!index->settings->is_norm &&
-        (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
-        distance += get_lb_distance(
-                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 1.0);
-
-        if (distance > bsf) {
-            return distance;
-        }
-
-        //if (index->settings->coeff_number == 0) {
-        // if no variance-based coefficient selection is chosen
-        // skip the imaginary part of the first coefficient
-        i = 2;
-        //} else {
-        //    i += 1;
-        //}
-
-    }
-    sax_type c_cv[number_of_segments];
-    sax_type vv[number_of_segments];
-    sax_type c_m = max_bit_cardinality;
-    for (; i < number_of_segments; i++) {
-        c_cv[i] = sax_cardinalities[i];
-        vv[i] = sax[i];
-    }
-    sax_type region_lowerv[number_of_segments];
-    sax_type region_upperv[number_of_segments];
-    i = 2;
-    for (; i < number_of_segments; i++) {
-        region_lowerv[i] = (vv[i] << (c_m - c_cv[i]));
-        region_upperv[i] = (~((int) MAXFLOAT << (c_m - c_cv[i])) | region_lowerv[i]);
-    }
-
-    float breakpoint_lowerv[number_of_segments];
-    float breakpoint_upperv[number_of_segments];
-
-    for (; i < number_of_segments; i++) {
-        if (region_lowerv[i] == 0) {
-            breakpoint_lowerv[i] = MINVAL;
-        } else {
-            breakpoint_lowerv[i] = index->bins[i][region_lowerv[i] - 1];
-        }
-        if (region_upperv[i] == max_cardinality - 1) {
-            breakpoint_upperv[i] = MAXVAL;
-        } else {
-            breakpoint_upperv[i] = index->bins[i][region_upperv[i]];
-        }
-
-    }
-    ts_type valuev[number_of_segments];
-    for (; i < number_of_segments; i++) {
-        if (breakpoint_lowerv[i] > fft[i]) {
-            valuev[i] = breakpoint_lowerv[i] - fft[i];
-        } else if (breakpoint_upperv[i] < fft[i]) {
-            valuev[i] = (fft[i] - breakpoint_upperv[i]);
-        }
-        distance += 2 * valuev[i] * valuev[i];
-
-        if (distance > bsf) {
-            return distance;
-        }
-    }
-
-
-    return distance;
-}
 
 ts_type
-minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[16];
@@ -985,7 +906,7 @@ minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
 }
 
 ts_type
-minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[8];
@@ -1167,7 +1088,7 @@ minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax
 
 
 ts_type
-minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[8], distancef2[8];

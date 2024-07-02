@@ -40,22 +40,18 @@ void ts_parse_str(char ts_str[], ts_type *ts_out, int ts_size, const char *delim
     free(result);
 }
 
-float dot_product(ts_type *X, ts_type *Y, int m) {
+float ts_euclidean_distance_dot_product(ts_type *X, ts_type *Y, int size) {
     float dot = 0;
-    for (int i = 0; i < m; i++) {
+    for (int i = 0; i < size; i++) {
         dot += X[i] * Y[i];
     }
-    return dot;
-}
 
-float ts_euclidean_distance_dot_product(ts_type *X, ts_type *Y, int size) {
-    float dot = dot_product(X, Y, size);
     float result = 2.0f * (float) size * (1.0f - (dot / (float) size));
     // result = sqrtf(result);
     return result;
 }
 
-float dot_product_simd(ts_type *X, ts_type *Y, int m) {
+float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int m) {
     __m256 sum_vec = _mm256_setzero_ps(); // Initialize sum vector to zero
 
     int i = 0;
@@ -77,12 +73,8 @@ float dot_product_simd(ts_type *X, ts_type *Y, int m) {
         dot += X[i] * Y[i];
     }
 
-    return dot;
-}
-
-float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int size) {
-    float dot = dot_product_simd(X, Y, size);
-    float result = 2.0f * (float) size * (1.0f - (dot / (float) size));
+    float size = (float) m;
+    float result = 2.0f * size * (1.0f - (dot / size));
     // result= sqrtf(result);
     return result;
 }
@@ -94,7 +86,7 @@ float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
         size--;
         distance += (t[size] - s[size]) * (t[size] - s[size]);
     }
-//    distance = sqrtf(distance);
+    //    distance = sqrtf(distance);
     return distance;
 }
 

@@ -143,7 +143,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
 
         //SFA
         if (index->settings->function_type == 4) {
-            mindist_result->distance = minidist_fft_to_isax(index, paa, current_root_node->isax_values,
+            mindist_result->distance = minidist_fft_to_sfa(index, paa, current_root_node->isax_values,
                                                             current_root_node->isax_cardinalities, minimum_distance);
         } else {
             mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
@@ -214,7 +214,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
 
                         //SFA
                         if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_isax(index, paa,
+                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
                                                                             n->node->left_child->isax_values,
                                                                             n->node->left_child->isax_cardinalities,
                                                                             minimum_distance);
@@ -245,7 +245,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
 
                         //SFA
                         if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_isax(index, paa,
+                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
                                                                             n->node->right_child->isax_values,
                                                                             n->node->right_child->isax_cardinalities,
                                                                             minimum_distance);
@@ -2839,7 +2839,7 @@ void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *in
     float distance;
 
     if (index->settings->function_type == 4) {
-        distance = minidist_fft_to_isax(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+        distance = minidist_fft_to_sfa(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     } else {
         distance = minidist_paa_to_isax(paa, node->isax_values,
                                         node->isax_cardinalities,
@@ -2881,7 +2881,7 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
 
     gettimeofday(&lb_dist_time_start, NULL);
     if (index->settings->function_type == 4) {
-        distance = minidist_fft_to_isax(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+        distance = minidist_fft_to_sfa(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     } else {
         distance = minidist_paa_to_isax(paa, node->isax_values,
                                         node->isax_cardinalities,
