@@ -11,27 +11,6 @@ for threads in "${items[@]}"
 do
     echo "The current $threads is: $$threads"
 
-    # SimSearchNet -
-    #./run_SimSearchNet_norm.sh $threads $threads
-    #./copy_files.sh SimSearchNet $threads
-
-    # turingANNs -
-    #./run_turingANNs_norm.sh 3$threads $threads
-    #./copy_files.sh turingANNs $threads
-
-    # text-to-image -
-    #./run_text_to_image_norm.sh $threads $threads
-    #./copy_files.sh TEXTTOIMAGE $threads
-
-    # SEISMIC
-    #./run_seismic.sh $threads $threads
-    #./copy_files.sh SEISMIC $threads
-
-    # spacev1B -
-    ##./run_spaceV1B_norm.sh $threads $threads
-    ##./copy_files.sh SPACEV1B $threads
-
-
     # BigANN -
     ./run_bigann_norm.sh $threads $threads
     ./copy_files.sh BIGANN $threads
@@ -55,39 +34,6 @@ do
     # ASTRO
     ./run_astro.sh $threads $threads
     ./copy_files.sh ASTRO $threads
-
-    # GEOFON
-    #./run_seisbench.sh $threads $threads "GEOFON.bin" "GEOFON_queries.bin" 38080393
-    #./copy_files.sh "GEOFON" $threads
-
-    # InstanceCounts
-    #./run_seisbench.sh $threads $threads "InstanceCounts.bin" "InstanceCounts_queries.bin" 100000000
-    #./copy_files.sh "InstanceCounts" $threads
-
-
-    # LFEStacksSanAndreasShelly2017
-    #./run_seisbench.sh $threads $threads "LFEStacksSanAndreasShelly2017.bin" "LFEStacksSanAndreasShelly2017_queries.bin" 215511
-    #./copy_files.sh "LFEStacksSanAndreasShelly2017" $threads
-
-    # LFEStacksCascadiaBostock2015
-    #./run_seisbench.sh $threads $threads "LFEStacksCascadiaBostock2015.bin" "LFEStacksCascadiaBostock2015_queries.bin" 169890
-    #./copy_files.sh "LFEStacksCascadiaBostock2015" $threads
-
-    # LFEStacksMexicoFrank2014
-    #./run_seisbench.sh $threads $threads "LFEStacksMexicoFrank2014.bin" "LFEStacksMexicoFrank2014_queries.bin" 1111683
-    #./copy_files.sh "LFEStacksMexicoFrank2014" $threads
-
-    # Ross2018GPD
-    #./run_seisbench.sh $threads $threads "Ross2018GPD.bin" "Ross2018GPD_queries.bin" 14320950
-    #./copy_files.sh "Ross2018GPD" $threads
-
-    # Ross2018JGRFM
-    #./run_seisbench.sh $threads $threads "Ross2018JGRFM.bin" "Ross2018JGRFM_queries.bin" 29082888
-    #./copy_files.sh "Ross2018JGRFM" $threads
-
-    # Ross2018JGRPick
-    #./run_seisbench.sh $threads $threads "Ross2018JGRPick.bin" "Ross2018JGRPick_queries.bin" 29082888
-    #./copy_files.sh "Ross2018JGRPick" $threads
 
     # ETHC
     ./run_seisbench.sh $threads $threads "ETHZ.bin" "ETHZ_queries.bin" 4999932

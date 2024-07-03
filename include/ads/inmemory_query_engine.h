@@ -23,8 +23,6 @@ float calculate_node_distance_inmemory (isax_index *index, isax_node *node, ts_t
 ts_type* calculate_node_ts_distance_inmemory (isax_index *index, isax_node *node, ts_type *query , float bsf);
 float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
 float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft, float bsf);
-float calculate_node_distance2_inmemory_gettime (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf, unsigned long int *time_lb, unsigned long int *time_real);
-float calculate_node_distance2_inmemory_SFA_gettime (isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft, float bsf, unsigned long int *time_lb, unsigned long int *time_real);
 query_result  approximate_search_inmemory (ts_type *ts, ts_type *paa, isax_index *index);
 query_result  approximate_search_inmemory_messi (ts_type *ts, ts_type *paa, isax_index *index) ;
 query_result  approximate_search_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_index *index);
