@@ -785,8 +785,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     FILE *ifile;
     COUNT_INPUT_TIME_START
-    COUNT_INDEXING_TIME_START
-
     ifile = fopen(ifilename, "rb");
     COUNT_INPUT_TIME_END
     if (ifile == NULL) {
@@ -824,7 +822,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     strcpy(index->settings->raw_filename, ifilename);
 
     COUNT_INPUT_TIME_START
-
     if (filetype_int) {
 
         fprintf(stderr, ">>> Reading file as int8\n");
@@ -847,8 +844,9 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
             znorm(&rawfile[i], index->settings->timeseries_size);
         }
     }
-
     COUNT_INPUT_TIME_END
+
+    COUNT_INDEXING_TIME_START
     pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
             lock_firstnode = PTHREAD_MUTEX_INITIALIZER, lock_disk = PTHREAD_MUTEX_INITIALIZER, lock_fft_plan = PTHREAD_MUTEX_INITIALIZER;
 
@@ -859,7 +857,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
     // set the thread on decided cpu
-
     COUNT_OUTPUT_TIME_START
 
     for (i = 0; i < maxquerythread; i++) {
