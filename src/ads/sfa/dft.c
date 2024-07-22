@@ -32,22 +32,18 @@ void fft_from_ts(
     // Image part of first (DC) coefficient
     ts_out[0][1] = 0;
 
+    int j = 0;
+
+    // if normalized, ignore first coeff and start with offset 1
+    int start_offset = index->settings->is_norm ? 1 : 0;
+
     if (best_only) {
-        int start_offset = index->settings->is_norm ? 2 : 0;
-        for (int k = 0; k < coeff_number; ++k) {
+        for (int k = 0; k < coeff_number / 2; ++k, j+= 2) {
             int coeff = index->coefficients[k] + start_offset;
-            int uneven = coeff % 2;
-            if (uneven == 0) {
-                transform[k] = ts_out[coeff/2][uneven];
-            }
-            else {
-                transform[k] = ts_out[coeff/2][uneven] * -1;
-            }
+            transform[j] = ts_out[coeff][0];
+            transform[j + 1] = ts_out[coeff][1] * -1;
         }
     } else {
-        int j = 0;
-        // if normalized, ignore first coeff and start with offset 1
-        int start_offset = index->settings->is_norm ? 1 : 0;
         for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k, j+= 2) {
             transform[j] = ts_out[k][0];
             transform[j + 1] = ts_out[k][1] * -1;
