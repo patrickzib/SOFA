@@ -1,0 +1,42 @@
+	"SCEDC - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	
+	},
+    "ASTRO - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	    
+	},
+    "SEISMIC - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	    
+	},
+    "SALD - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	    
+	},
+    "Sift1b - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	
+	},
+    "Deep1b - gruenau1 - CPUs 36x2": {
+    	"MESSI+\nSAX+\nSIMD" : 		,
+        "MESSI+\nSFA+ED": 			,
+        "MESSI+\nSFA+ED+\nSIMD": 	,
+        "MESSI+\nSFA+EW": 			,
+        "MESSI+\nSFA+EW+\nSIMD": 	
+    },

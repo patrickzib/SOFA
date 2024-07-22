@@ -760,7 +760,7 @@ int main(int argc, char **argv) {
         strcat(strcpy(log_filename_index, getenv("HOME")), "/MESSI_logs/index");
         strcat(strcpy(log_filename_query, getenv("HOME")), "/MESSI_logs/query");
 
-        //check if logfile directories exist, create them if neccessary
+        //check if logfile directories exist, create them if necessary
         struct stat st = {0};
 
         if (stat(log_file_directory, &st) == -1) {
