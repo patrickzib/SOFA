@@ -1,0 +1,8 @@
+conda create -n numpy python=3.10.0
+conda activate numpy
+
+conda install numpy blas=*=openblas
+conda install -c conda-forge faiss-cpu
+conda install "blas=*=mkl"
+conda install psutil
+
