@@ -1,7 +1,7 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# To compile MESSI
+# To compile MESSI v2.0
 ```bash
 ./configure
 make
@@ -9,7 +9,7 @@ make
 
 # Scripts
 
-See the provided script for examples to run MESSI.
+See the provided scripts in the `scripts`-folder for examples to run MESSI v2.0 with SFA summarization.
 
 The MESSI-SFA command is 
 
@@ -32,7 +32,7 @@ QUERY_SIZE=100
 
 # Datasets
 
-Instruction for downloading the datasets is in the datasets folder. The size of the datasets is too large to provide a direct link.
+Instruction for downloading the datasets is in the `datasets` folder. The size of the datasets is too large to provide a direct link.
 Some datasets must be downloaded, others generated from seisbench.
 
 ## Table: Characteristics of the 17 datasets used
@@ -56,3 +56,7 @@ Some datasets must be downloaded, others generated from seisbench.
 | **SIFT1b** [jegou2011searching] | 100,000,000   | 128           |
 | **STEAD** [mousavi2019stanford] | 87,323,433    | 256           |
 | **TXED** [chen2024txed] | 35,851,641    | 256           |
+
+# Competitors
+
+The competitors are stored within the `competitors` folder.
