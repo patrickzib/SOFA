@@ -2,9 +2,10 @@ This is the supporting website for the paper "Fast and Exact Similarity Search i
 
 
 # To compile MESSI
+```bash
 ./configure
 make
-
+```
 
 # Scripts
 
@@ -12,6 +13,7 @@ See the provided script for examples to run MESSI.
 
 The MESSI-SFA command is 
 
+```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin
 QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/$QUERY
 TS_SIZE=96
@@ -26,7 +28,7 @@ QUERY_SIZE=100
 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE 
 --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size 20000 --min-leaf-size 20000 
 --initial-lbl-size 20000 --coeff-number $COEFF_NUMBER  --SIMD
-
+```
 
 # Datasets
 
