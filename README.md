@@ -30,6 +30,12 @@ QUERY_SIZE=100
 --initial-lbl-size 20000 --coeff-number $COEFF_NUMBER  --SIMD
 ```
 
+For help, please type:
+```bash
+./MESSI --help
+```
+
+
 # Datasets
 
 Instruction for downloading the datasets is in the `datasets` folder. The size of the datasets is too large to provide a direct link.
