@@ -9,9 +9,9 @@ make
 
 # Scripts
 
-See the provided scripts in the `scripts`-folder for examples to run MESSI v2.0 with SFA summarization.
+See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
 
-The MESSI-SFA command is 
+The SOFA command is 
 
 ```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin

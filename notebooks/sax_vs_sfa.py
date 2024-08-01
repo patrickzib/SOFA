@@ -143,17 +143,22 @@ print("Done Norming")
 n = len(ts1)
 symbols = len(alphabet)
 
+
+fs_title = 32
+fs_labels = 22
+
 fig = plt.figure(figsize=(20, 10), facecolor='white')
 all_features = [4, 8, 12]
 
 ax = fig.add_subplot(2, len(all_features) + 1, 1)
-ax.set_title("Raw Time Series", fontsize=16)
+ax.set_title("Raw Time Series", fontsize=fs_title)
 ax.plot(ts1, lw=2, c=colors[0])
 ax.axis('tight')
-plt.setp(plt.xticks()[1], rotation=-45)
+plt.setp(plt.xticks()[1], rotation=-45, fontsize=fs_labels)
+plt.setp(plt.yticks()[1], fontsize=fs_labels)
 ax1 = ax
-ax.set_xlabel('Time')
-ax.set_ylabel('Value')
+ax.set_xlabel('Time', fontsize=fs_labels)
+ax.set_ylabel('Value', fontsize=fs_labels)
 
 pos = 2
 for features in all_features:
@@ -167,10 +172,10 @@ for features in all_features:
     breakpoints_new = np.array(breakpoints_new)
 
     ax = fig.add_subplot(2, len(all_features) + 1, pos, sharex=ax1, sharey=ax1)
-    ax.set_title("SAX, l=" + str(features), fontsize=16)
+    ax.set_title("SAX, l=" + str(features), fontsize=fs_title)
     ax.plot(ts1, lw=2, c=colors[0])
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Value')
+    ax.set_xlabel('Time', fontsize=fs_labels)
+    ax.set_ylabel('Value', fontsize=fs_labels)
 
     for c, paa in enumerate(paa_ts):
         ts_value = translate(paa, alphabet, sax_breakpoints)
@@ -183,18 +188,19 @@ for features in all_features:
 
     ax.plot(paa_ts, lw=2, c="black", label='PAA')
 
-    plt.setp(plt.xticks()[1], rotation=-45)
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Value')
+    plt.setp(plt.xticks()[1], rotation=-45, fontsize=fs_labels)
+    plt.setp(plt.yticks()[1], fontsize=fs_labels)
+    ax.set_xlabel('Time', fontsize=fs_labels)
+    ax.set_ylabel('Value', fontsize=fs_labels)
 
     text = ''.join(sax_ts[0]).upper()
-    ax.text(0, -1.6, text, fontsize=20, color="black", weight='bold', family='monospace')
+    ax.text(0, -1.6, text, fontsize=fs_title, color="black", weight='bold', family='monospace')
     plt.legend()
 
     print("Done SAX")
 
     ax = fig.add_subplot(2, len(all_features) + 1, pos + len(all_features) + 1, sharex=ax1, sharey=ax1)
-    ax.set_title("SFA, l=" + str(features), fontsize=16)
+    ax.set_title("SFA, l=" + str(features), fontsize=fs_title)
     ax.plot(ts1, lw=2, c=colors[0], label='SFA')
 
     # Training
@@ -212,12 +218,13 @@ for features in all_features:
     # plt.plot(iDFT, lw=2, c="black")
     ax.fill_between(xx, lowerBounds, upperBounds, edgecolor=colors[1], facecolor=colors[1])
     ax.axis('tight')
-    plt.setp(plt.xticks()[1], rotation=-45)
-    ax.set_xlabel('Time')
-    ax.set_ylabel('Value')
+    plt.setp(plt.xticks()[1], rotation=-45, fontsize=fs_labels)
+    plt.setp(plt.yticks()[1], fontsize=fs_labels)
+    ax.set_xlabel('Time', fontsize=fs_labels)
+    ax.set_ylabel('Value', fontsize=fs_labels)
 
     text = ''.join(map(str, [chr(x + 65) for x in SFA_SAMPLE[1:]]))
-    ax.text(0, -1.6, text, fontsize=20, color="black", weight='bold', family='monospace')
+    ax.text(0, -1.6, text, fontsize=fs_title, color="black", weight='bold', family='monospace')
 
     print("Done SFA")
     pos = pos + 1
@@ -225,6 +232,6 @@ for features in all_features:
     # plt.legend()
 
 plt.tight_layout()
-plt.savefig('plots/sax_vs_sfa.pdf', format='pdf',
+plt.savefig('plots/sax_vs_sfa2.pdf', format='pdf',
             facecolor=fig.get_facecolor(), edgecolor='none')
 # plt.show()
