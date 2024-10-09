@@ -589,9 +589,9 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
         COUNT_TOTAL_TIME_END
         COUNT_QUERYING_TIME_END
 
-        for (int i = 0; i < result.k; i++) {
+        /*for (int i = 0; i < result.k; i++) {
             printf(" the [%d] query [%d] NN is %f at %ld\n", q_loaded, i, result.knn[i], result.position[i]);
-        }
+        }*/
 
         PRINT_STATS(result.knn[result.k - 1])
         SAVE_STATS(result.knn[result.k - 1])
