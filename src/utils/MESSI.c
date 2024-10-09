@@ -574,7 +574,7 @@ int main(int argc, char **argv) {
         calculate_thread = 24;
         maxquerythread = 24;
     }
-    //new control type for gruenau1-server with 36 cores on 2 CPUs
+        //new control type for gruenau1-server with 36 cores on 2 CPUs
     else if (cpu_control_type == 362) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
@@ -642,7 +642,7 @@ int main(int argc, char **argv) {
         print_settings(idx->settings);
         //fprintf(stderr,"total_records: %ld\n", idx->total_records);
         //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-         //create_wedges(idx, NULL);
+        //create_wedges(idx, NULL);
 
         char sanity_test = 0;
         if (sanity_test) {
@@ -844,7 +844,7 @@ int main(int argc, char **argv) {
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
                                                                        coeff_number       //coeff number
-                                                                       );
+        );
 
 
         if (!inmemory_flag) {
@@ -897,14 +897,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk)
-            {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size,filetype_int, apply_znorm, &exact_topk_MESSImq_inmemory);//MESSI topk
-            }
-            else
-            {
+            if (topk) {
+                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
+                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
+            } else {
                 isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               filetype_int, apply_znorm, &exact_search_MESSI);
+                                                   filetype_int, apply_znorm, &exact_search_MESSI);
             }
 
         } else if (inmemory_flag) {
@@ -929,14 +928,13 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk)
-            {
-                 if (function_type == 3)
-                    isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size,filetype_int, apply_znorm, &exact_topk_MESSImq_inmemory);//MESSI topk
+            } else if (topk) {
+                if (function_type == 3)
+                    isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+                                                            min_checked_leaves, k_size, filetype_int, apply_znorm,
+                                                            &exact_topk_MESSImq_inmemory);//MESSI topk
 
-            } 
-            else
-            {
+            } else {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);

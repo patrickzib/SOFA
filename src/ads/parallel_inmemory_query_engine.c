@@ -96,8 +96,8 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
             // float dist = ts_euclidean_distance_SIMD(query, node->buffer->tmp_full_ts_buffer[i],
             //                                        index->settings->timeseries_size, bsf);
             float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                                index->settings->timeseries_size, bsf,
-                                index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, bsf,
+                               index->settings->SIMD_flag, index->settings->is_norm);
             if (dist < bsf) {
                 bsf = dist;
             }
@@ -144,7 +144,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
         //SFA
         if (index->settings->function_type == 4) {
             mindist_result->distance = minidist_fft_to_sfa(index, paa, current_root_node->isax_values,
-                                                            current_root_node->isax_cardinalities, minimum_distance);
+                                                           current_root_node->isax_cardinalities, minimum_distance);
         } else {
             mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
                                                             current_root_node->isax_cardinalities,
@@ -215,9 +215,9 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                         //SFA
                         if (index->settings->function_type == 4) {
                             mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                            n->node->left_child->isax_values,
-                                                                            n->node->left_child->isax_cardinalities,
-                                                                            minimum_distance);
+                                                                           n->node->left_child->isax_values,
+                                                                           n->node->left_child->isax_cardinalities,
+                                                                           minimum_distance);
                         } else {
                             mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
                                                                             n->node->left_child->isax_cardinalities,
@@ -246,9 +246,9 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                         //SFA
                         if (index->settings->function_type == 4) {
                             mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                            n->node->right_child->isax_values,
-                                                                            n->node->right_child->isax_cardinalities,
-                                                                            minimum_distance);
+                                                                           n->node->right_child->isax_values,
+                                                                           n->node->right_child->isax_cardinalities,
+                                                                           minimum_distance);
                         } else {
                             mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
                                                                             n->node->right_child->isax_cardinalities,
@@ -403,9 +403,9 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
                 //                                         index->settings->timeseries_size,
                 //                                         approximate_result[i].distance);
                 float dist = ts_ed(&(ts[i * index->settings->timeseries_size]), ts_buffer,
-                                    index->settings->timeseries_size,
-                                    approximate_result[i].distance,
-                                    index->settings->SIMD_flag, index->settings->is_norm);
+                                   index->settings->timeseries_size,
+                                   approximate_result[i].distance,
+                                   index->settings->SIMD_flag, index->settings->is_norm);
 
                 if (dist < approximate_result[i].distance) {
                     omp_set_lock(&(bsflock[i]));
@@ -456,8 +456,8 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
             // float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
             //                                         ((ParIS_LDCW_data *) worker_data)->bsfdistance);
             float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size,
-                                ((ParIS_LDCW_data *) worker_data)->bsfdistance,
-                                index->settings->SIMD_flag, index->settings->is_norm);
+                               ((ParIS_LDCW_data *) worker_data)->bsfdistance,
+                               index->settings->SIMD_flag, index->settings->is_norm);
 
             if (dist < (((ParIS_LDCW_data *) worker_data)->bsfdistance)) {
                 (((ParIS_LDCW_data *) worker_data)->bsfdistance) = dist;
@@ -1363,9 +1363,9 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
 
 #pragma omp parallel for num_threads(maxquerythread)
     for (int i = 0; i < numberofbuffer; i++) {
-        fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 * )(index->fbl))->soft_buffers[i];
+        fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[i];
         if (current_buffer->initialized == 1) {
-            isax_node *node = (((first_buffer_layer2 * )(index->fbl))->soft_buffers[i]).node;
+            isax_node *node = (((first_buffer_layer2 *) (index->fbl))->soft_buffers[i]).node;
             float distance = minidist_paa_to_isax(paa, node->isax_values,
                                                   node->isax_cardinalities,
                                                   index->settings->sax_bit_cardinality,
@@ -1389,7 +1389,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
     COUNT_CAL_TIME_START
     for (int i = 0; i < pq->nowk; i++) {
         if (pq->knn[i] < bsf_distance) {
-            fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 * )(index->fbl))->soft_buffers[pq->position[i]];
+            fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[pq->position[i]];
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
             for (unsigned long j = 0; j < current_buffer->max_buffer_size; j++) {
                 sax_type *sax = &current_buffer->sax_records[j * index->settings->paa_segments];
@@ -1792,7 +1792,7 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
         approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
-    pqueue_t **allpq = malloc(sizeof(pqueue_t * ) * maxquerythread);
+    pqueue_t **allpq = malloc(sizeof(pqueue_t *) * maxquerythread);
 
     pqueue_t *pq = pqueue_init(index->settings->root_nodes_size,
                                cmp_pri, get_pri, set_pri, get_pos, set_pos);
@@ -1828,7 +1828,7 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
                                cmp_pri, get_pri, set_pri, get_pos, set_pos);
         pthread_mutex_init(&ququelock[i], NULL);
         queuelabel[i] = 1;
-        localstk[i].val = malloc(sizeof(isax_node * ) * 100);
+        localstk[i].val = malloc(sizeof(isax_node *) * 100);
         localstk[i].top = 0;
         localstk[i].bottom = 0;
         workerdata[i].lock_queue = &lock_queue;
@@ -1896,10 +1896,10 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
-                                                      min_checked_leaves);
+        approximate_result = refine_answer_inmemory_m(
+                ts, paa, index, approximate_result, minimum_distance,min_checked_leaves);
     }
-    pqueue_t **allpq = malloc(sizeof(pqueue_t * ) * N_PQUEUE);
+    pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
 
     pthread_mutex_t ququelock[N_PQUEUE];
     int queuelabel[N_PQUEUE];
@@ -1983,7 +1983,7 @@ exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, is
         approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
-    pqueue_t **allpq = malloc(sizeof(pqueue_t * ) * N_PQUEUE);
+    pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
 
     pqueue_t *pq = pqueue_init(index->settings->root_nodes_size,
                                cmp_pri, get_pri, set_pri, get_pos, set_pos);
@@ -2024,7 +2024,7 @@ exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, is
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
         workerdata[i].ts = ts;
-        localstk[i].val = malloc(sizeof(isax_node * ) * 100);
+        localstk[i].val = malloc(sizeof(isax_node *) * 100);
         localstk[i].top = 0;
         localstk[i].bottom = 0;
         workerdata[i].lock_queue = &lock_queue;
@@ -2368,7 +2368,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
 
     pthread_barrier_wait(((MESSI_workerdata *) rfdata)->lock_barrier);
 
-    //calculate time for pqinsertion
+    //calculate time for pq-insertion
     /*
     gettimeofday(&current_time, NULL);
     total_pq_insert_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_insert_time_start.tv_sec*1000000 + (pq_insert_time_start.tv_usec)));

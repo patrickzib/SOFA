@@ -98,7 +98,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         }
 
 
-        // Parse ts and make PAA representation
+            // Parse ts and make PAA representation
         else {
             paa_from_ts(ts, paa,
                         index->settings->paa_segments,
@@ -131,10 +131,11 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 
 }
 
-void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
-                                        float minimum_distance, int min_checked_leaves, int filetype_int, int apply_znorm,
-                                        query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *,
-                                                                        float, int)) {
+void isax_query_binary_file_traditional(
+        const char *ifilename, int q_num, isax_index *index,
+        float minimum_distance, int min_checked_leaves, int filetype_int,
+        int apply_znorm,
+        query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *, float, int)) {
 
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
@@ -157,7 +158,7 @@ void isax_query_binary_file_traditional(const char *ifilename, int q_num, isax_i
     int q_loaded = 0;
 
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node * ) * pow(2, index->settings->paa_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
@@ -502,16 +503,17 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
 }
 
 void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
-                            float minimum_distance, int min_checked_leaves,int k,int filetype_int, int apply_znorm,
-                            pqueue_bsf (*search_function)(ts_type*, ts_type*, isax_index*,node_list*, float, int, int)) 
-{
+                                             float minimum_distance, int min_checked_leaves, int k, int filetype_int,
+                                             int apply_znorm,
+                                             pqueue_bsf (*search_function)(ts_type *, ts_type *, isax_index *,
+                                                                           node_list *, float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
     ts_type *ts_fftw;
     fftwf_complex *ts_out;
     fftwf_plan plan_forward;
     ts_type *transform;
     FILE *ifile;
-    ifile = fopen (ifilename,"rb");
+    ifile = fopen(ifilename, "rb");
     if (ifile == NULL) {
         fprintf(stderr, "File %s not found!\n", ifilename);
         exit(-1);
@@ -519,7 +521,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
 
     fseek(ifile, 0L, SEEK_END);
     file_position_type sz = (file_position_type) ftell(ifile);
-    file_position_type total_records = sz/index->settings->ts_byte_size;
+    file_position_type total_records = sz / index->settings->ts_byte_size;
     fseek(ifile, 0L, SEEK_SET);
 
     if (total_records < q_num) {
@@ -528,14 +530,13 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     }
 
 
-
     int q_loaded = 0;
-    ts_type * ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type * paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
+    ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
     node_list nodelist;
-    nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->paa_segments));
-    nodelist.node_amount=0;
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
+    nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     file_type *ts_int32;
 
@@ -552,25 +553,20 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     }
 
 
-    while(1)
-    {
-        if (current_root_node!=NULL)
-        {
-            nodelist.nlist[nodelist.node_amount]=current_root_node;
-            current_root_node=current_root_node->next;
+    while (1) {
+        if (current_root_node != NULL) {
+            nodelist.nlist[nodelist.node_amount] = current_root_node;
+            current_root_node = current_root_node->next;
             nodelist.node_amount++;
-        }
-        else
-        {
+        } else {
             break;
         }
-                    
+
     }
 
-    while (q_loaded < q_num)
-    {
+    while (q_loaded < q_num) {
         COUNT_INPUT_TIME_START
-        fread(ts, sizeof(ts_type),index->settings->timeseries_size,ifile);
+        fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
@@ -620,31 +616,31 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
         }
         COUNT_TOTAL_TIME_START
         //COUNT_OUTPUT2_TIME_START
-        pqueue_bsf result = search_function(ts, paa, index,&nodelist, minimum_distance, min_checked_leaves,k);
+        pqueue_bsf result = search_function(ts, paa, index, &nodelist, minimum_distance, min_checked_leaves, k);
         //COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
         //long int *classcounter=malloc(sizeof(long int) * classlength);
         //long int classeposition=0,classtmp=0;
-        for (int i = 0; i < result.k; i++)
-        {
-            printf(" the [%d] query [%d] NN is %f at %ld\n",q_loaded,i,result.knn[i],result.position[i]);
+        for (int i = 0; i < result.k; i++) {
+            printf(" the [%d] query [%d] NN is %f at %ld\n", q_loaded, i, result.knn[i], result.position[i]);
         }
         //printf("the [%d] query real distance clculation number is \t%ld\n ",q_loaded,RDcalculationnumber);
 
-        PRINT_STATS(result.knn[result.k-1])
+        PRINT_STATS(result.knn[result.k - 1])
+        SAVE_STATS(result.knn[result.k - 1])
         //for (int i = 0; i < result.k; i++)
         //{
-            //printf("datalabel[result.position[i]] is %ld\n",datalabel[result.position[i]] );
-            //c/lasscounter[datalabel[result.position[i]]]++;
-            //printf("the class conter is %ld\n",classcounter[datalabel[result.position[i]]] );
-            //if(classtmp<classcounter[datalabel[result.position[i]]])
-           // {
-             //   classtmp=classcounter[datalabel[result.position[i]]];
-              //  classeposition=datalabel[result.position[i]];
- 
+        //printf("datalabel[result.position[i]] is %ld\n",datalabel[result.position[i]] );
+        //c/lasscounter[datalabel[result.position[i]]]++;
+        //printf("the class conter is %ld\n",classcounter[datalabel[result.position[i]]] );
+        //if(classtmp<classcounter[datalabel[result.position[i]]])
+        // {
+        //   classtmp=classcounter[datalabel[result.position[i]]];
+        //  classeposition=datalabel[result.position[i]];
+
 //            }
-            //printf(" the [%d] query [%d] NN is %f at %ld label is %ld and now classeposition is %ld\n",q_loaded,i,result.knn[i],result.position[i],datalabel[result.position[i]],classeposition);
-       // }
+        //printf(" the [%d] query [%d] NN is %f at %ld label is %ld and now classeposition is %ld\n",q_loaded,i,result.knn[i],result.position[i],datalabel[result.position[i]],classeposition);
+        // }
         //printf(" the [%d] query's label is %ld \n",q_loaded,classeposition);
 
         //PRINT_STATS(result.knn[result.k-1])
@@ -702,7 +698,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node * ) * pow(2, index->settings->paa_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
