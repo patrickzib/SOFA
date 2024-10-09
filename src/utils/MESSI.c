@@ -897,8 +897,15 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+            if (topk)
+            {
+                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size,filetype_int, apply_znorm, &exact_topk_MESSImq_inmemory);//MESSI topk
+            }
+            else
+            {
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                filetype_int, apply_znorm, &exact_search_MESSI);
+            }
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
@@ -922,7 +929,14 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else {
+            } else if (topk)
+            {
+                 if (function_type == 3)
+                    isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,k_size,filetype_int, apply_znorm, &exact_topk_MESSImq_inmemory);//MESSI topk
+
+            } 
+            else
+            {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);

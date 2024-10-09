@@ -374,6 +374,43 @@ float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, 
     return bsf;
 }
 
+void calculate_node_topk_inmemory_SFA (isax_index *index, isax_node *node, ts_type *query,ts_type *query_fft, pqueue_bsf *pq_bsf, pthread_rwlock_t *lock_queue ) 
+{
+    COUNT_CHECKED_NODE()
+    float distmin;
+    // If node has buffered data
+    if (node->buffer != NULL) {
+        int i;
+
+        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
+        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
+
+            if (index->settings->SIMD_flag) {
+                distmin = minidist_fft_to_sfa_rawe_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],
+                                                         index->settings->max_sax_cardinalities, pq_bsf->knn[pq_bsf->k-1]);
+            } else {
+                distmin = minidist_fft_to_sfa_raw(index, query_fft, node->buffer->partial_sax_buffer[i],
+                                                   index->settings->max_sax_cardinalities, pq_bsf->knn[pq_bsf->k-1]);
+            }
+
+            if (distmin < pq_bsf->knn[pq_bsf->k-1]) {
+                float dist;
+                dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                  index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k-1],
+                                  index->settings->SIMD_flag, index->settings->is_norm);
+
+                //__sync_fetch_and_add(&RDcalculationnumber,1);
+
+            if (dist <= pq_bsf->knn[pq_bsf->k-1]) {
+                pthread_rwlock_wrlock(lock_queue);
+                pqueue_bsf_insert(pq_bsf,dist,*node->buffer->partial_position_buffer[i]/index->settings->timeseries_size,node);
+                pthread_rwlock_unlock(lock_queue);
+            }
+            }
+        }
+    }
+}
+
 
 query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
                                           int min_checked_leaves) {
