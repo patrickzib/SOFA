@@ -37,12 +37,13 @@ def read_logs(log_type: str = "query",
                     all_files[key] = {}
                     for i, q in enumerate(
                             np.sort(fnmatch.filter(os.listdir(queries), "*.csv"))):
-                        print("Queries", i, q, key, q)
+                        # print("Queries", i, q, key, q)
                         all_files[key][config_names[i]] = queries + "/" + q
 
             print("-----------------")
 
     return all_files
+
 
 def read_UCR_logs():
     path = "logs/UCR_SUITE_logs"
