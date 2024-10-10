@@ -1,3 +1,46 @@
-bigANN.bin
-SFA: Hightest Variance Coeffs Sorted: 2, 8, 9, 10, 11, 12, 14, 15, 
+Limit at 16 (without DC coefficient, shifted by 1)
 
+LenDB:   		0, 1, 2, 3, 6, 7, 8, 9
+SCEDC:   		8, 9, 10, 11, 12, 13, 14, 15
+Meier2019JGR: 	0, 1, 2, 3, 4, 5, 6, 7
+sift1b:  		0, 3, 7, 11, 12, 13, 14, 15
+OBS: 	 		0, 1, 2, 3, 4, 13, 14, 15
+bigANN:  		2, 8, 9, 10, 11, 12, 14, 15
+Iquique  		0, 1, 2, 3, 4, 5, 6, 7
+astro:   		0, 1, 2, 3, 4, 5, 6, 7
+OBST2024:  		6, 7, 8, 9, 10, 11, 12, 13
+NEIC:	 		0, 1, 2, 3, 4, 5, 6, 7
+STEAD:			0, 1, 2, 3, 6, 7, 8, 9
+ETHZ:	 		0, 1, 2, 3, 4, 5, 6, 7
+TXED:			3, 4, 5, 6, 7, 8, 9, 11
+PNW:	 		0, 1, 2, 3, 4, 5, 6, 7
+ISC_EHB: 		0, 1, 2, 3, 4, 5, 6, 9
+SALD: 	 		0, 1, 2, 3, 4, 5, 6, 7
+deep1b:  		0, 1, 3, 5, 9, 12, 13, 15
+
+
+
+
+
+No limit (without DC coefficient, shifted by 1)
+
+LenDB:   		0, 1, 2, 3, 6, 7, 8, 9, 			
+SCEDC:   		8, 9, 10, 11, 12, 13, 14, 15
+Meier2019JGR: 	
+sift1b:  		11, 12, 14, 15, 16, 19, 27, 31
+OBS: 	 		
+bigANN:  		2, 8, 9, 11, 12, 14, 15, 24
+Iquique  		
+astro:   		0, 1, 2, 3, 4, 5, 6, 7
+OBST2024:  		
+NEIC:	 		
+STEAD:			
+ETHZ:	 		0, 1, 2, 3, 4, 5, 6, 31
+TXED:			
+PNW:	 		
+ISC_EHB: 		0, 1, 2, 3, 4, 5, 6, 9, 
+SALD: 	 		0, 1, 2, 3, 4, 5, 6, 7
+deep1b:  		0, 1, 5, 12, 13, 15, 16, 17
+
+
+LenDB: variances are extreemly low
