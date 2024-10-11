@@ -170,17 +170,16 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
                         calculate_node_topk_inmemory(index, n->node->right_child, ts, pq_bsf);
-
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
                         if (index->settings->function_type == 4) {
                             mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                           n->node->left_child->isax_values,
-                                                                           n->node->left_child->isax_cardinalities,
+                                                                           n->node->right_child->isax_values,
+                                                                           n->node->right_child->isax_cardinalities,
                                                                            minimum_distance);
                         } else {
-                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                            n->node->left_child->isax_cardinalities,
+                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
+                                                                            n->node->right_child->isax_cardinalities,
                                                                             index->settings->sax_bit_cardinality,
                                                                             index->settings->sax_alphabet_cardinality,
                                                                             index->settings->paa_segments,
@@ -383,26 +382,18 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
                                        float minimum_distance, int min_checked_leaves, int k) {
     RDcalculationnumber = 0;
 
-    printf("Start Approx");
-
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     approximate_topk_inmemory(ts, paa, index, pq_bsf);
-
-    printf("Approx Search done");
 
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
     int node_counter = 0;
     // Early termination...
 
-
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
         refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
-
-
-    printf("Refine done");
 
     pthread_mutex_t ququelock[N_PQUEUE];
     int queuelabel[N_PQUEUE];
@@ -420,9 +411,6 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     pthread_rwlock_t lock_bsf = PTHREAD_RWLOCK_INITIALIZER;
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
-
-
-    printf("Starting Queue");
 
     for (int i = 0; i < N_PQUEUE; i++) {
         allpq[i] = pqueue_init(index->settings->root_nodes_size / N_PQUEUE,
