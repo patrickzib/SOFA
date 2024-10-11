@@ -187,7 +187,7 @@ void isax_query_binary_file_traditional(
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     int ts_length = index->settings->timeseries_size;
 
-    //create fftw plan
+    // create fftw plan
     if (index->settings->function_type == 4) {
         ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
         ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));

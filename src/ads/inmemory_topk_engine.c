@@ -385,7 +385,8 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
 
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     approximate_topk_inmemory(ts, paa, index, pq_bsf);
-    //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+
+    printf("Approx Search done");
 
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -399,10 +400,14 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
 
 
+    printf("Refine done");
+
     pthread_mutex_t ququelock[N_PQUEUE];
     int queuelabel[N_PQUEUE];
 
-    SET_APPROXIMATE(pq_bsf->knn[pq_bsf->k - 1]);
+    if (pq_bsf->knn[k - 1] != FLT_MAX) {
+        SET_APPROXIMATE(pq_bsf->knn[pq_bsf->k - 1]);
+    }
 
     // Insert all root nodes in heap.
     isax_node *current_root_node = index->first_node;
@@ -414,6 +419,8 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
 
+
+    printf("Starting Queue");
 
     for (int i = 0; i < N_PQUEUE; i++) {
         allpq[i] = pqueue_init(index->settings->root_nodes_size / N_PQUEUE,
