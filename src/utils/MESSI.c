@@ -897,7 +897,7 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk) {
+            if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
@@ -928,7 +928,7 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk) {
+            } else if (topk && k_size > 1) {
                 if (function_type == 3)
                     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
