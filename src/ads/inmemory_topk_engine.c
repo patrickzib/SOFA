@@ -383,6 +383,8 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
                                        float minimum_distance, int min_checked_leaves, int k) {
     RDcalculationnumber = 0;
 
+    printf("Start Approx");
+
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     approximate_topk_inmemory(ts, paa, index, pq_bsf);
 
