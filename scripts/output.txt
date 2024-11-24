@@ -1,0 +1,974 @@
+The current 36 is: 65830threads
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_12:53:02
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	100
+## partial_record_size:	24
+## full_record_size:   	424
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	400
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	5300000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/bigANN.bin
+>>> SFA: Best Indices Sorted:
+11, (2.8943) 12, (2.7914) 15, (2.6216) 9, (2.1888) 8, (1.9695) 14, (1.8956) 2, (1.7683) 10, (1.2697) 13, (1.1200) 0, (0.9512) 5, (0.7893) 6, (0.6309) 1, (0.5661) 7, (0.5065) 3, (0.4101) 4, (0.3090) 
+>>> SFA: Hightest Variance Coeffs Sorted: 2, 8, 9, 10, 11, 12, 14, 15, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/bigANN.bin
+>>> Reading file as int8
+>>> Converting int8 to float
+>>> Conversions done.
+>>> Applying z-norm
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/bigANN_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 61743886.000000	 24689175.000000	 67184	 65827	 0	 0	 0	 58.678009	 45.758892	 498850.000000
+>>> Finished querying.
+61743886.000000	 24689175.000000	 67184	 0	 0	 0	 0	 58.678009	 0.000000	 498850.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_12:54:36
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	128
+## partial_record_size:	24
+## full_record_size:   	536
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	512
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	6700000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/SALD.bin
+>>> SFA: Best Indices Sorted:
+0, (6.3141) 1, (3.2686) 2, (2.3779) 3, (1.9270) 4, (1.7832) 5, (1.5135) 6, (1.4127) 7, (1.3432) 8, (1.3277) 9, (1.1968) 10, (1.1646) 11, (1.1233) 12, (1.1175) 13, (1.0401) 15, (1.0285) 14, (0.9808) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/SALD.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/SALD_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 53281533.000000	 23926211.000000	 67518	 66355	 0	 0	 0	 161.563034	 135.980804	 1009636.000000
+>>> Finished querying.
+53281533.000000	 23926211.000000	 67518	 0	 0	 0	 0	 161.563034	 0.000000	 1009636.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_12:56:02
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	128
+## partial_record_size:	24
+## full_record_size:   	536
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	512
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	6700000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/sift1b.bin
+>>> SFA: Best Indices Sorted:
+15, (5.0623) 11, (2.7846) 14, (2.0093) 12, (1.8120) 3, (1.3970) 7, (1.0132) 13, (0.9994) 0, (0.8308) 10, (0.7882) 8, (0.5719) 2, (0.5706) 6, (0.4060) 4, (0.3717) 1, (0.3061) 9, (0.2897) 5, (0.1704) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 3, 7, 11, 12, 13, 14, 15, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/sift1b.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/sift1b_queries.bin
+>>> node_amount is 65475
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 81143517.000000	 29092874.000000	 67563	 65974	 0	 0	 0	 59.569485	 51.895206	 593638.000000
+>>> Finished querying.
+81143517.000000	 29092874.000000	 67563	 0	 0	 0	 0	 59.569485	 0.000000	 593638.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_12:58:02
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	96
+## partial_record_size:	24
+## full_record_size:   	408
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	384
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	5100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/deep1b.bin
+>>> SFA: Best Indices Sorted:
+5, (1.0841) 13, (1.0618) 1, (1.0545) 0, (1.0542) 15, (1.0342) 12, (0.9683) 9, (0.9621) 3, (0.9273) 10, (0.9161) 6, (0.8897) 4, (0.8625) 7, (0.8482) 11, (0.8378) 14, (0.8256) 8, (0.8211) 2, (0.7460) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 3, 5, 9, 12, 13, 15, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/deep1b.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/deep1b_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 36894103.000000	 18984973.000000	 67010	 2	 0	 0	 0	 0.000000	 0.000000	 7800.000000
+>>> Finished querying.
+36894103.000000	 18984973.000000	 67010	 0	 0	 0	 0	 0.000000	 0.000000	 7800.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_12:59:04
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/SCEDC.bin
+>>> SFA: Best Indices Sorted:
+10, (9.4468) 11, (7.8210) 8, (6.9117) 13, (6.3606) 12, (6.1932) 15, (5.6510) 9, (5.1453) 14, (4.9439) 7, (4.3843) 6, (2.1026) 5, (1.4342) 4, (0.6787) 3, (0.3340) 0, (0.2587) 2, (0.1969) 1, (0.1664) 
+>>> SFA: Hightest Variance Coeffs Sorted: 8, 9, 10, 11, 12, 13, 14, 15, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/SCEDC.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/SCEDC_queries.bin
+>>> node_amount is 48194
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 151807366.000000	 25000504.000000	 50738	 846	 0	 0	 0	 17.696831	 17.696831	 10253.000000
+>>> Finished querying.
+151807366.000000	 25000504.000000	 50738	 0	 0	 0	 0	 17.696831	 0.000000	 10253.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:02:11
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/messi_datasets/astro.bin
+>>> SFA: Best Indices Sorted:
+0, (7.7385) 1, (5.5075) 2, (3.7728) 3, (3.1772) 4, (3.0561) 5, (2.4538) 6, (2.2666) 7, (2.1352) 10, (1.8755) 9, (1.7881) 8, (1.7705) 14, (1.6259) 11, (1.5178) 12, (1.5034) 13, (1.5031) 15, (1.4691) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/messi_datasets/astro.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/messi_datasets/astro_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 79515136.000000	 33169699.000000	 65738	 2	 0	 0	 0	 0.000000	 0.000000	 6644.000000
+>>> Finished querying.
+79515136.000000	 33169699.000000	 65738	 0	 0	 0	 0	 0.000000	 0.000000	 6644.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:04:13
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/ETHZ.bin
+>>> SFA: Best Indices Sorted:
+0, (47.7338) 1, (7.5517) 2, (3.4039) 3, (2.0303) 4, (1.5961) 5, (1.3846) 6, (1.1550) 7, (1.0067) 8, (0.8891) 12, (0.8703) 9, (0.8063) 10, (0.8032) 11, (0.7855) 13, (0.6984) 14, (0.6582) 15, (0.6557) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/ETHZ.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/ETHZ_queries.bin
+>>> node_amount is 64794
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 7129130.000000	 6386050.000000	 65388	 63507	 0	 0	 0	 432.259644	 339.123474	 159489.000000
+>>> Finished querying.
+7129130.000000	 6386050.000000	 65388	 0	 0	 0	 0	 432.259644	 0.000000	 159489.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:04:30
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/ISC_EHB_DepthPhases.bin
+>>> SFA: Best Indices Sorted:
+0, (74.5467) 1, (13.9075) 2, (6.6600) 3, (4.8275) 4, (4.4540) 5, (4.1030) 6, (2.9092) 9, (2.5954) 7, (1.9406) 8, (1.9146) 10, (1.7853) 12, (1.5978) 11, (1.1736) 13, (0.4262) 14, (0.2733) 15, (0.2149) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 9, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/ISC_EHB_DepthPhases.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/ISC_EHB_DepthPhases_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 94355635.000000	 38254412.000000	 75962	 1380	 0	 0	 0	 6.812836	 6.812836	 20580.000000
+>>> Finished querying.
+94355635.000000	 38254412.000000	 75962	 0	 0	 0	 0	 6.812836	 0.000000	 20580.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:06:53
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/LenDB.bin
+>>> SFA: Best Indices Sorted:
+0, (0.1869) 1, (0.0706) 7, (0.0661) 8, (0.0546) 9, (0.0504) 2, (0.0474) 3, (0.0424) 6, (0.0398) 5, (0.0384) 11, (0.0377) 4, (0.0365) 10, (0.0332) 13, (0.0320) 12, (0.0291) 14, (0.0234) 15, (0.0170) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 6, 7, 8, 9, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/LenDB.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/LenDB_queries.bin
+>>> node_amount is 15826
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 63820198.000000	 357600906.000000	 19778	 14750	 0	 0	 0	 404.961304	 160.474442	 43620.000000
+>>> Finished querying.
+63820198.000000	 357600906.000000	 19778	 0	 0	 0	 0	 404.961304	 0.000000	 43620.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:13:58
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/Iquique.bin
+>>> SFA: Best Indices Sorted:
+0, (39.6471) 1, (11.7716) 2, (7.1316) 3, (5.7447) 4, (5.5300) 5, (4.8318) 6, (4.5171) 7, (4.1530) 8, (3.8048) 9, (3.6446) 10, (3.1244) 11, (2.6795) 12, (2.3728) 13, (1.9646) 14, (1.7659) 15, (1.4856) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/Iquique.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/Iquique_queries.bin
+>>> node_amount is 61659
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 434815.000000	 1816935.000000	 61659	 57396	 0	 0	 0	 403.430481	 252.075409	 163637.000000
+>>> Finished querying.
+434815.000000	 1816935.000000	 61659	 0	 0	 0	 0	 403.430481	 0.000000	 163637.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:14:04
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/NEIC.bin
+>>> SFA: Best Indices Sorted:
+0, (39.5825) 1, (9.5945) 2, (5.7010) 3, (4.3652) 4, (3.6138) 6, (3.5068) 5, (3.4019) 7, (3.2157) 8, (3.1324) 9, (2.9488) 10, (2.6052) 11, (2.4853) 12, (2.4633) 13, (2.2754) 14, (2.1574) 15, (1.9961) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/NEIC.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/NEIC_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 169693673.000000	 39434875.000000	 72722	 5966	 0	 0	 0	 17.609259	 12.447766	 53015.000000
+>>> Finished querying.
+169693673.000000	 39434875.000000	 72722	 0	 0	 0	 0	 17.609259	 0.000000	 53015.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:17:43
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/OBS.bin
+>>> SFA: Best Indices Sorted:
+0, (22.8644) 1, (4.0987) 2, (1.2775) 14, (0.8765) 3, (0.6706) 13, (0.6535) 4, (0.4380) 15, (0.3503) 12, (0.3396) 5, (0.3231) 6, (0.2785) 7, (0.2682) 11, (0.2638) 8, (0.2562) 9, (0.2314) 10, (0.2057) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 13, 14, 15, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/OBS.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/OBS_queries.bin
+>>> node_amount is 65244
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 12661731.000000	 44247859.000000	 66670	 23362	 0	 0	 0	 68.076675	 62.247364	 458149.000000
+>>> Finished querying.
+12661731.000000	 44247859.000000	 66670	 0	 0	 0	 0	 68.076675	 0.000000	 458149.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:18:45
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/OBST2024.bin
+>>> SFA: Best Indices Sorted:
+8, (7.1827) 9, (6.6809) 10, (6.1719) 7, (6.0494) 11, (5.6801) 12, (4.9483) 6, (4.7519) 13, (4.5768) 15, (4.5124) 14, (4.3294) 5, (2.8360) 4, (1.8286) 3, (1.0153) 2, (0.5221) 1, (0.2657) 0, (0.1378) 
+>>> SFA: Hightest Variance Coeffs Sorted: 6, 7, 8, 9, 10, 11, 12, 13, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/OBST2024.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/OBST2024_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 3826265.000000	 6216953.000000	 65998	 62807	 0	 0	 0	 274.814240	 243.993118	 94219.000000
+>>> Finished querying.
+3826265.000000	 6216953.000000	 65998	 0	 0	 0	 0	 274.814240	 0.000000	 94219.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:19:00
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/PNW.bin
+>>> SFA: Best Indices Sorted:
+0, (19.8904) 1, (6.8512) 2, (3.4957) 3, (2.4006) 4, (2.1492) 5, (1.9956) 6, (1.8658) 7, (1.7485) 8, (1.5840) 9, (1.4290) 10, (1.3942) 14, (1.2406) 11, (1.2291) 12, (1.2150) 15, (1.2113) 13, (1.1992) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/PNW.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/PNW_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 25336365.000000	 26352823.000000	 67396	 29655	 0	 0	 0	 81.802528	 78.210190	 330269.000000
+>>> Finished querying.
+25336365.000000	 26352823.000000	 67396	 0	 0	 0	 0	 81.802528	 0.000000	 330269.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:19:57
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/Meier2019JGR.bin
+>>> SFA: Best Indices Sorted:
+2, (2.9875) 1, (2.9447) 3, (2.6568) 0, (2.0113) 4, (1.9987) 5, (1.6415) 6, (1.3682) 7, (1.2468) 8, (1.1616) 9, (1.0364) 10, (0.8154) 11, (0.6902) 12, (0.6559) 13, (0.5669) 14, (0.5284) 15, (0.5264) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 4, 5, 6, 7, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/Meier2019JGR.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/Meier2019JGR_queries.bin
+>>> node_amount is 17723
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 6085237.000000	 17753747.000000	 18573	 16488	 0	 0	 0	 319.483337	 158.258011	 29160.000000
+>>> Finished querying.
+6085237.000000	 17753747.000000	 18573	 0	 0	 0	 0	 319.483337	 0.000000	 29160.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:20:25
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/STEAD.bin
+>>> SFA: Best Indices Sorted:
+0, (10.7623) 1, (2.9178) 8, (1.8326) 7, (1.7644) 6, (1.6984) 2, (1.6836) 9, (1.6023) 3, (1.5241) 5, (1.3474) 4, (1.2575) 12, (1.2264) 10, (1.2261) 14, (1.2013) 13, (1.1499) 11, (1.1378) 15, (1.1125) 
+>>> SFA: Hightest Variance Coeffs Sorted: 0, 1, 2, 3, 6, 7, 8, 9, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/STEAD.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/STEAD_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 62971444.000000	 22148186.000000	 73476	 69142	 0	 0	 0	 264.244568	 217.268478	 1773666.000000
+>>> Finished querying.
+62971444.000000	 22148186.000000	 73476	 0	 0	 0	 0	 264.244568	 0.000000	 1773666.000000
+
+############ Index SETTINGS ############
+## [FILE SETTINGS]
+## root_directory:	/vol/home-vol3/wbi/schaefpa/index/2024_10_10_13:22:01
+## 
+## [DATA TYPE SETTINGS]
+## timeseries_size:    	256
+## partial_record_size:	24
+## full_record_size:   	1048
+## position_byte_size: 	8
+## sax_byte_size:      	16
+## ts_byte_size:       	1024
+## 
+## [BUFFER SETTINGS]
+## initial_fbl_buffer_size: 	100
+## initial_leaf_buffer_size: 	20000
+## max_total_buffer_size:     	13100000
+## max_total_full_buffer_size:	300000
+## 
+## [LEAF SETTINGS]
+## max_leaf_size:	20000
+## min_leaf_size:	20000
+## 
+## [Symbolic Transform SETTINGS]
+## Using SIMD:        	1
+## Using MESSI + SFA. 
+## dft_coefficients:   	16
+## sfa_alphabet_card.: 	256
+## sfa_bit_cardinality:	8
+## 
+## [SFA SETTINGS]
+## Ignore mean FFT coefficient?:         	1
+## Variance-based coefficient selection?:	1
+## Sampling Type:                       	random sampling
+## Sampling Size:                            	1000000
+## 
+## [QUERY ANSWERING SETTINGS]
+## aggressive_check:  	0
+## tight_bound:        	0
+## total_loaded_leaves:	1
+######################################
+>>> SFA: Initialized bins[16][255] 
+>>> Binning: /vol/tmp/schaefpa/seismic/TXED.bin
+>>> SFA: Best Indices Sorted:
+3, (3.0497) 4, (2.8307) 8, (2.6898) 6, (2.6748) 7, (2.6402) 9, (2.5005) 5, (2.4745) 11, (2.2661) 12, (2.2246) 10, (2.1773) 2, (1.9209) 13, (1.6897) 14, (1.4537) 15, (1.2744) 1, (1.0862) 0, (0.4782) 
+>>> SFA: Hightest Variance Coeffs Sorted: 3, 4, 5, 6, 7, 8, 9, 11, 
+>>> SFA: Sample size 1000000
+>>> SFA: Using Equi-width histograms
+>>> Finished binning
+>>> Indexing: /vol/tmp/schaefpa/seismic/TXED.bin
+>>> Finished indexing
+>>> Performing queries in file: /vol/tmp/schaefpa/seismic/TXED_queries.bin
+>>> node_amount is 65536
+input	 output	 nodes	 checked_nodes	 bytes_accessed	 loaded_nodes	 loaded_records	 approximate_distance	 distance	 total
+0: 24420651.000000	 14200143.000000	 68160	 66328	 0	 0	 0	 297.254272	 197.435623	 1253159.000000
+>>> Finished querying.
+24420651.000000	 14200143.000000	 68160	 0	 0	 0	 0	 297.254272	 0.000000	 1253159.000000
+

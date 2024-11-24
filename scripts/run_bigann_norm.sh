@@ -43,7 +43,7 @@ COEFF_NUMBER=32
 DATASET_SIZE=100000000
 SAMPLE_SIZE=1000000
 QUERY_SIZE=100
-LEAF_SIZE=20000
+LEAF_SIZE=100
 
 # messi+sax+simd
 $MESSI_BINARY --dataset $FILE_PATH --apply-z-norm --filetype-int --in-memory --timeseries-size $TS_SIZE --function-type 3 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --cpu-type $1 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --SIMD

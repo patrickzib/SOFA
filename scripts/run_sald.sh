@@ -9,6 +9,14 @@ if [ -z $2 ]; then
     echo "Parameter queue-number is empty"
     exit 1
 fi
+if [ -z "$3" ]
+   then
+     echo "No query-load argument supplied using default"
+     QUERY="SALD_queries.bin"
+ else
+     echo "Using query load" $3
+     QUERY=$3
+ fi
 
 # SFA parameters:
 # --histogram-type
@@ -26,9 +34,9 @@ fi
 
 # Configuration
 MESSI_BINARY=../bin/MESSI
-FILE_PATH=/vol/tmp/schaefpa/messi_datasets/SCEDC.bin
-QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/SCEDC_queries.bin
-TS_SIZE=256
+FILE_PATH=/vol/tmp/schaefpa/messi_datasets/SALD.bin
+QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/$QUERY
+TS_SIZE=128
 
 COEFF_NUMBER=32
 DATASET_SIZE=100000000
@@ -46,7 +54,7 @@ $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --fun
 $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 1 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --coeff-number $COEFF_NUMBER --SIMD
 
 # messi+sfa+variance+equi-width
-#$MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --coeff-number $COEFF_NUMBER
+# $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --coeff-number 0 --SIMD
 
 # messi+sfa+variance+simd+equi-width
 $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --coeff-number $COEFF_NUMBER  --SIMD

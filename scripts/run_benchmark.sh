@@ -4,7 +4,7 @@ set -e
 # ./run_cleanup.sh
 
 # Define a list of items
-items=(9 18 36)
+items=(36)  # 9 18 
 
 # Iterate over each item in the list
 for threads in "${items[@]}"
