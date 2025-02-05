@@ -5,7 +5,7 @@ set -e
 
 # Define a list of items
 threads=36
-items=(0.001 0.005 0.01 0.05 0.1)
+items=(0.15 0.2 0.25 0.3 0.35 0.4 0.45 0.5)
 
 # Iterate over each item in the list
 for sampling_factor in "${items[@]}"
@@ -70,7 +70,7 @@ do
     ./copy_files.sh "PNW" $sampling_factor
 
     # Meier2019JGR
-    ./rsampling_strategy/un_seisbench.sh $threads $threads "Meier2019JGR.bin" "Meier2019JGR_queries.bin" 6361998
+    ./sampling_strategy/run_seisbench.sh $threads $threads "Meier2019JGR.bin" "Meier2019JGR_queries.bin" 6361998
     ./copy_files.sh "Meier2019JGR" $sampling_factor
 
     # STEAD
