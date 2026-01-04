@@ -1,13 +1,13 @@
-Limit at 16 (without DC coefficient, shifted by 1)
+By Variance, Limit at 16 (without DC coefficient, shifted by 1)
 
 "LenDB":   		[0, 1, 2, 3, 6, 7, 8, 9]
 "SCEDC":   		[8, 9, 10, 11, 12, 13, 14, 15]
 "Meier2019JGR": 	[0, 1, 2, 3, 4, 5, 6, 7]
-"sift1b":  		[0, 3, 7, 11, 12, 13, 14, 15]
+"SIFT1B":  		[0, 3, 7, 11, 12, 13, 14, 15]
 "OBS": 	 		[0, 1, 2, 3, 4, 13, 14, 15]
-"bigANN":  		[2, 8, 9, 10, 11, 12, 14, 15]
+"BIGANN":  		[2, 8, 9, 10, 11, 12, 14, 15]
 "Iquique"  		[0, 1, 2, 3, 4, 5, 6, 7]
-"astro":   		[0, 1, 2, 3, 4, 5, 6, 7]
+"ASTRO":   		[0, 1, 2, 3, 4, 5, 6, 7]
 "OBST2024":  		[6, 7, 8, 9, 10, 11, 12, 13]
 "NEIC":	 		[0, 1, 2, 3, 4, 5, 6, 7]
 "STEAD":			[0, 1, 2, 3, 6, 7, 8, 9]
@@ -16,20 +16,20 @@ Limit at 16 (without DC coefficient, shifted by 1)
 "PNW":	 		[0, 1, 2, 3, 4, 5, 6, 7]
 "ISC_EHB": 		[0, 1, 2, 3, 4, 5, 6, 9]
 "SALD": 	 		[0, 1, 2, 3, 4, 5, 6, 7]
-"deep1b":  		[0, 1, 3, 5, 9, 12, 13, 15]
+"DEEP1B":  		[0, 1, 3, 5, 9, 12, 13, 15]
 
 
 
-No limit (without DC coefficient, shifted by 1)
+By Variance, No limit (without DC coefficient, shifted by 1)
 
 "LenDB":   		[0, 1, 2, 3, 6, 7, 8, 9]
 "SCEDC":   		[8, 9, 10, 11, 12, 13, 14, 15]
 "Meier2019JGR": 	[0, 1, 2, 3, 4, 5, 6, 7]
-"sift1b":  		[11, 12, 14, 15, 16, 19, 27, 31]
+"SIFT1B":  		[11, 12, 14, 15, 16, 19, 27, 31]
 "OBS": 	 		[0, 1, 2, 3, 4, 13, 14, 15]
-"bigANN":  		[2, 8, 9, 11, 12, 14, 15, 24]
+"BIGANN":  		[2, 8, 9, 11, 12, 14, 15, 24]
 "Iquique"  		[0, 1, 2, 3, 4, 5, 6, 7]
-"astro":   		[0, 1, 2, 3, 4, 5, 6, 7]
+"ASTRO":   		[0, 1, 2, 3, 4, 5, 6, 7]
 "OBST2024":  		[6, 7, 8, 9, 10, 11, 12, 13]
 "NEIC":	 		[0, 1, 2, 3, 4, 5, 6, 7]
 "STEAD":			[0, 1, 2, 6, 7, 8, 49, 50]
@@ -38,10 +38,34 @@ No limit (without DC coefficient, shifted by 1)
 "PNW":	 		[0, 1, 2, 3, 4, 5, 6, 7]
 "ISC_EHB": 		[0, 1, 2, 3, 4, 5, 6, 9]
 "SALD": 	 		[0, 1, 2, 3, 4, 5, 6, 7]
-"deep1b":  		[0, 1, 5, 12, 13, 15, 16, 17]
+"DEEP1B":  		[0, 1, 5, 12, 13, 15, 16, 17]
+
+Comments: 
+- LenDB: variances are extreemly low
 
 
-LenDB: variances are extreemly low
+By Mean, No Limit (without DC coefficient, shifted by 1)
+
+"LenDB":   		[0, 2, 5, 8, 9, 11, 13, 17]
+"SCEDC":   		[3, 8, 10, 13, 16, 19, 24, 33]
+"Meier2019JGR": [0, 1, 3, 7, 17, 19, 28, 29]
+"SIFT1B":  		[2, 12, 15, 16, 18, 26, 28, 31]
+"OBS": 	 		[0, 1, 7, 14, 20, 23, 46, 59]
+"BIGANN":  		[12, 13, 14, 15, 16, 17, 18, 24]
+"Iquique"  		[1, 8, 9, 16, 17, 26, 32, 33]
+"ASTRO":   		[0, 1, 2, 3, 4, 5, 6, 11]
+"OBST2024":  	[7, 10, 16, 19, 21, 31, 44, 45]
+"NEIC":	 		[0, 5, 8, 10, 13, 21, 22, 47]
+"STEAD":		[9, 12, 23, 24, 31, 45, 58, 60]
+"ETHZ":	 		[1, 15, 25, 26, 35, 39, 53, 62]
+"TXED":			[5, 14, 18, 28, 54, 58, 59, 63]
+"PNW":	 		[0, 3, 6, 12, 16, 31, 37, 46]
+"ISC_EHB": 		[1, 2, 5, 6, 7, 9, 11, 13]
+"SALD": 	 	[1, 2, 3, 4, 5, 6, 7, 8]
+"DEEP1B":  		[0, 4, 9, 11, 14, 16, 18, 19]
+
+
+
 
 
 
@@ -52,7 +76,7 @@ Dataset	factor
 "BIGANN":	[2.557675],
 "DEEP1B":	[1.018607],
 "ETHC":	[1.139338],
-"ISC_EHB_DepthPhases":	[1.112836],
+"ISC_EHB":	[1.112836],
 "Iquique":	[1.470009],
 "LenDB":	[24.769759],
 "Meier2019JGR":	[5.079399],
