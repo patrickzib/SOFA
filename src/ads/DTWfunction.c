@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#if ADS_HAVE_AVX2
 #include "immintrin.h"
+#endif
 #ifdef VALUES
 	#include <values.h>
 #endif
@@ -1492,6 +1494,7 @@ query_result  approximate_DTW_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_
 
 
 
+#if ADS_HAVE_AVX2
 float   minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax, 
                            sax_type *sax_cardinalities,
                            sax_type max_bit_cardinality,
@@ -1684,6 +1687,20 @@ float   minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax
 
             return (distancef[0]+distancef[4])*ratio_sqrt ;
 }
+#else
+float minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           sax_type max_bit_cardinality,
+                           int max_cardinality,
+                           int number_of_segments,
+                           int min_val,
+                           int max_val,
+                           float ratio_sqrt) {
+    return minidist_paa_to_isax_raw_DTW(paaU, paaL, sax, sax_cardinalities, max_bit_cardinality,
+                                        max_cardinality, number_of_segments, min_val, max_val,
+                                        ratio_sqrt);
+}
+#endif
 
 
 
@@ -1715,11 +1732,11 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 	float lb = 0;
 	float uu=0,ll=0,d=0;
 	int i=0;
-
+#if ADS_HAVE_AVX2	
 	int len1 = (len/8)*8;
-	__m256 tu256, tl256, cb256, Q, calc1, calc2;
+	__m256 tu256, tl256, Q, calc1, calc2;
 	__m128 temp1, temp2;
-	float *cbtmp = malloc(sizeof(float)*8);
+	float cbtmp[8];
 	
 	for(i=0; i<len1&&lb<bsf; i+=8)
 	{
@@ -1730,15 +1747,15 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		//tl256 = _mm_setr_ps(tl[order[i]],tl[order[i+1]],tl[order[i+2]],tl[order[i+3]]);
 		calc1 = _mm256_min_ps(Q,tu256);
 		calc1 = _mm256_sub_ps(Q,calc1);
-
+	
 		calc2 = _mm256_max_ps(Q,tl256);
 		calc2 = _mm256_sub_ps(calc2,Q);
 		calc1 = _mm256_add_ps(calc1,calc2);
-
+	
 		calc1 = _mm256_mul_ps(calc1,calc1);
-
+	
 		_mm256_storeu_ps(cbtmp,calc1);
-
+	
 		calc1 = _mm256_hadd_ps(calc1,calc1);
 		calc1 = _mm256_hadd_ps(calc1,calc1);
 		temp1 = _mm256_extractf128_ps(calc1,1);
@@ -1748,7 +1765,7 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		cb[i]=cbtmp[0];cb[i+1] = cbtmp[1];cb[i+2]=cbtmp[2];cb[i+3]=cbtmp[3];
 		cb[i+4]=cbtmp[4];cb[i+5] = cbtmp[5];cb[i+6]=cbtmp[6];cb[i+7]=cbtmp[7];
 	}
-
+#endif
 	for(;i<len&&lb<bsf;i++)
 	{
 		uu = tu[i];
@@ -1765,7 +1782,5 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		lb += d;
 		cb[i] = d;
 	}
-
-	free( cbtmp);
 	return lb;
 }

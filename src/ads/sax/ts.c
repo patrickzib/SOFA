@@ -11,7 +11,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
+#if ADS_HAVE_AVX2
 #include "immintrin.h"
+#endif
 #include "ads/sax/ts.h"
 
 /**
@@ -51,6 +53,7 @@ float ts_euclidean_distance_dot_product(ts_type *X, ts_type *Y, int size) {
     return result;
 }
 
+#if ADS_HAVE_AVX2
 float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int m) {
     __m256 sum_vec = _mm256_setzero_ps(); // Initialize sum vector to zero
 
@@ -78,7 +81,11 @@ float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int m) {
     // result= sqrtf(result);
     return result;
 }
-
+#else
+float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int m) {
+    return ts_euclidean_distance_dot_product(X, Y, m);
+}
+#endif
 
 float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
@@ -90,6 +97,7 @@ float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
     return distance;
 }
 
+#if ADS_HAVE_AVX2
 float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
     int i = 0;
@@ -121,6 +129,11 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
     //    distance = sqrtf(distance);
     return distance;
 }
+#else
+float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
+    return ts_euclidean_distance(t, s, size, bound);
+}
+#endif
 
 
 float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char is_norm) {
@@ -141,10 +154,13 @@ float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char 
         }
     }*/
     if (is_simd) {
+#if ADS_HAVE_AVX2
         return ts_euclidean_distance_SIMD(t, s, size, bound);
-    } else {
-        return ts_euclidean_distance(t, s, size, bound);
+#else
+        (void) is_simd;
+#endif
     }
+    return ts_euclidean_distance(t, s, size, bound);
 }
 
 

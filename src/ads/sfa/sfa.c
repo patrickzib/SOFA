@@ -15,7 +15,9 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
+#if ADS_HAVE_AVX2
 #include "immintrin.h"
+#endif
 
 #ifdef VALUES
 
@@ -733,7 +735,7 @@ long random_at_most(long max) {
     return x / bin_size;
 }
 
-
+#if ADS_HAVE_AVX2
 ts_type
 minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
@@ -904,7 +906,13 @@ minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_t
     return (distancef[0] + distancef[4]) * 2;
 
 }
-
+#else
+ts_type minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax,
+                                     sax_type *sax_cardinalities, float bsf) {
+    return minidist_fft_to_sfa_raw(index, fft, sax, sax_cardinalities, bsf);
+}
+#endif
+#if ADS_HAVE_AVX2
 ts_type
 minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
@@ -1085,8 +1093,14 @@ minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
     return (distancef[0] + distancef[4]) * 2;
 
 }
+#else
+ts_type minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax,
+                                      sax_type *sax_cardinalities, float bsf) {
+    return minidist_fft_to_sfa_raw(index, fft, sax, sax_cardinalities, bsf);
+}
+#endif
 
-
+#if ADS_HAVE_AVX2
 ts_type
 minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
@@ -1254,3 +1268,9 @@ minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
     return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
 
 }
+#else
+ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax,
+                                      sax_type *sax_cardinalities, float bsf) {
+    return minidist_fft_to_sfa_raw(index, fft, sax, sax_cardinalities, bsf);
+}
+#endif

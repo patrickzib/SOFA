@@ -344,6 +344,27 @@ cython_debug/
 *.idb
 *.pdb
 
+# Autotools artifacts
+ar-lib
+config.log
+config.status
+configure~
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+depcomp
+install-sh
+missing
+stamp-h1
+
+# Build outputs
+bin/MESSI
+lib/libads.a
+src/**/.deps/
+src/**/.dirstamp
+
 # Kernel Module Compile Results
 *.mod*
 *.cmd

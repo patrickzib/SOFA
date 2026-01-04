@@ -10,7 +10,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#if ADS_HAVE_AVX2
 #include "immintrin.h"
+#endif
 
 #ifdef VALUES
 
@@ -195,6 +197,7 @@ enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, int ts_values_p
     return SUCCESS;
 }
 
+#if ADS_HAVE_AVX2
 enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
                                int segments, int cardinality, int bit_cardinality) {
     // Create PAA representation
@@ -251,6 +254,14 @@ enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_
     free(paa);
     return SUCCESS;
 }
+#else
+enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
+                               int segments, int cardinality, int bit_cardinality) {
+    int timeseries_size = segments * ts_values_per_segment;
+    return sax_from_ts(ts_in, sax_out, ts_values_per_segment, segments, cardinality, bit_cardinality,
+                       timeseries_size);
+}
+#endif
 
 void printbin(unsigned long long n, int size) {
     char *b = malloc(sizeof(char) * (size + 1));
@@ -348,6 +359,61 @@ float minidist_paa_to_isax(float *paa, sax_type *sax,
     return distance;
 }
 
+float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
+                               sax_type *sax_cardinalities,
+                               sax_type max_bit_cardinality,
+                               int max_cardinality,
+                               int number_of_segments,
+                               int min_val,
+                               int max_val,
+                               float ratio_sqrt) {
+
+    float distance = 0;
+    // TODO: Store offset in index settings. and pass index settings as parameter.
+
+    int offset = ((max_cardinality - 1) * (max_cardinality - 2)) / 2;
+
+    // For each sax record find the break point
+    int i;
+    for (i = 0; i < number_of_segments; i++) {
+
+        sax_type c_c = sax_cardinalities[i];
+        sax_type c_m = max_bit_cardinality;
+        sax_type v = sax[i];
+        //sax_print(&v, 1, c_m);
+
+        sax_type region_lower = (v >> (c_m - c_c)) << (c_m - c_c);//shift operation
+        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
+        //printf("[%d, %d] %d -- %d\n", sax[i], c_c, region_lower, region_upper);
+
+        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
+        float breakpoint_upper = 0; // <-- - || -
+
+
+        if (region_lower == 0) {
+            breakpoint_lower = min_val;
+        } else {
+            breakpoint_lower = sax_breakpoints[offset + region_lower - 1];
+        }
+        if (region_upper == max_cardinality - 1) {
+            breakpoint_upper = max_val;
+        } else {
+            breakpoint_upper = sax_breakpoints[offset + region_upper];//search in a list(why?)
+        }
+
+        if (breakpoint_lower > paa[i]) {
+            distance += pow(breakpoint_lower - paa[i], 2);
+        } else if (breakpoint_upper < paa[i]) {
+            distance += pow(breakpoint_upper - paa[i], 2);
+        }
+    }
+
+    //distance = ratio_sqrt * sqrtf(distance);
+    distance = ratio_sqrt * distance;
+    return distance;
+}
+
+#if ADS_HAVE_AVX2
 float minidist_paa_to_isax_SIMD(float *paa, sax_type *sax,
                                 sax_type *sax_cardinalities,
                                 sax_type max_bit_cardinality,
@@ -547,76 +613,6 @@ float minidist_paa_to_isax_SIMD(float *paa, sax_type *sax,
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
-
-float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
-                               sax_type *sax_cardinalities,
-                               sax_type max_bit_cardinality,
-                               int max_cardinality,
-                               int number_of_segments,
-                               int min_val,
-                               int max_val,
-                               float ratio_sqrt) {
-
-    float distance = 0;
-    // TODO: Store offset in index settings. and pass index settings as parameter.
-
-    int offset = ((max_cardinality - 1) * (max_cardinality - 2)) / 2;
-
-    // For each sax record find the break point
-    int i;
-    for (i = 0; i < number_of_segments; i++) {
-
-        sax_type c_c = sax_cardinalities[i];
-        sax_type c_m = max_bit_cardinality;
-        sax_type v = sax[i];
-        //sax_print(&v, 1, c_m);
-
-        sax_type region_lower = (v >> (c_m - c_c)) << (c_m - c_c);//shift operation
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-        //printf("[%d, %d] %d -- %d\n", sax[i], c_c, region_lower, region_upper);
-
-        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
-        float breakpoint_upper = 0; // <-- - || -
-
-
-        if (region_lower == 0) {
-            breakpoint_lower = min_val;
-        } else {
-            breakpoint_lower = sax_breakpoints[offset + region_lower - 1];
-        }
-        if (region_upper == max_cardinality - 1) {
-            breakpoint_upper = max_val;
-        } else {
-            breakpoint_upper = sax_breakpoints[offset + region_upper];//search in a list(why?)
-        }
-
-        //printf("\n%d.%d is from %d to %d, %lf - %lf\n", v, c_c, region_lower, region_upper,
-        //       breakpoint_lower, breakpoint_upper);
-
-        //printf("FROM: \n");
-        //sax_print(&region_lower, 1, c_m);
-        //printf("TO: \n");
-        //sax_print(&region_upper, 1, c_m);
-
-        //printf ("\n---------\n");
-
-        if (breakpoint_lower > paa[i]) {
-            distance += pow(breakpoint_lower - paa[i], 2);
-        } else if (breakpoint_upper < paa[i]) {
-            distance += pow(breakpoint_upper - paa[i], 2);
-        }
-
-
-//        else {
-//            printf("%lf is between: %lf and %lf\n", paa[i], breakpoint_lower, breakpoint_upper);
-//        }
-    }
-
-    //distance = ratio_sqrt * sqrtf(distance);
-    distance = ratio_sqrt * distance;
-    return distance;
-}
-
 float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                                     sax_type *sax_cardinalities,
                                     sax_type max_bit_cardinality,
@@ -792,8 +788,6 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
-
-
 float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                                      sax_type *sax_cardinalities,
                                      sax_type max_bit_cardinality,
@@ -993,7 +987,6 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
-
 float minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
                                       sax_type *sax_cardinalities,
                                       sax_type max_bit_cardinality,
@@ -1214,3 +1207,60 @@ float minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
 
     return (distancef_1[0] + distancef_0[0]) * ratio_sqrt;
 }
+
+#else
+
+float minidist_paa_to_isax_SIMD(float *paa, sax_type *sax,
+                                sax_type *sax_cardinalities,
+                                sax_type max_bit_cardinality,
+                                int max_cardinality,
+                                int number_of_segments,
+                                int min_val,
+                                int max_val,
+                                float ratio_sqrt) {
+    return minidist_paa_to_isax(paa, sax, sax_cardinalities, max_bit_cardinality, max_cardinality,
+                                number_of_segments, min_val, max_val, ratio_sqrt);
+}
+
+float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
+                                    sax_type *sax_cardinalities,
+                                    sax_type max_bit_cardinality,
+                                    int max_cardinality,
+                                    int number_of_segments,
+                                    int min_val,
+                                    int max_val,
+                                    float ratio_sqrt) {
+    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, max_bit_cardinality,
+                                    max_cardinality, number_of_segments, min_val, max_val,
+                                    ratio_sqrt);
+}
+
+float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
+                                     sax_type *sax_cardinalities,
+                                     sax_type max_bit_cardinality,
+                                     int max_cardinality,
+                                     int number_of_segments,
+                                     int min_val,
+                                     int max_val,
+                                     float ratio_sqrt) {
+    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, max_bit_cardinality,
+                                    max_cardinality, number_of_segments, min_val, max_val,
+                                    ratio_sqrt);
+}
+
+float minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
+                                      sax_type *sax_cardinalities,
+                                      sax_type max_bit_cardinality,
+                                      int max_cardinality,
+                                      int number_of_segments,
+                                      int min_val,
+                                      int max_val,
+                                      float ratio_sqrt,
+                                      float bsf) {
+    float dist = minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, max_bit_cardinality,
+                                          max_cardinality, number_of_segments, min_val, max_val,
+                                          ratio_sqrt);
+    return dist > bsf ? bsf : dist;
+}
+
+#endif /* ADS_HAVE_AVX2 */

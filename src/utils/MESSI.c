@@ -25,7 +25,9 @@
 #include <getopt.h>
 #include <time.h>
 #include <float.h>
+#ifdef __linux__
 #include <sched.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -56,6 +58,23 @@ isax_index *idx;
 
 void INThandler(int);
 
+#ifndef __linux__
+typedef int cpu_set_t;
+static inline void CPU_ZERO(cpu_set_t *set) { (void) set; }
+static inline void CPU_SET(int cpu, cpu_set_t *set) { (void) cpu; (void) set; }
+static inline int pthread_setaffinity_np(pthread_t thread, size_t size, const cpu_set_t *set) {
+    (void) thread;
+    (void) size;
+    (void) set;
+    return 0;
+}
+static inline int pthread_getaffinity_np(pthread_t thread, size_t size, cpu_set_t *set) {
+    (void) thread;
+    (void) size;
+    (void) set;
+    return 0;
+}
+#endif
 
 int main(int argc, char **argv) {
     signal(SIGINT, INThandler);
