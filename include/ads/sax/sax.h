@@ -15,7 +15,7 @@ enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, int ts_values_per_s
             int segments, int cardinality, int bit_cardinality, int timeseries_size);
 enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment, 
             int segments, int cardinality, int bit_cardinality, int timeseries_size);
-enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment, 
+enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
             int segments, int cardinality, int bit_cardinality);
 void sax_print(sax_type *sax, int segments, int cardinality);
 void printbin(unsigned long long n, int size);
@@ -27,7 +27,7 @@ float minidist_paa_to_isax(float *paa, sax_type *sax, sax_type *sax_cardinalitie
                            int number_of_segments, 
                            int min_val, int max_val, float ratio_sqrt);
 
-float   minidist_paa_to_isax_SIMD(float *paa, sax_type *sax, 
+float   minidist_paa_to_isax_SIMD(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
                            sax_type max_bit_cardinality,
                            int max_cardinality,
@@ -56,7 +56,7 @@ float   minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                            int min_val,
                            int max_val,
                            float ratio_sqrt);
-float   minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax, 
+float   minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
                            sax_type max_bit_cardinality,
                            int max_cardinality,
@@ -65,7 +65,7 @@ float   minidist_paa_to_isax_raw_e_SIMD(float *paa, sax_type *sax,
                            int max_val,
                            float ratio_sqrt,
                            float bsf);
-                           
+
 enum response paa_from_ts (ts_type *ts_in, ts_type *paa_out, int segments,
                            int ts_values_per_segment, int timeseries_size);
 enum response sax_from_paa (ts_type *paa, sax_type *sax, int segments, 

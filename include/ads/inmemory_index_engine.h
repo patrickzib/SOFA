@@ -70,7 +70,7 @@ typedef struct buffer_data_inmemory
 	pthread_mutex_t *lock_fft_plan;
 	int workernumber;
 	int total_workernumber;
-	pthread_barrier_t *lock_barrier1, *lock_barrier2;
+    pthread_barrier_t *lock_barrier1, *lock_barrier2;
 	int *node_counter;
 	bool finished;
 	int *nodeid;

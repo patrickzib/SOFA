@@ -110,6 +110,7 @@ __pycache__/
 
 # C extensions
 *.so
+python/messi/_index.c
 
 # Distribution / packaging
 .Python

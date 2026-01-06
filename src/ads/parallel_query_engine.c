@@ -17,6 +17,7 @@
 #include "ads/pqueue.h"
 #include "ads/sax/sax.h"
 #include "ads/isax_node_split.h"
+#include "ads/pthread_barrier.h"
 #define NTHREADS 4
 
 void isax_query_binary_file_para(const char *ifilename, int q_num, isax_index *index,

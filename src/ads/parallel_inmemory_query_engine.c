@@ -28,6 +28,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/isax_node_split.h"
 #include "ads/inmemory_topk_engine.h"
+#include "ads/pthread_barrier.h"
 
 #define NTHREADS 4
 
@@ -1924,6 +1925,11 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         queuelabel[i] = 1;
     }
 
+    if (nodelist == NULL) {
+        fprintf(stderr, "exact_search_MESSI called with NULL nodelist.\n");
+        return approximate_result;
+    }
+
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
         workerdata[i].ts = ts;
@@ -3012,11 +3018,4 @@ isax_node *popbottom2(localStack *stk) {
         return localnode;
     }
 }
-
-
-
-
-
-
-
 

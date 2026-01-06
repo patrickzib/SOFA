@@ -418,7 +418,11 @@ int main(int argc, char **argv) {
                 break;
         }
     }
-
+    if (cpu_control_type <= 0) {
+        fprintf(stderr, "error: cpu-type must be a positive integer (received %d). Missing --cpu-type argument?\n",
+                cpu_control_type);
+        return EXIT_FAILURE;
+    }
     INIT_STATS();
 
     cpu_set_t mask, get;
@@ -864,6 +868,11 @@ int main(int argc, char **argv) {
                                                                        sample_type,        //sampling type
                                                                        coeff_number       //coeff number
         );
+
+        if (index_settings == NULL) {
+            fprintf(stderr, "error: failed to initialize index settings.\n");
+            return EXIT_FAILURE;
+        }
 
 
         if (!inmemory_flag) {

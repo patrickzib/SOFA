@@ -85,16 +85,13 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
         return NULL;
     }
     
-    if(new_index) {
-		if(chdir(root_directory) == 0)
-		{
-			fprintf(stderr, "WARNING! Target index directory already exists. Please delete or choose a new one.\n");
-		}
-        if (!inmemory_flag)
-        {
+	if(new_index) {
+		if(!inmemory_flag) {
+		    if(chdir(root_directory) == 0) {
+				fprintf(stderr, "WARNING! Target index directory already exists. Please delete or choose a new one.\n");
+		    }
             mkdir(root_directory, 0777);
         }
-		
         settings->max_total_full_buffer_size = max_total_buffer_size;
         settings->initial_fbl_buffer_size = initial_fbl_buffer_size;
     }
@@ -2837,7 +2834,6 @@ void print_mem_info(isax_index *index) {
     printf("# (DISK)    PARTIAL:            %ld\n",    bytes_mem_info.disk_data_partial);
     printf("################################################################\n"); 
 }
-
 
 
 

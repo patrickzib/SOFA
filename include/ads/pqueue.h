@@ -24,6 +24,7 @@
  */
 #include "../../config.h"
 #include "../../globals.h"
+#include <stdio.h>
 #include "isax_node.h"
 #ifndef PQUEUE_H
 #define PQUEUE_H

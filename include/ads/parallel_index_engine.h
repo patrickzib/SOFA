@@ -137,7 +137,7 @@ typedef struct index_buffer_data
 	int workernumber;
 	int total_workernumber;
 	int *nodecounter;
-	pthread_barrier_t *lock_barrier1, *lock_barrier2, *lock_barrier3;
+    pthread_barrier_t *lock_barrier1, *lock_barrier2, *lock_barrier3;
 	bool finished;
 }index_buffer_data;
 

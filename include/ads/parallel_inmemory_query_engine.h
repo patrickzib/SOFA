@@ -34,7 +34,7 @@ typedef struct MESSI_workerdata
 	int limit;
 	pthread_mutex_t *lock_current_root_node;
 	pthread_mutex_t *lock_queue;
-	pthread_barrier_t *lock_barrier;
+    pthread_barrier_t *lock_barrier;
 	pthread_rwlock_t *lock_bsf;
 	query_result *bsf_result;
 	int *node_counter;

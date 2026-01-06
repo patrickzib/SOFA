@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <sys/stat.h>
+#include <stdio.h>
 
 #include "../../config.h"
 #include "../../globals.h"

@@ -19,6 +19,7 @@
 #include "ads/sfa/dft.h"
 #include "omp.h"
 #include "ads/parallel_inmemory_query_engine.h"
+#include "ads/pthread_barrier.h"
 
 float *MINDISTS;
 #define NTHREADS 4
