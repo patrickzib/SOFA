@@ -355,19 +355,13 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
             lower_upper_lemire(ts,index->settings->timeseries_size,warpWind,lowerLemire,upperLemire);
                     
                 
-            paa_from_ts(upperLemire, paaUpperLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
-            paa_from_ts(lowerLemire, paaLowerLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
+            paa_from_ts(upperLemire, paaUpperLemQuery, index->settings);
+            paa_from_ts(lowerLemire, paaLowerLemQuery, index->settings);
 
 
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         COUNT_TOTAL_TIME_START
                 query_result result = exact_DTW_serial_ParIS_inmemory(ts, paa,paaUpperLemQuery,paaLowerLemQuery, index, minimum_distance, min_checked_leaves,warpWind);
 
@@ -1273,9 +1267,7 @@ query_result  approximate_DTW_inmemory_messi (ts_type *ts, ts_type *paa, isax_in
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -1448,9 +1440,7 @@ query_result  approximate_DTW_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);

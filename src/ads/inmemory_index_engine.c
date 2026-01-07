@@ -65,10 +65,7 @@ void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index 
         memcpy(ts, &(rawfile[ts_loaded * index->settings->timeseries_size]),
                sizeof(float) * index->settings->timeseries_size);
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
             memcpy(&(index->sax_cache[ts_loaded * index->settings->paa_segments]), sax,
                    sizeof(sax_type) * index->settings->paa_segments);
             isax_fbl_index_insert_inmemory(index, sax, pos);
@@ -389,10 +386,7 @@ void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index
         sax_type *sax = &(index->sax_cache[j * index->settings->paa_segments]);
 
         if (sax_from_ts(&(rawfile[j * index->settings->timeseries_size]), sax,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+                        index->settings) == SUCCESS) {
             //file_position_type *pos = (file_position_type)(j*index->settings->timeseries_size);
             //memcpy(&(index->sax_cache[j*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
             //memcpy(&(index->sax_cache[j*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
@@ -531,10 +525,7 @@ void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *inde
         sax_type *sax = &(index->sax_cache[j * index->settings->paa_segments]);
 
         if (sax_from_ts_new(&(rawfile[j * index->settings->timeseries_size]), sax,
-                            index->settings->ts_values_per_paa_segment,
-                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                            index->settings->sax_bit_cardinality,
-                            index->settings->timeseries_size) == SUCCESS) {
+                            index->settings) == SUCCESS) {
             //file_position_type *pos = (file_position_type)(j*index->settings->timeseries_size);
             //memcpy(&(index->sax_cache[j*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
             //memcpy(&(index->sax_cache[j*index->settings->paa_segments]),sax, sizeof(sax_type)* index->settings->paa_segments);
@@ -929,10 +920,7 @@ void *indexbulkloadingworker_inmemory(void *transferdata) {
 
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
             *pos = (file_position_type) (i * index->settings->timeseries_size);
 
             memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -985,10 +973,7 @@ void *index_creation_worker_inmemory(void *transferdata) {
 
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
             *pos = (file_position_type) (i * index->settings->timeseries_size);
 
             memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1086,10 +1071,7 @@ void *index_creation_worker_inmemory_new(void *transferdata) {
             memcpy(ts, &(raw_file[i * index->settings->timeseries_size]),
                    sizeof(float) * index->settings->timeseries_size);
 
-            if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                            index->settings->sax_bit_cardinality,
-                            index->settings->timeseries_size) == SUCCESS) {
+            if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
                 *pos = (file_position_type) (i * index->settings->timeseries_size);
 
                 memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1243,10 +1225,7 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
 
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
             *pos = (file_position_type) (i * index->settings->timeseries_size);
 
             memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1372,10 +1351,7 @@ void *indexbulkloadingworker_pRecBuf_inmemory(void *transferdata) {
 #endif
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
             *pos = (file_position_type) (i * index->settings->timeseries_size);
 
             memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1420,24 +1396,13 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
     unsigned long i = 0;
     float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
 
-    ts_type *ts_fftw;
-    fftwf_complex *ts_out;
-    fftwf_plan plan_forward;
-    ts_type *transform;
+    fftw_workspace fftw = {0};
 
     if (index->settings->function_type == 4) {
         unsigned long ts_length = index->settings->timeseries_size;
 
         pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
-        ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
-
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-
-        //create fftw plan
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts_fftw, ts_out, FFTW_ESTIMATE);
-
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
-
+        fftw_workspace_init(&fftw, ts_length);
         pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
     }
 
@@ -1453,11 +1418,9 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         //store result in index
         if (index->settings->function_type == 4) {
             gettimeofday(&transformation_time_start, NULL);
-            for (int j = 0; j < index->settings->timeseries_size; ++j) {
-                ts_fftw[j] = ts[j];
-            }
+            memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
 
-            if (sfa_from_ts(index, ts_fftw, sax, ts_out, transform, plan_forward) == SUCCESS) {
+            if (sfa_from_ts(index, sax, &fftw) == SUCCESS) {
                 gettimeofday(&current_time, NULL);
                 transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
                                         (transformation_time_start.tv_sec * 1000000 +
@@ -1486,10 +1449,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         //MESSI iSAX
         else {
             gettimeofday(&transformation_time_start, NULL);
-            if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                            index->settings->sax_bit_cardinality,
-                            index->settings->timeseries_size) == SUCCESS) {
+            if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
                 gettimeofday(&current_time, NULL);
                 transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
                                         (transformation_time_start.tv_sec * 1000000 +
@@ -1518,10 +1478,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
     if (index->settings->function_type == 4) {
         pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
-        fftwf_destroy_plan(plan_forward);
-        fftwf_free(ts_fftw);
-        fftwf_free(ts_out);
-        fftwf_free(transform);
+        fftw_workspace_destroy(&fftw);
         pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
     }
 
@@ -1618,10 +1575,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
         for (i = start_number; i < roundfinishednumber; i++) {
             memcpy(ts, &(raw_file[i * index->settings->timeseries_size]),
                    sizeof(float) * index->settings->timeseries_size);
-            if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                            index->settings->sax_bit_cardinality,
-                            index->settings->timeseries_size) == SUCCESS) {
+            if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
                 *pos = (file_position_type) (i * index->settings->timeseries_size);
                 memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
                        sizeof(sax_type) * index->settings->paa_segments);
@@ -2188,4 +2142,3 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
 
     return index;
 }
-

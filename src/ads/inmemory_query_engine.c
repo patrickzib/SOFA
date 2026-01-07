@@ -26,6 +26,7 @@
 #include "ads/isax_node_split.h"
 #include "ads/sfa/dft.h"
 #include "ads/sfa/sfa.h"
+#include "ads/calc_utils.h"
 
 #define NTHREADS 4
 int checkts = 0;
@@ -37,7 +38,7 @@ void *compute_mindists_in(void *ptr) {
 
     for (i = arguments->from; i < arguments->to; i++) {
         sax_type *sax = &(arguments->index->sax_cache[i * arguments->index->settings->paa_segments]);
-        MINDISTS[i] = minidist_paa_to_isax_rawa_SIMD(arguments->paa, sax,
+        MINDISTS[i] = minidist_paa_to_isax_raw_SIMD(arguments->paa, sax,
                                                      arguments->index->settings->max_sax_cardinalities,
                                                      arguments->index->settings->sax_bit_cardinality,
                                                      arguments->index->settings->sax_alphabet_cardinality,
@@ -52,9 +53,7 @@ query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -98,12 +97,9 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
     if (index->settings->function_type == 4) {
         sfa_from_fft(index, paa, sax);
     }
-
-        //SAX
+    //SAX
     else {
-        sax_from_paa(paa, sax, index->settings->paa_segments,
-                     index->settings->sax_alphabet_cardinality,
-                     index->settings->sax_bit_cardinality);
+        sax_from_paa(paa, sax, index->settings);
     }
 
     root_mask_type root_mask = 0;
@@ -154,9 +150,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
         //SAX
     else {
-        sax_from_paa(paa, sax, index->settings->paa_segments,
-                     index->settings->sax_alphabet_cardinality,
-                     index->settings->sax_bit_cardinality);
+        sax_from_paa(paa, sax, index->settings);
     }
 
     root_mask_type root_mask = 0;
@@ -293,78 +287,15 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
 
         //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            if (index->settings->SIMD_flag) {
-                distmin = minidist_paa_to_isax_rawa_SIMD(
-                        paa, node->buffer->partial_sax_buffer[i],
-                        index->settings->max_sax_cardinalities,
-                         index->settings->sax_bit_cardinality,
-                         index->settings->sax_alphabet_cardinality,
-                         index->settings->paa_segments, MINVAL, MAXVAL,
-                         index->settings->mindist_sqrt);
-
-                if (distmin < bsf) {
-                    float dist = ts_ed(query,
-                                 &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                 index->settings->timeseries_size, bsf,
-                                 index->settings->SIMD_flag, index->settings->is_norm);
-
-                    //__sync_fetch_and_add(&RDcalculationnumber,1);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-                }
-            } else {
-                distmin = minidist_paa_to_isax_raw(paa, node->buffer->partial_sax_buffer[i],
-                                                   index->settings->max_sax_cardinalities,
-                                                   index->settings->sax_bit_cardinality,
-                                                   index->settings->sax_alphabet_cardinality,
-                                                   index->settings->paa_segments, MINVAL, MAXVAL,
-                                                   index->settings->mindist_sqrt);
-                if (distmin < bsf) {
-                    float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                       index->settings->timeseries_size, bsf,
-                                        index->settings->SIMD_flag, index->settings->is_norm);
-
-                    //__sync_fetch_and_add(&RDcalculationnumber,1);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-                }
-            }
-        }
-    }
-    return bsf;
-}
-
-
-float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft,
-                                            float bsf) {
-    COUNT_CHECKED_NODE()
-    float distmin;
-    // If node has buffered data
-    if (node->buffer != NULL) {
-        int i;
-
-        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
-        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            if (index->settings->SIMD_flag) {
-                distmin = minidist_fft_to_sfa_rawe_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                         index->settings->max_sax_cardinalities, bsf);
-            } else {
-                distmin = minidist_fft_to_sfa_raw(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                   index->settings->max_sax_cardinalities, bsf);
-            }
+            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
-                float dist;
-                dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                  index->settings->timeseries_size, bsf,
-                                  index->settings->SIMD_flag, index->settings->is_norm);
+                float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                   index->settings->timeseries_size, bsf,
+                                   index->settings->SIMD_flag, index->settings->is_norm);
 
                 //__sync_fetch_and_add(&RDcalculationnumber,1);
-
                 if (dist < bsf) {
                     bsf = dist;
                 }
@@ -373,44 +304,6 @@ float calculate_node_distance2_inmemory_SFA(isax_index *index, isax_node *node, 
     }
     return bsf;
 }
-
-void calculate_node_topk_inmemory_SFA (isax_index *index, isax_node *node, ts_type *query,ts_type *query_fft, pqueue_bsf *pq_bsf, pthread_rwlock_t *lock_queue ) 
-{
-    COUNT_CHECKED_NODE()
-    float distmin;
-    // If node has buffered data
-    if (node->buffer != NULL) {
-        int i;
-
-        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
-        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            if (index->settings->SIMD_flag) {
-                distmin = minidist_fft_to_sfa_rawe_SIMD(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                         index->settings->max_sax_cardinalities, pq_bsf->knn[pq_bsf->k-1]);
-            } else {
-                distmin = minidist_fft_to_sfa_raw(index, query_fft, node->buffer->partial_sax_buffer[i],
-                                                   index->settings->max_sax_cardinalities, pq_bsf->knn[pq_bsf->k-1]);
-            }
-
-            if (distmin < pq_bsf->knn[pq_bsf->k-1]) {
-                float dist;
-                dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                  index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k-1],
-                                  index->settings->SIMD_flag, index->settings->is_norm);
-
-                //__sync_fetch_and_add(&RDcalculationnumber,1);
-
-            if (dist <= pq_bsf->knn[pq_bsf->k-1]) {
-                pthread_rwlock_wrlock(lock_queue);
-                pqueue_bsf_insert(pq_bsf,dist,*node->buffer->partial_position_buffer[i]/index->settings->timeseries_size,node);
-                pthread_rwlock_unlock(lock_queue);
-            }
-            }
-        }
-    }
-}
-
 
 query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
                                           int min_checked_leaves) {
@@ -1125,6 +1018,3 @@ void insert_tree_node(float *paa, isax_node *node, isax_index *index, float bsf,
         }
     }
 }
-
-
-

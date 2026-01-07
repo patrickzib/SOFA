@@ -28,7 +28,8 @@ def main() -> None:
         max_query_threads=8, 
         function_type=4,
         histogram_type=2,
-        sample_size=1_000)
+        sample_size=1_000,
+        is_norm=1)
 
     idx.add(str(data_path), ts_num=1_000)
 
@@ -40,7 +41,7 @@ def main() -> None:
 
     queries = queries.reshape(query_count, TS_SIZE)
 
-    dists, labels = idx.search(queries, k=3)
+    dists, labels = idx.search(queries, k=1)
     print("distance:", dists)
     #, "labels:", labels
 

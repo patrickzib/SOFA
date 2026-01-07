@@ -61,9 +61,7 @@ void isax_query_binary_file_para(const char *ifilename, int q_num, isax_index *i
         COUNT_INPUT_TIME_START
         fread(paraqueries[q_loaded].ts, sizeof(ts_type),index->settings->timeseries_size,ifile);
         COUNT_INPUT_TIME_END
-        paa_from_ts(paraqueries[q_loaded].ts, paraqueries[q_loaded].paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(paraqueries[q_loaded].ts, paraqueries[q_loaded].paa, index->settings);
 
 
         pthread_create(&(threadid[q_loaded]),NULL,para_queries_worker,(void*)&(paraqueries[q_loaded]));

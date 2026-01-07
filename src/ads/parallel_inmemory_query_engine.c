@@ -26,6 +26,7 @@
 #include "ads/sax/sax.h"
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
+#include "ads/calc_utils.h"
 #include "ads/isax_node_split.h"
 #include "ads/inmemory_topk_engine.h"
 #include "ads/pthread_barrier.h"
@@ -37,9 +38,7 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -142,19 +141,8 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
     while (current_root_node != NULL) {
         query_result *mindist_result = malloc(sizeof(query_result));
 
-        //SFA
-        if (index->settings->function_type == 4) {
-            mindist_result->distance = minidist_fft_to_sfa(index, paa, current_root_node->isax_values,
-                                                           current_root_node->isax_cardinalities, minimum_distance);
-        } else {
-            mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                                            current_root_node->isax_cardinalities,
-                                                            index->settings->sax_bit_cardinality,
-                                                            index->settings->sax_alphabet_cardinality,
-                                                            index->settings->paa_segments,
-                                                            MINVAL, MAXVAL,
-                                                            index->settings->mindist_sqrt);
-        }
+        mindist_result->distance = messi_minidist(index, paa, current_root_node->isax_values,
+                                                  current_root_node->isax_cardinalities, minimum_distance);
         mindist_result->node = current_root_node;
         pqueue_insert(pq, mindist_result);
         current_root_node = current_root_node->next;
@@ -213,21 +201,10 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
 
-                        //SFA
-                        if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                           n->node->left_child->isax_values,
-                                                                           n->node->left_child->isax_cardinalities,
-                                                                           minimum_distance);
-                        } else {
-                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                            n->node->left_child->isax_cardinalities,
-                                                                            index->settings->sax_bit_cardinality,
-                                                                            index->settings->sax_alphabet_cardinality,
-                                                                            index->settings->paa_segments,
-                                                                            MINVAL, MAXVAL,
-                                                                            index->settings->mindist_sqrt);
-                        }
+                        mindist_result->distance = messi_minidist(index, paa,
+                                                                  n->node->left_child->isax_values,
+                                                                  n->node->left_child->isax_cardinalities,
+                                                                  minimum_distance);
                         mindist_result->node = n->node->left_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -244,21 +221,10 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
 
-                        //SFA
-                        if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                           n->node->right_child->isax_values,
-                                                                           n->node->right_child->isax_cardinalities,
-                                                                           minimum_distance);
-                        } else {
-                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                            n->node->right_child->isax_cardinalities,
-                                                                            index->settings->sax_bit_cardinality,
-                                                                            index->settings->sax_alphabet_cardinality,
-                                                                            index->settings->paa_segments,
-                                                                            MINVAL, MAXVAL,
-                                                                            index->settings->mindist_sqrt);
-                        }
+                        mindist_result->distance = messi_minidist(index, paa,
+                                                                  n->node->right_child->isax_values,
+                                                                  n->node->right_child->isax_cardinalities,
+                                                                  minimum_distance);
                         mindist_result->node = n->node->right_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -1505,186 +1471,6 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
 }
 
 
-query_result exact_search_inmemory_openmp(ts_type *ts, ts_type *paa, isax_index *index,
-                                          float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_m(ts, paa, index);
-    query_result bsf_result = approximate_result;
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
-    long int numbbbber = 0;
-
-    // Early termination...
-    if (approximate_result.distance == 0) {
-        return approximate_result;
-    }
-    if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
-                                                      min_checked_leaves);
-    }
-    COUNT_QUEUE_TIME_START
-    pqueue_t *pq = pqueue_init(index->settings->root_nodes_size,
-                               cmp_pri, get_pri, set_pri, get_pos, set_pos);
-    COUNT_QUEUE_TIME_END
-
-
-    query_result *do_not_remove = &approximate_result;
-
-    SET_APPROXIMATE(approximate_result.distance);
-
-    RESET_BYTES_ACCESSED
-
-    if (approximate_result.node != NULL) {
-        // Insert approximate result in heap.
-        COUNT_QUEUE_TIME_START
-        pqueue_insert(pq, &approximate_result);
-        COUNT_QUEUE_TIME_END
-        //GOOD: if(approximate_result.node->filename != NULL)
-        //GOOD: printf("POPS: %.5lf\t", approximate_result.distance);
-    }
-
-    // Insert all root nodes in heap.
-    isax_node *current_root_node = index->first_node;
-    while (current_root_node != NULL) {
-        query_result *mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                                        current_root_node->isax_cardinalities,
-                                                        index->settings->sax_bit_cardinality,
-                                                        index->settings->sax_alphabet_cardinality,
-                                                        index->settings->paa_segments,
-                                                        MINVAL, MAXVAL,
-                                                        index->settings->mindist_sqrt);
-        mindist_result->node = current_root_node;
-        COUNT_QUEUE_TIME_START
-        if (mindist_result->distance < approximate_result.distance) {
-            pqueue_insert(pq, mindist_result);
-        }
-
-
-        COUNT_QUEUE_TIME_END
-        current_root_node = current_root_node->next;
-    }
-    query_result *n;
-    int checks = 0;
-    while ((n = pqueue_pop(pq))) {
-        // The best node has a worse mindist, so search is finished!
-        //printf("this is the check point of e s !!!\n");
-        if (n->distance >= bsf_result.distance || n->distance > minimum_distance) {
-            COUNT_QUEUE_TIME_START
-            pqueue_insert(pq, n);
-            COUNT_QUEUE_TIME_END
-            break;
-        } else {
-            // If it is a leaf, check its real distance.
-            if (n->node->is_leaf) {
-                // *** ADAPTIVE SPLITTING ***
-                if (!n->node->has_full_data_file &&
-                    (n->node->leaf_size > index->settings->min_leaf_size)) {
-                    // Split and push again in the queue
-
-                    split_node(index, n->node);
-                    COUNT_QUEUE_TIME_START
-                    pqueue_insert(pq, n);
-                    COUNT_QUEUE_TIME_END
-                    continue;
-                }
-                // *** EXTRA BOUNDING ***
-                if (tight_bound) {
-                    COUNT_OUTPUT_TIME_START
-                    float mindistance = calculate_minimum_distance_inmemory(index, n->node, ts, paa);
-                    COUNT_OUTPUT_TIME_END
-                    if (mindistance >= bsf_result.distance) {
-                        if (n != do_not_remove)//add
-                            free(n);
-                        continue;
-                    }
-                }
-                // *** REAL DISTANCE ***
-                checks++;
-
-                COUNT_CAL_TIME_START
-                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, bsf_result.distance);
-                COUNT_CAL_TIME_END
-                if (distance < bsf_result.distance) {
-                    bsf_result.distance = distance;
-                    bsf_result.node = n->node;
-                }
-                //no check limit juge
-            } else {
-                // If it is an intermediate node calculate mindist for children
-                // and push them in the queue
-                if (n->node->left_child->isax_cardinalities != NULL) {
-                    if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
-                        aggressive_check) {
-                        COUNT_CAL_TIME_START
-                        float distance = calculate_node_distance_inmemory_m(index, n->node->left_child, ts,
-                                                                            bsf_result.distance);
-                        COUNT_CAL_TIME_END
-                        if (distance < bsf_result.distance) {
-                            bsf_result.distance = distance;
-                            bsf_result.node = n->node->left_child;
-                        }
-                    } else {
-                        query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                        n->node->left_child->isax_cardinalities,
-                                                                        index->settings->sax_bit_cardinality,
-                                                                        index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
-                                                                        MINVAL, MAXVAL,
-                                                                        index->settings->mindist_sqrt);
-                        mindist_result->node = n->node->left_child;
-                        COUNT_QUEUE_TIME_START
-                        pqueue_insert(pq, mindist_result);
-                        COUNT_QUEUE_TIME_END
-                    }
-                }
-                if (n->node->right_child->isax_cardinalities != NULL) {
-                    if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
-                        aggressive_check) {
-                        COUNT_CAL_TIME_START
-                        float distance = calculate_node_distance_inmemory_m(index, n->node->right_child, ts,
-                                                                            bsf_result.distance);
-                        COUNT_CAL_TIME_END
-                        if (distance < bsf_result.distance) {
-                            bsf_result.distance = distance;
-                            bsf_result.node = n->node->right_child;
-                        }
-                    } else {
-                        query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                        n->node->right_child->isax_cardinalities,
-                                                                        index->settings->sax_bit_cardinality,
-                                                                        index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
-                                                                        MINVAL, MAXVAL,
-                                                                        index->settings->mindist_sqrt);
-                        mindist_result->node = n->node->right_child;
-                        COUNT_QUEUE_TIME_START
-                        pqueue_insert(pq, mindist_result);
-                        COUNT_QUEUE_TIME_END
-                    }
-                }
-            }
-
-            // Free the node currently popped.
-            if (n != do_not_remove)//add
-                free(n);
-        }
-    }
-
-    // Free the nodes that where not popped.
-    while ((n = pqueue_pop(pq))) {
-        if (n != do_not_remove)
-            free(n);
-    }
-    // Free the priority queue.
-    COUNT_QUEUE_TIME_START
-    pqueue_free(pq);
-    COUNT_QUEUE_TIME_END
-    //PRINT_BYTES_ACCESSED
-    return bsf_result;
-}
-
 query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
     //RDcalculationnumber=0;
@@ -2403,13 +2189,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance;
-                //SFA
-                if (index->settings->function_type == 4) {
-                    distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
-                } else {
-                    distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
-                }
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
 
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2470,13 +2250,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
 
-                            float distance;
-                            //SFA
-                            if (index->settings->function_type == 4) {
-                                distance = calculate_node_distance2_inmemory_SFA(index, n->node, ts, paa, bsfdisntance);
-                            } else {
-                                distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
-                            }
+                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
 
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2844,17 +2618,7 @@ void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *in
                                      pthread_mutex_t *lock_queue, int *tnumber) {
     float distance;
 
-    if (index->settings->function_type == 4) {
-        distance = minidist_fft_to_sfa(index, paa, node->isax_values, node->isax_cardinalities, bsf);
-    } else {
-        distance = minidist_paa_to_isax(paa, node->isax_values,
-                                        node->isax_cardinalities,
-                                        index->settings->sax_bit_cardinality,
-                                        index->settings->sax_alphabet_cardinality,
-                                        index->settings->paa_segments,
-                                        MINVAL, MAXVAL,
-                                        index->settings->mindist_sqrt);
-    }
+    distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     //__sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
     if (distance < bsf) {
@@ -2886,17 +2650,7 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
     struct timeval lb_dist_time_start;
 
     gettimeofday(&lb_dist_time_start, NULL);
-    if (index->settings->function_type == 4) {
-        distance = minidist_fft_to_sfa(index, paa, node->isax_values, node->isax_cardinalities, bsf);
-    } else {
-        distance = minidist_paa_to_isax(paa, node->isax_values,
-                                        node->isax_cardinalities,
-                                        index->settings->sax_bit_cardinality,
-                                        index->settings->sax_alphabet_cardinality,
-                                        index->settings->paa_segments,
-                                        MINVAL, MAXVAL,
-                                        index->settings->mindist_sqrt);
-    }
+    distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     __sync_fetch_and_add(&LBDcalculationnumber, 1);
     gettimeofday(&current_time, NULL);
     *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
@@ -3018,4 +2772,3 @@ isax_node *popbottom2(localStack *stk) {
         return localnode;
     }
 }
-

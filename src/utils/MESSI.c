@@ -970,7 +970,7 @@ int main(int argc, char **argv) {
                     isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                            &exact_search_parads_inmemory);
                 } else if (function_type == 4) {
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory_openmp);
+
                 } else if (function_type == 7) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_inmemory);
                 } else if (function_type == 2) {

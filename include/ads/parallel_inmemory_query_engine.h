@@ -73,8 +73,6 @@ void* readworker2_inmemory(void *read_pointer);
 void* topk_readworker_inmemory(void *read_pointer);
 
 void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves,int batch_number);
-query_result exact_search_inmemory_openmp (ts_type *ts, ts_type *paa, isax_index *index,
-                           float minimum_distance, int min_checked_leaves);
 query_result exact_search_ParISnew_inmemory (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves);
 query_result exact_search_ParISnew_inmemory_workstealing (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,

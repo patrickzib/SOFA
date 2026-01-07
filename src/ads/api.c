@@ -5,6 +5,7 @@
 #include "ads/parallel_inmemory_query_engine.h"
 #include "ads/sax/ts.h"
 #include "ads/sfa/sfa.h"
+#include "ads/sfa/dft.h"
 #include <stdlib.h>
 #include <float.h>
 #include <stdint.h>
@@ -133,30 +134,50 @@ int messi_index_search(messi_index *index,
     }
 
     ts_type *paa_buffer = malloc(sizeof(ts_type) * index->index->settings->paa_segments);
-    if (paa_buffer == NULL) {
-        return -3;
+
+    fftw_workspace fftw = {0};
+
+    unsigned long ts_length = index->index->settings->timeseries_size;
+    if (index->index->settings->function_type == 4) {
+        fftw_workspace_init(&fftw, ts_length);
     }
 
     for (size_t i = 0; i < nq; ++i) {
         node_list nlist = {.nlist = NULL, .node_amount = 0};
         populate_root_nodes(index->index, &nlist);
         ts_type *ts = (ts_type *) (queries + i * dim);
-        paa_from_ts(ts,
-                    paa_buffer,
-                    index->index->settings->paa_segments,
-                    index->index->settings->ts_values_per_paa_segment,
-                    index->index->settings->timeseries_size);
-        query_result res = exact_search_MESSI((ts_type *) (queries + i * dim),
-                                              paa_buffer,
-                                              index->index,
-                                              &nlist,
-                                              FLT_MAX,
-                                              1);
+
+        if (index->index->settings->function_type == 4) {
+            //SFA: parse ts and make fft representation
+            memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
+
+            int use_best = index->index->settings->coeff_number != 0;
+            fft_from_ts(
+				index->index,
+				index->index->settings->paa_segments,
+				use_best, &fftw);
+
+            memcpy(paa_buffer, fftw.transform, sizeof(ts_type) * index->index->settings->paa_segments);
+        } else {
+            paa_from_ts(ts,
+                        paa_buffer,
+                        index->index->settings);
+        }
+        query_result res = exact_search_MESSI(
+			(ts_type *) (queries + i * dim),
+            paa_buffer,
+            index->index,
+            &nlist,
+            FLT_MAX,
+            -1);
         distances[i] = res.distance;
         labels[i] = res.node ? (long) (intptr_t) res.node : -1;
         if (nlist.nlist != NULL) {
             free(nlist.nlist);
         }
+    }
+    if (index->index->settings->function_type == 4) {
+        fftw_workspace_destroy(&fftw);
     }
     free(paa_buffer);
     return 0;
@@ -186,7 +207,7 @@ static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long
         fprintf(stderr, "warning: failed to initialize SFA bins.\n");
         return;
     }
-    sfa_set_bins(index, path, ts_num, maxquerythread, 0, index->settings->is_norm);
+    sfa_set_bins(index, path, ts_num, maxquerythread, 1, !index->settings->is_norm);
 }
 
 static void finalize_sfa_bins_if_needed(isax_index *index) {

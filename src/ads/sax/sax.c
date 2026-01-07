@@ -42,15 +42,16 @@ int compare(const void *a, const void *b) {
 /** 
  Calculate paa.
  */
-enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, int segments,
-                          int ts_values_per_segment, int timeseries_size) {
+enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, isax_index_settings *settings) {
     //fprintf(stderr, "paa from ts\n");
 
-    int s, i;
+    int segments = settings->paa_segments;
+    int ts_values_per_segment = settings->ts_values_per_paa_segment;
+    int timeseries_size = settings->timeseries_size;
     int left_values = timeseries_size; // if timeseries size is not divisible by segments
-    for (s = 0; s < segments; s++) {
+    for (int s = 0; s < segments; s++) {
         paa_out[s] = 0;
-        for (i = 0; i < min(ts_values_per_segment, left_values); i++) {
+        for (int i = 0; i < min(ts_values_per_segment, left_values); i++) {
             paa_out[s] += ts_in[(s * ts_values_per_segment) + i];
         }
         paa_out[s] /= ts_values_per_segment;
@@ -61,10 +62,12 @@ enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, int segments,
 }
 
 
-enum response sax_from_paa(ts_type *paa, sax_type *sax, int segments,
-                           int cardinality, int bit_cardinality) {
+enum response sax_from_paa(ts_type *paa, sax_type *sax, isax_index_settings *settings) {
     //fprintf(stderr, "sax from paa\n");
 
+    int segments = settings->paa_segments;
+    int cardinality = settings->sax_alphabet_cardinality;
+    int bit_cardinality = settings->sax_bit_cardinality;
     int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
     //printf("FROM %lf TO %lf\n", sax_breakpoints[offset], sax_breakpoints[offset + cardinality - 2]);
 
@@ -91,9 +94,13 @@ enum response sax_from_paa(ts_type *paa, sax_type *sax, int segments,
 /**
  This function converts a ts record into its sax representation.
  */
-enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
-                          int segments, int cardinality, int bit_cardinality, int timeseries_size) {
+enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, isax_index_settings *settings) {
     // Create PAA representation
+    int ts_values_per_segment = settings->ts_values_per_paa_segment;
+    int segments = settings->paa_segments;
+    int cardinality = settings->sax_alphabet_cardinality;
+    int bit_cardinality = settings->sax_bit_cardinality;
+    int timeseries_size = settings->timeseries_size;
     float *paa = malloc(sizeof(float) * segments);
     if (paa == NULL) {
         fprintf(stderr, "error: could not allocate memory for PAA representation.\n");
@@ -143,9 +150,13 @@ enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, int ts_values_per_s
     return SUCCESS;
 }
 
-enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
-                              int segments, int cardinality, int bit_cardinality, int timeseries_size) {
+enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, isax_index_settings *settings) {
     // Create PAA representation
+    int ts_values_per_segment = settings->ts_values_per_paa_segment;
+    int segments = settings->paa_segments;
+    int cardinality = settings->sax_alphabet_cardinality;
+    int bit_cardinality = settings->sax_bit_cardinality;
+    int timeseries_size = settings->timeseries_size;
     float *paa = malloc(sizeof(float) * segments);
     if (paa == NULL) {
         fprintf(stderr, "error: could not allocate memory for PAA representation.\n");
@@ -196,6 +207,77 @@ enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, int ts_values_p
     free(paa);
     return SUCCESS;
 }
+
+#if ADS_HAVE_AVX2
+enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
+                               int segments, int cardinality, int bit_cardinality) {
+    // Create PAA representation
+    float *paa = malloc(sizeof(float) * segments);
+    if (paa == NULL) {
+        fprintf(stderr, "error: could not allocate memory for PAA representation.\n");
+        return FAILURE;
+    }
+
+    int s, i;
+    float paasss[8];
+    for (s = 0; s < segments; s++) {
+        paa[s] = 0;
+        __m256 a = _mm256_load_ps(&ts_in[(s * ts_values_per_segment)]);
+        for (i = 8; i < ts_values_per_segment; i += 8) {
+            __m256 b = _mm256_load_ps(&ts_in[(s * ts_values_per_segment + i)]);
+            a = _mm256_add_ps(a, b);
+            //paa[s] += ts_in[(s * ts_values_per_segment)+i];
+        }
+        a = _mm256_hadd_ps(a, a);
+        a = _mm256_hadd_ps(a, a);
+        _mm256_storeu_ps(paasss, a);
+        paa[s] = (paasss[0] + paasss[4]) / ts_values_per_segment;
+        //#ifdef DEBUG
+        //printf("%d: %lf\n", s, paa[s]);
+        //#endif
+    }
+
+    // Convert PAA to SAX
+    // Note: Each cardinality has cardinality - 1 break points if c is cardinality
+    //       the breakpoints can be found in the following array positions: 
+    //       FROM (c - 1) * (c - 2) / 2 
+    //       TO   (c - 1) * (c - 2) / 2 + c - 1
+    int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
+    //printf("FROM %lf TO %lf\n", sax_breakpoints[offset], sax_breakpoints[offset + cardinality - 2]);
+
+    int si;
+    for (si = 0; si < segments; si++) {
+        sax_out[si] = 0;
+
+        // First object = sax_breakpoints[offset]
+        // Last object = sax_breakpoints[offset + cardinality - 2]
+        // Size of sub-array = cardinality - 1
+
+        float *res = (float *) bsearch(&paa[si], &sax_breakpoints[offset], cardinality - 1,
+                                       sizeof(ts_type), compare);
+        if (res != NULL)
+            sax_out[si] = (int) (res - &sax_breakpoints[offset]);
+        else if (paa[si] > 0)
+            sax_out[si] = cardinality - 1;
+    }
+
+    //sax_print(sax_out, segments, cardinality);
+    free(paa);
+    return SUCCESS;
+}
+#else
+enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_per_segment,
+                               int segments, int cardinality, int bit_cardinality) {
+    isax_index_settings settings = {
+        .ts_values_per_paa_segment = ts_values_per_segment,
+        .paa_segments = segments,
+        .sax_alphabet_cardinality = cardinality,
+        .sax_bit_cardinality = bit_cardinality,
+        .timeseries_size = segments * ts_values_per_segment
+    };
+    return sax_from_ts(ts_in, sax_out, &settings);
+}
+#endif
 
 void printbin(unsigned long long n, int size) {
     char *b = malloc(sizeof(char) * (size + 1));
@@ -348,6 +430,7 @@ float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
 }
 
 #if ADS_HAVE_AVX2
+
 float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                                     sax_type *sax_cardinalities,
                                     sax_type max_bit_cardinality,
@@ -523,6 +606,7 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
+
 float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                                      sax_type *sax_cardinalities,
                                      sax_type max_bit_cardinality,
@@ -723,32 +807,5 @@ float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
     return (distancef[0] + distancef[4]) * ratio_sqrt;
 }
 
-#else
-
-float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
-                                    sax_type *sax_cardinalities,
-                                    sax_type max_bit_cardinality,
-                                    int max_cardinality,
-                                    int number_of_segments,
-                                    int min_val,
-                                    int max_val,
-                                    float ratio_sqrt) {
-    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, max_bit_cardinality,
-                                    max_cardinality, number_of_segments, min_val, max_val,
-                                    ratio_sqrt);
-}
-
-float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
-                                     sax_type *sax_cardinalities,
-                                     sax_type max_bit_cardinality,
-                                     int max_cardinality,
-                                     int number_of_segments,
-                                     int min_val,
-                                     int max_val,
-                                     float ratio_sqrt) {
-    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, max_bit_cardinality,
-                                    max_cardinality, number_of_segments, min_val, max_val,
-                                    ratio_sqrt);
-}
 
 #endif /* ADS_HAVE_AVX2 */

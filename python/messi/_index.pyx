@@ -25,6 +25,7 @@ cdef class Index:
     cdef public int _dim
     cdef bytes _root_dir
     cdef bint _has_data
+    cdef bint _is_norm
 
     def __cinit__(self,
                   int timeseries_size,
@@ -86,6 +87,7 @@ cdef class Index:
             raise MemoryError("Failed to create MESSI index")
         self._dim = timeseries_size
         self._has_data = False
+        self._is_norm = is_norm
 
     def __dealloc__(self):
         if self._index is not NULL:
@@ -128,3 +130,7 @@ cdef class Index:
             raise RuntimeError("search failed")
 
         return distances, labels
+
+    @property
+    def is_norm(self):
+        return bool(self._is_norm)

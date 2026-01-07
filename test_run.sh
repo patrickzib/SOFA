@@ -17,7 +17,7 @@ QUEUE_NUMBER=${8:-1}
   --dataset $FILE_PATH \
   --in-memory \
   --timeseries-size $TS_SIZE \
-  --function-type 4 \
+  --function-type 3 \
   --dataset-size $DATASET_SIZE \
   --flush-limit 300000 \
   --read-block 200 \

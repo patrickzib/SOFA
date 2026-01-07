@@ -12,6 +12,7 @@
 
 #include <fftw3.h>
 #include <sys/types.h>
+#include "dft.h"
 
 enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
@@ -33,6 +34,9 @@ int compare_int (const void *a, const void *b);
 ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_fft_to_sfa_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+#if !ADS_HAVE_AVX2
+#define minidist_fft_to_sfa_rawe_SIMD minidist_fft_to_sfa_raw
+#endif
 
 ts_type get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sax_type c_c, sax_type c_m, int max_cardinality, float factor);
 
@@ -53,10 +57,7 @@ typedef struct bins_data_inmemory
 	int workernumber;
 	long int records;
 	long int records_offset;
-	ts_type * ts;
-	fftwf_complex *ts_out;
-	fftwf_plan plan_forward;
-	ts_type * transform;
+	fftw_workspace fftw;
     int filetype_int;
     int apply_znorm;
 }bins_data_inmemory;

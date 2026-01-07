@@ -22,15 +22,13 @@
     This function calculates the FFT coefficients for a given time series
 */
 void fft_from_ts(
-        isax_index *index, ts_type *ts,
+        isax_index *index,
         int coeff_number, int best_only,
-        fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward) {
-    unsigned long ts_length = index->settings->timeseries_size;
-
-    fftwf_execute(plan_forward);
+        fftw_workspace *fftw) {
+    fftwf_execute(fftw->plan_forward);
 
     // Image part of first (DC) coefficient
-    ts_out[0][1] = 0;
+    fftw->ts_out[0][1] = 0;
 
     int j = 0;
 
@@ -40,20 +38,20 @@ void fft_from_ts(
     if (best_only) {
         for (int k = 0; k < coeff_number / 2; ++k, j+= 2) {
             int coeff = index->coefficients[k] + start_offset;
-            transform[j] = ts_out[coeff][0];
-            transform[j + 1] = ts_out[coeff][1] * -1;
+            fftw->transform[j] = fftw->ts_out[coeff][0];
+            fftw->transform[j + 1] = fftw->ts_out[coeff][1] * -1;
         }
     } else {
         for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k, j+= 2) {
-            transform[j] = ts_out[k][0];
-            transform[j + 1] = ts_out[k][1] * -1;
+            fftw->transform[j] = fftw->ts_out[k][0];
+            fftw->transform[j + 1] = fftw->ts_out[k][1] * -1;
         }
     }
 
     // normalizing fft result in frequency domain to allow for lower bounding
     ts_type norm_factor = index->norm_factor;
     for (int i = 0; i < coeff_number; ++i) {
-        transform[i] *= norm_factor;
+        fftw->transform[i] *= norm_factor;
     }
     return;
 }
@@ -82,16 +80,13 @@ void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_
 /*
     This function creates an SFA representation of a time series 
 */
-enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform,
-            fftwf_plan plan_forward) {
+enum response sfa_from_ts(isax_index *index, sax_type *sax_out, fftw_workspace *fftw) {
 
     int use_best = index->settings->coeff_number != 0;
-    fft_from_ts(index, ts_in, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
+    fft_from_ts(index, index->settings->paa_segments, use_best, fftw);
 
     ts_type *cur_coeff_line = calloc(index->settings->paa_segments, sizeof(ts_type));
-    for (int i = 0; i < index->settings->paa_segments; ++i) {
-        cur_coeff_line[i] = transform[i];
-    }
+    memcpy(cur_coeff_line, fftw->transform, sizeof(ts_type) * index->settings->paa_segments);
 
     sfa_from_fft(index, cur_coeff_line, sax_out);
 

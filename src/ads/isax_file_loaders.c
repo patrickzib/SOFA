@@ -59,22 +59,12 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
 
     //SFA
-    ts_type *ts_fftw = NULL;
-    fftwf_complex *ts_out = NULL;
-    fftwf_plan plan_forward = NULL;
-    ts_type *transform = NULL;
+    fftw_workspace fftw = {0};
 
     if (index->settings->function_type == 4) {
         unsigned long ts_length = index->settings->timeseries_size;
 
-        ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
-
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-
-        //create fftw plan
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts_fftw, ts_out, FFTW_ESTIMATE);
-
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+        fftw_workspace_init(&fftw, ts_length);
     }
 
 
@@ -86,24 +76,17 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 
         //Parse TS and make FFT representation
         if (index->settings->function_type == 4) {
-            for (int j = 0; j < index->settings->timeseries_size; ++j) {
-                ts_fftw[j] = ts[j];
-            }
+            memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
             int use_best = index->settings->coeff_number != 0;
-            fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
+            fft_from_ts(index, index->settings->paa_segments, use_best, &fftw);
 
-            for (int i = 0; i < index->settings->paa_segments; ++i) {
-                paa[i] = (ts_type) transform[i];
-            }
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
         }
 
 
             // Parse ts and make PAA representation
         else {
-            paa_from_ts(ts, paa,
-                        index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
+            paa_from_ts(ts, paa, index->settings);
         }
 
         COUNT_TOTAL_TIME_START
@@ -128,6 +111,9 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
+    if (index->settings->function_type == 4) {
+        fftw_workspace_destroy(&fftw);
+    }
 
 }
 
@@ -173,10 +159,7 @@ void isax_query_binary_file_traditional(
 
     fprintf(stderr, ">>> node_amount is %d\n", nodelist.node_amount);
 
-    ts_type *ts_fftw;
-    fftwf_complex *ts_out;
-    fftwf_plan plan_forward;
-    ts_type *transform;
+    fftw_workspace fftw = {0};
 
     // ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     file_type *ts_int32;
@@ -185,14 +168,11 @@ void isax_query_binary_file_traditional(
     }
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    int ts_length = index->settings->timeseries_size;
+    unsigned long ts_length = index->settings->timeseries_size;
 
     // create fftw plan
     if (index->settings->function_type == 4) {
-        ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts, ts_out, FFTW_ESTIMATE);
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+        fftw_workspace_init(&fftw, ts_length);
     }
 
     while (q_loaded < q_num) {
@@ -223,21 +203,18 @@ void isax_query_binary_file_traditional(
 
         if (index->settings->function_type == 4) {
             //SFA: parse ts and make fft representation
-            for (int i = 0; i < ts_length; ++i) {
-                ts_fftw[i] = ts[i];
-            }
+            memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
             int use_best = index->settings->coeff_number != 0;
-            fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
+            fft_from_ts(
+				index,
+				index->settings->paa_segments,
+				use_best, &fftw);
 
-            for (int i = 0; i < index->settings->paa_segments; ++i) {
-                paa[i] = (ts_type) transform[i];
-            }
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
         } else {
             // Parse ts and make PAA representation
-            paa_from_ts(ts, paa, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
+            paa_from_ts(ts, paa, index->settings);
         }
 
         COUNT_TOTAL_TIME_START
@@ -256,10 +233,7 @@ void isax_query_binary_file_traditional(
     }
 
     if (index->settings->function_type == 4) {
-        fftwf_destroy_plan(plan_forward);
-        fftwf_free(ts_fftw);
-        fftwf_free(ts_out);
-        fftwf_free(transform);
+        fftw_workspace_destroy(&fftw);
     }
 
     free(nodelist.nlist);
@@ -308,9 +282,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
         COUNT_INPUT_TIME_END
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         query_result bsf = search_function(ts, paa, index, minimum_distance, min_checked_leaves, FLT_MAX);
         COUNT_TOTAL_TIME_START
         query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, bsf.distance);
@@ -366,9 +338,7 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
         COUNT_INPUT_TIME_END
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
         pqueue_bsf result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, k);
@@ -435,9 +405,7 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
         COUNT_INPUT_TIME_END
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
         pqueue_bsf result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, k);
@@ -519,10 +487,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
 
     fprintf(stderr, ">>> node_amount is %d\n", nodelist.node_amount);
 
-    ts_type *ts_fftw;
-    fftwf_complex *ts_out;
-    fftwf_plan plan_forward;
-    ts_type *transform;
+    fftw_workspace fftw = {0};
 
     // ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     file_type *ts_int32;
@@ -534,10 +499,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     int ts_length = index->settings->timeseries_size;
 
     if (index->settings->function_type == 4) {
-        ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts, ts_out, FFTW_ESTIMATE);
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+        fftw_workspace_init(&fftw, ts_length);
     }
 
     while (q_loaded < q_num) {
@@ -567,21 +529,15 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
 
         if (index->settings->function_type == 4) {
             //SFA: parse ts and make fft representation
-            for (int i = 0; i < ts_length; ++i) {
-                ts_fftw[i] = ts[i];
-            }
+            memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
             int use_best = index->settings->coeff_number != 0;
-            fft_from_ts(index, ts_fftw, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
+            fft_from_ts(index, index->settings->paa_segments, use_best, &fftw);
 
-            for (int i = 0; i < index->settings->paa_segments; ++i) {
-                paa[i] = (ts_type) transform[i];
-            }
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
         } else {
             // Parse ts and make PAA representation
-            paa_from_ts(ts, paa, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
+            paa_from_ts(ts, paa, index->settings);
         }
 
         COUNT_TOTAL_TIME_START
@@ -604,6 +560,9 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
 
     if (filetype_int) {
         free(ts_int32);
+    }
+    if (index->settings->function_type == 4) {
+        fftw_workspace_destroy(&fftw);
     }
     fclose(ifile);
 
@@ -673,9 +632,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
         printf("%d: ", q_loaded);
 
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         COUNT_TOTAL_TIME_START
         //COUNT_OUTPUT2_TIME_START
         pqueue_bsf result = search_function(ts, paa, index, &nodelist, minimum_distance, min_checked_leaves, k);
@@ -747,9 +704,7 @@ void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(&(ts[index->settings->timeseries_size * q_loaded]),
-                    &(paa[index->settings->paa_segments * q_loaded]), index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+                    &(paa[index->settings->paa_segments * q_loaded]), index->settings);
 
 
         fflush(stdout);
@@ -822,10 +777,7 @@ void isax_index_binary_file(const char *ifilename, int ts_num, isax_index *index
         //printf("the pos is %lld\n",*pos);
         COUNT_INPUT_TIME_END
 
-        if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
 #ifdef CLUSTERED
             root_mask_type first_bit_mask = 0x00;
             CREATE_MASK(first_bit_mask, index, sax);
@@ -967,10 +919,7 @@ void isax_sorted_index_binary_file(const char *ifilename, int ts_num, isax_index
         fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
 
-        if (sax_from_ts(ts, (sax_type *) &(sax_vectors[ts_loaded].sax), index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, (sax_type *) &(sax_vectors[ts_loaded].sax), index->settings) == SUCCESS) {
 #ifdef CLUSTERED
             root_mask_type first_bit_mask = 0x00;
             CREATE_MASK(first_bit_mask, index, sax);
@@ -1060,10 +1009,7 @@ void isax_merge_sorted_index_binary_file(const char *ifilename, int ts_num, isax
         fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
 
-        if (sax_from_ts(ts, (sax_type *) &(sax_vectors[ts_loaded].sax), index->settings->ts_values_per_paa_segment,
-                        index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                        index->settings->sax_bit_cardinality,
-                        index->settings->timeseries_size) == SUCCESS) {
+        if (sax_from_ts(ts, (sax_type *) &(sax_vectors[ts_loaded].sax), index->settings) == SUCCESS) {
 #ifdef CLUSTERED
             root_mask_type first_bit_mask = 0x00;
             CREATE_MASK(first_bit_mask, index, sax);

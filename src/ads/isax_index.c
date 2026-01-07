@@ -2072,10 +2072,7 @@ void complete_index(isax_index *index, int ts_num)
         fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
         
-        if(sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment, 
-                       index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
-                       index->settings->sax_bit_cardinality,
-                       index->settings->timeseries_size) == SUCCESS)
+        if(sax_from_ts(ts, sax, index->settings) == SUCCESS)
         {
 
             root_mask_type first_bit_mask = 0x00;
@@ -2834,6 +2831,5 @@ void print_mem_info(isax_index *index) {
     printf("# (DISK)    PARTIAL:            %ld\n",    bytes_mem_info.disk_data_partial);
     printf("################################################################\n"); 
 }
-
 
 

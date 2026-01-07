@@ -17,6 +17,7 @@
 #include "ads/inmemory_topk_engine.h"
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
+#include "ads/calc_utils.h"
 #include "omp.h"
 #include "ads/parallel_inmemory_query_engine.h"
 #include "ads/pthread_barrier.h"
@@ -25,19 +26,15 @@ float *MINDISTS;
 #define NTHREADS 4
 
 void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf) {
-
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
 
 
     if (index->settings->function_type == 4) {
         sfa_from_fft(index, paa, sax);
     }
-
-        //SAX
+    //SAX
     else {
-        sax_from_paa(paa, sax, index->settings->paa_segments,
-                     index->settings->sax_alphabet_cardinality,
-                     index->settings->sax_bit_cardinality);
+        sax_from_paa(paa, sax, index->settings);
     }
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -58,7 +55,6 @@ void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqu
             } else {
                 node = node->left_child;
             }
-
             // Adaptive splitting
         }
         calculate_node_topk_inmemory(index, node, ts, pq_bsf);
@@ -87,18 +83,8 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
     while (current_root_node != NULL) {
         query_result *mindist_result = malloc(sizeof(query_result));
 
-        if (index->settings->function_type == 4) {
-            mindist_result->distance = minidist_fft_to_sfa(index, paa, current_root_node->isax_values,
-                                                           current_root_node->isax_cardinalities, minimum_distance);
-        } else {
-            mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                                            current_root_node->isax_cardinalities,
-                                                            index->settings->sax_bit_cardinality,
-                                                            index->settings->sax_alphabet_cardinality,
-                                                            index->settings->paa_segments,
-                                                            MINVAL, MAXVAL,
-                                                            index->settings->mindist_sqrt);
-        }
+        mindist_result->distance = messi_minidist_raw(index, paa, current_root_node->isax_values,
+                                                      current_root_node->isax_cardinalities, minimum_distance);
         mindist_result->node = current_root_node;
         pqueue_insert(pq, mindist_result);
 
@@ -149,20 +135,10 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                         calculate_node_topk_inmemory(index, n->node->left_child, ts, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                           n->node->left_child->isax_values,
-                                                                           n->node->left_child->isax_cardinalities,
-                                                                           minimum_distance);
-                        } else {
-                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                            n->node->left_child->isax_cardinalities,
-                                                                            index->settings->sax_bit_cardinality,
-                                                                            index->settings->sax_alphabet_cardinality,
-                                                                            index->settings->paa_segments,
-                                                                            MINVAL, MAXVAL,
-                                                                            index->settings->mindist_sqrt);
-                        }
+                        mindist_result->distance = messi_minidist_raw(index, paa,
+                                                                      n->node->left_child->isax_values,
+                                                                      n->node->left_child->isax_cardinalities,
+                                                                      minimum_distance);
                         mindist_result->node = n->node->left_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -173,20 +149,10 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                         calculate_node_topk_inmemory(index, n->node->right_child, ts, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        if (index->settings->function_type == 4) {
-                            mindist_result->distance = minidist_fft_to_sfa(index, paa,
-                                                                           n->node->right_child->isax_values,
-                                                                           n->node->right_child->isax_cardinalities,
-                                                                           minimum_distance);
-                        } else {
-                            mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                            n->node->right_child->isax_cardinalities,
-                                                                            index->settings->sax_bit_cardinality,
-                                                                            index->settings->sax_alphabet_cardinality,
-                                                                            index->settings->paa_segments,
-                                                                            MINVAL, MAXVAL,
-                                                                            index->settings->mindist_sqrt);
-                        }
+                        mindist_result->distance = messi_minidist_raw(index, paa,
+                                                                      n->node->right_child->isax_values,
+                                                                      n->node->right_child->isax_cardinalities,
+                                                                      minimum_distance);
                         mindist_result->node = n->node->right_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -213,7 +179,6 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
 void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf) {
     COUNT_CHECKED_NODE()
     // If node has buffered data
-
 
     if (node->buffer != NULL) {
         int i;
@@ -247,8 +212,6 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
             }
         }
     }
-    //////////////////////////////////////
-
 }
 
 void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, pqueue_bsf *pq_bsf,
@@ -258,8 +221,9 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
     if (node->buffer != NULL) {
         int i;
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            float dist = ts_euclidean_distance_SIMD(query, node->buffer->full_ts_buffer[i],
-                                                    index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
+            float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
+                               index->settings->SIMD_flag, index->settings->is_norm);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pthread_rwlock_wrlock(lock_queue);
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
@@ -268,24 +232,26 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
         }
 
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            float dist = ts_euclidean_distance_SIMD(query, node->buffer->tmp_full_ts_buffer[i],
-                                                    index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
+            float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
+                               index->settings->SIMD_flag, index->settings->is_norm);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pthread_rwlock_wrlock(lock_queue);
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
                 pthread_rwlock_unlock(lock_queue);
             }
         }
+
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-            float distmin = minidist_paa_to_isax_rawa_SIMD(paa, node->buffer->partial_sax_buffer[i],
-                                                           index->settings->max_sax_cardinalities,
-                                                           index->settings->sax_bit_cardinality,
-                                                           index->settings->sax_alphabet_cardinality,
-                                                           index->settings->paa_segments, MINVAL, MAXVAL,
-                                                           index->settings->mindist_sqrt);
+            float distmin;
+            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, pq_bsf->knn[pq_bsf->k - 1]);
+
             if (distmin <= pq_bsf->knn[pq_bsf->k - 1]) {
-                float dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                                        index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
+                float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                   index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
+                                   index->settings->SIMD_flag, index->settings->is_norm);
+
                 if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                     pthread_rwlock_wrlock(lock_queue);
                     pqueue_bsf_insert(pq_bsf, dist,
@@ -296,8 +262,6 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
             }
         }
     }
-    //////////////////////////////////////
-
 }
 
 
@@ -534,13 +498,8 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
 
                 checks++;
                 //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
-                if (index->settings->function_type == 4) {
-                    calculate_node_topk_inmemory_SFA(index, n->node, ts, paa, pq_bsf,
-                                                     ((MESSI_workerdata *) rfdata)->lock_bsf);
-                } else {
-                    calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
-                                                  ((MESSI_workerdata *) rfdata)->lock_bsf);
-                }
+                calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
+                                              ((MESSI_workerdata *) rfdata)->lock_bsf);
 
 
             }
@@ -577,13 +536,8 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
                             //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
-                            if (index->settings->function_type == 4) {
-                                calculate_node_topk_inmemory_SFA(index, n->node, ts, paa, pq_bsf,
-                                                                 ((MESSI_workerdata *) rfdata)->lock_bsf);
-                            } else {
-                                calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
-                                                              ((MESSI_workerdata *) rfdata)->lock_bsf);
-                            }
+                            calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
+                                                          ((MESSI_workerdata *) rfdata)->lock_bsf);
 
                         }
 

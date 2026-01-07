@@ -274,9 +274,7 @@ query_result  approximate_search (ts_type *ts, ts_type *paa, isax_index *index)
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -335,9 +333,7 @@ query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -404,9 +400,7 @@ void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf
 {
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -722,9 +716,7 @@ query_result  approximate_search_SIMD (ts_type *ts, ts_type *paa, isax_index *in
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);

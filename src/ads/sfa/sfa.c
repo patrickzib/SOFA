@@ -130,17 +130,11 @@ void sfa_set_bins(
     pthread_t threadid[maxquerythread];
     bins_data_inmemory *input_data = malloc(sizeof(bins_data_inmemory) * (maxquerythread));
 
-    ts_type *ts;
-    fftwf_complex *ts_out;
-    fftwf_plan plan_forward;
-    ts_type *transform;
+    fftw_workspace fftw = {0};
 
     for (int i = 0; i < maxquerythread; i++) {
         //create FFTW-objects for the threads
-        ts = fftwf_malloc(sizeof(ts_type) * ts_length);
-        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
-        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts, ts_out, FFTW_ESTIMATE);
-        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+        fftw_workspace_init(&fftw, ts_length);
 
         input_data[i].index = index;
         input_data[i].dft_mem_array = dft_mem_array;
@@ -165,13 +159,10 @@ void sfa_set_bins(
             input_data[i].stop_number = ts_num;
         }
 
-        input_data[i].ts = ts;
         input_data[i].filetype_int = filetype_int;
         input_data[i].apply_znorm = apply_znorm;
 
-        input_data[i].ts_out = ts_out;
-        input_data[i].plan_forward = plan_forward;
-        input_data[i].transform = transform;
+        input_data[i].fftw = fftw;
     }
 
     // reset values for last worker to keep lost segments at the end
@@ -202,10 +193,7 @@ void sfa_set_bins(
     }
 
     for (int i = 0; i < maxquerythread; i++) {
-        fftwf_destroy_plan(input_data[i].plan_forward);
-        fftwf_free(input_data[i].ts);
-        fftwf_free(input_data[i].ts_out);
-        fftwf_free(input_data[i].transform);
+        fftw_workspace_destroy(&input_data[i].fftw);
 
         input_data[i].start_number = i * (paa_segments / maxquerythread);
         input_data[i].stop_number = (i + 1) * (paa_segments / maxquerythread);
@@ -316,10 +304,12 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     for (int i = 0; i < paa_segments / 2; ++i) {
         int coeff = index->coefficients[i];
 
-        for (int j = 0; j < sample_size; ++j) {
-            dft_mem_array_coeff[i * 2][j] = dft_mem_array[coeff * 2][j];
-            dft_mem_array_coeff[i * 2 + 1][j] = dft_mem_array[coeff * 2 + 1][j];
-        }
+        memcpy(dft_mem_array_coeff[i * 2],
+               dft_mem_array[coeff * 2],
+               sizeof(ts_type) * sample_size);
+        memcpy(dft_mem_array_coeff[i * 2 + 1],
+               dft_mem_array[coeff * 2 + 1],
+               sizeof(ts_type) * sample_size);
     }
 
     return dft_mem_array_coeff;
@@ -369,10 +359,8 @@ void *set_bins_worker_dft(void *transferdata) {
         // TODO skip_elements = (((stop_number - start_number) / records) - 1) * ts_length * sizeof(ts_type);
     }
 
-    ts_type *ts = bins_data->ts;
-    fftwf_complex *ts_out = bins_data->ts_out;
-    fftwf_plan plan_forward = bins_data->plan_forward;
-    ts_type *transform = bins_data->transform;
+    ts_type *ts = bins_data->fftw.ts;
+    fftw_workspace *fftw = &bins_data->fftw;
 
     file_type *ts_orig1;
     ts_type *ts_orig2;
@@ -408,13 +396,13 @@ void *set_bins_worker_dft(void *transferdata) {
 
         int use_best = index->settings->coeff_number != 0;
         if (use_best) {
-            fft_from_ts(index, ts, index->settings->coeff_number, 0, ts_out, transform, plan_forward);
+            fft_from_ts(index, index->settings->coeff_number, 0, fftw);
         } else {
-            fft_from_ts(index, ts, index->settings->paa_segments, 0, ts_out, transform, plan_forward);
+            fft_from_ts(index, index->settings->paa_segments, 0, fftw);
         }
 
         for (int j = 0; j < coeff_number; ++j) {
-            ts_type value = transform[j];
+            ts_type value = fftw->transform[j];
             dft_mem_array[j][i + (bins_data->workernumber * bins_data->records_offset)] = value;
         }
 
@@ -643,45 +631,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
 ts_type minidist_fft_to_sfa_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
-    int max_cardinality = index->settings->sax_alphabet_cardinality;
-    int number_of_segments = index->settings->paa_segments;
-
-    ts_type distance = 0.0;
-    int i = 0;
-
-    //special case: for not normalized time series, the first coefficient has to be treated specially
-    //for normalized data, this part is skipped
-    if (!index->settings->is_norm &&
-        (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
-        distance += get_lb_distance(
-                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 1.0);
-
-        if (distance > bsf) {
-            return distance;
-        }
-
-        if (index->settings->coeff_number == 0) {
-            // if no variance-based coefficient selection is chosen
-            // skip the imaginary part of the first coefficient
-            i = 2;
-        } else {
-            i = 1;
-        }
-    }
-
-    for (; i < number_of_segments; i++) {
-        distance += get_lb_distance(
-                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 2.0);
-
-        if (distance > bsf) {
-            return distance;
-        }
-    }
-
-    return distance;
+    return minidist_fft_to_sfa(index, fft, sax, sax_cardinalities, bsf);
 }
 
 void sfa_printbin(unsigned long long n, int size) {
@@ -903,10 +853,5 @@ minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
 
     return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
 
-}
-#else
-ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax,
-                                      sax_type *sax_cardinalities, float bsf) {
-    return minidist_fft_to_sfa_raw(index, fft, sax, sax_cardinalities, bsf);
 }
 #endif
