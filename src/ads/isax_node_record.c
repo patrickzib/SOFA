@@ -4,7 +4,7 @@
 //
 //  Created by Kostas Zoumpatianos and Botao Peng, March 2020
 //
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>

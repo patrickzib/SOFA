@@ -14,7 +14,7 @@
  * License for the specific language governing permissions and limitations under
  * the License.
 */
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdlib.h>
 #include <stdio.h>

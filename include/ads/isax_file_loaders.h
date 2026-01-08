@@ -7,7 +7,7 @@
 
 #ifndef isax_isax_file_loaders_h
 #define isax_isax_file_loaders_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "sax/ts.h"
 #include "sax/sax.h"

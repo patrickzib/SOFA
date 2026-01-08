@@ -4,7 +4,7 @@
 //
 //  Created by Kostas Zoumpatianos and Botao Peng, March 2020
 //
-#include "../../../config.h"
+#include "config.h"
 #include "../../../globals.h"
 
 #include <stdio.h>
@@ -137,22 +137,6 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
 
 
 float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char is_norm) {
-    /*if (is_simd) {
-        if (is_norm) {
-            return ts_euclidean_distance_dot_product_SIMD(t, s, size);
-        }
-        else {
-            return ts_euclidean_distance_SIMD(t, s, size, bound);
-        }
-    }
-    else {
-        if (is_norm) {
-            return ts_euclidean_distance_dot_product(t, s, size);
-        }
-        else {
-            return ts_euclidean_distance(t, s, size, bound);
-        }
-    }*/
     if (is_simd) {
 #if ADS_HAVE_AVX2
         return ts_euclidean_distance_SIMD(t, s, size, bound);

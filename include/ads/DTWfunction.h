@@ -2,7 +2,7 @@
 #define isaxlib_dtw_h
 
 #include <float.h>
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,7 +11,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <sys/wait.h>
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "ads/sax/sax.h"
 #include "ads/sax/ts.h"

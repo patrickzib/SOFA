@@ -1,7 +1,7 @@
 #ifndef sfalib_dft_h
 #define sfalib_dft_h
 
-#include "../../../config.h"
+#include "config.h"
 #include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>

@@ -22,7 +22,7 @@
  *
  * @{
  */
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include "isax_node.h"

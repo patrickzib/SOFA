@@ -7,7 +7,7 @@
 
 #ifndef isaxlib_sax_h
 #define isaxlib_sax_h
-#include "../../../config.h"
+#include "config.h"
 #include "../../../globals.h"
 #include "ts.h"
 #include "../isax_index.h"

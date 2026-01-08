@@ -13,7 +13,7 @@ INITIAL_LBL_SIZE=$LEAF_SIZE
 CPU_TYPE=${82:-1}
 QUEUE_NUMBER=${8:-1}
 
-./bin/MESSI \
+./build/bin/MESSI \
   --dataset $FILE_PATH \
   --in-memory \
   --timeseries-size $TS_SIZE \

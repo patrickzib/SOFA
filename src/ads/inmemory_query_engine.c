@@ -3,7 +3,7 @@
 #endif
 
 #include <float.h>
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>

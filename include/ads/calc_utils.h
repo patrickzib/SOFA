@@ -1,7 +1,7 @@
 #ifndef MESSI_SFA_CALC_UTILS_H
 #define MESSI_SFA_CALC_UTILS_H
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_index.h"
 #include "sax/sax.h"

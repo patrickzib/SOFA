@@ -7,7 +7,7 @@
 
 #ifndef isaxlib_isax_node_split_h
 #define isaxlib_isax_node_split_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_index.h"
 #include "isax_node.h"

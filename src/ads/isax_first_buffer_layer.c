@@ -4,7 +4,7 @@
 //
 //  Created by Botao PENG
 //
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>

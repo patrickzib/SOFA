@@ -1,7 +1,7 @@
 
 #ifndef al_parallel_inmemory_query_engine_h
 #define al_parallel_inmemory_query_engine_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "sax/ts.h"
 #include "sax/sax.h"

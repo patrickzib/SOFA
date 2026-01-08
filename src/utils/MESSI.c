@@ -14,7 +14,7 @@
 #include <values.h>
 #endif
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <ctype.h>
 #include <stdio.h>

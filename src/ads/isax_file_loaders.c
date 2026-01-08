@@ -6,7 +6,7 @@
 //
 
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdio.h>

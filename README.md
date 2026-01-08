@@ -1,10 +1,18 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# To compile MESSI v2.0
+# To compile MESSI v2.0 (Autotools, out-of-source)
 ```bash
-./configure
+mkdir -p build
+cd build
+../configure
 make
+```
+
+# To compile with CMake (out-of-source)
+```bash
+cmake -S . -B build -DMESSI_ENABLE_NATIVE_ARCH=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 # Scripts

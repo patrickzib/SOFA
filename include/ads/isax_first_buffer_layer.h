@@ -7,7 +7,7 @@
 
 #ifndef isaxlib_first_buffer_layer_h
 #define isaxlib_first_buffer_layer_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_node.h"
 #include "isax_index.h"

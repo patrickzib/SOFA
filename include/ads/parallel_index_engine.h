@@ -1,6 +1,6 @@
 #ifndef parallel_parallel_index_engine_h
 #define parallel_parallel_index_engine_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "sax/ts.h"
 #include "sax/sax.h"	

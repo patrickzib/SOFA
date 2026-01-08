@@ -10,7 +10,7 @@
 
 struct isax_node;
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_node_record.h"
 #include "isax_node_buffer.h"

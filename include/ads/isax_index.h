@@ -13,7 +13,7 @@
 #include <sys/stat.h>
 #include <stdio.h>
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_node.h"
 #include "isax_node_record.h"

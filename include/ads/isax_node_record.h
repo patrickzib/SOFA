@@ -7,7 +7,7 @@
 
 #ifndef isaxlib_isax_node_record_h
 #define isaxlib_isax_node_record_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 
 typedef struct {

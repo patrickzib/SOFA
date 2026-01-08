@@ -7,7 +7,7 @@
 
 #ifndef al_isax_isax_query_engine_h
 #define al_isax_isax_query_engine_h
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_index.h"
 #include "isax_node.h"

@@ -43,7 +43,7 @@
 #include <values.h>
 #endif
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 	
 #include <stdio.h>

@@ -15,6 +15,34 @@ SIMD_CFLAGS = os.environ.get("SIMD_CFLAGS", "")
 COMMON_CFLAGS = [flag for flag in (FFTW_CFLAGS + " " + SIMD_CFLAGS).split() if flag]
 COMMON_LDFLAGS = [flag for flag in FFTW_LIBS.split() if flag]
 
+
+def _ensure_config_header() -> None:
+    config_path = ROOT / "config.h"
+    if config_path.exists():
+        existing = config_path.read_text(encoding="ascii", errors="ignore")
+        if "Auto-generated for Python builds" not in existing:
+            return
+    config_path.write_text(
+        "\n".join(
+            [
+                "/* Auto-generated for Python builds; run ./configure for full detection. */",
+                "#ifndef MESSI_CONFIG_H",
+                "#define MESSI_CONFIG_H",
+                "#define ADS_HAVE_AVX2 0",
+                "#define BENCHMARK 1",
+                "#define HAVE_PTHREAD_BARRIER 0",
+                "#define VERBOSE 0",
+                "#define VERBOSE_LEVEL 0",
+                "#endif /* MESSI_CONFIG_H */",
+                "",
+            ]
+        ),
+        encoding="ascii",
+    )
+
+
+_ensure_config_header()
+
 sources = [
     "src/ads/api.c",
     "src/ads/isax_file_loaders.c",
