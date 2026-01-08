@@ -71,9 +71,9 @@ void* LOGFILE;
 ///// MACROS /////
 #define CREATE_MASK(mask, index, sax_array)\
 	int mask__i; \
-	for (mask__i=0; mask__i < index->settings->paa_segments; mask__i++) \
+	for (mask__i=0; mask__i < index->settings->n_segments; mask__i++) \
 		if(index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & sax_array[mask__i]) \
-			mask |= index->settings->bit_masks[index->settings->paa_segments - mask__i - 1];  
+			mask |= index->settings->bit_masks[index->settings->n_segments - mask__i - 1];  
 
 
 ///// BENCHMARKING /////

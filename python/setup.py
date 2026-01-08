@@ -37,6 +37,8 @@ sources = [
     "src/ads/inmemory_topk_engine.c",
     "src/ads/sfa/dft.c",
     "src/ads/sfa/sfa.c",
+    "src/ads/spartan/pca.c",
+    "src/ads/spartan/spartan.c",
     "src/ads/calc_utils.c",
 ]
 sourcedirs = [str(ROOT / path) for path in sources]

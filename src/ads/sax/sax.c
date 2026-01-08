@@ -45,7 +45,7 @@ int compare(const void *a, const void *b) {
 enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, isax_index_settings *settings) {
     //fprintf(stderr, "paa from ts\n");
 
-    int segments = settings->paa_segments;
+    int segments = settings->n_segments;
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
     int timeseries_size = settings->timeseries_size;
     int left_values = timeseries_size; // if timeseries size is not divisible by segments
@@ -65,7 +65,7 @@ enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, isax_index_settings 
 enum response sax_from_paa(ts_type *paa, sax_type *sax, isax_index_settings *settings) {
     //fprintf(stderr, "sax from paa\n");
 
-    int segments = settings->paa_segments;
+    int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
     int bit_cardinality = settings->sax_bit_cardinality;
     int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
@@ -97,7 +97,7 @@ enum response sax_from_paa(ts_type *paa, sax_type *sax, isax_index_settings *set
 enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, isax_index_settings *settings) {
     // Create PAA representation
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
-    int segments = settings->paa_segments;
+    int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
     int bit_cardinality = settings->sax_bit_cardinality;
     int timeseries_size = settings->timeseries_size;
@@ -153,7 +153,7 @@ enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, isax_index_settings
 enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, isax_index_settings *settings) {
     // Create PAA representation
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
-    int segments = settings->paa_segments;
+    int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
     int bit_cardinality = settings->sax_bit_cardinality;
     int timeseries_size = settings->timeseries_size;
@@ -270,7 +270,7 @@ enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_
                                int segments, int cardinality, int bit_cardinality) {
     isax_index_settings settings = {
         .ts_values_per_paa_segment = ts_values_per_segment,
-        .paa_segments = segments,
+        .n_segments = segments,
         .sax_alphabet_cardinality = cardinality,
         .sax_bit_cardinality = bit_cardinality,
         .timeseries_size = segments * ts_values_per_segment

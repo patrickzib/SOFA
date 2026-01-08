@@ -23,7 +23,7 @@
 */
 void fft_from_ts(
         isax_index *index,
-        int coeff_number, int best_only,
+        int n_coefficients, int best_only,
         fftw_workspace *fftw) {
     fftwf_execute(fftw->plan_forward);
 
@@ -36,13 +36,13 @@ void fft_from_ts(
     int start_offset = index->settings->is_norm ? 1 : 0;
 
     if (best_only) {
-        for (int k = 0; k < coeff_number / 2; ++k, j+= 2) {
+        for (int k = 0; k < n_coefficients / 2; ++k, j+= 2) {
             int coeff = index->coefficients[k] + start_offset;
             fftw->transform[j] = fftw->ts_out[coeff][0];
             fftw->transform[j + 1] = fftw->ts_out[coeff][1] * -1;
         }
     } else {
-        for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k, j+= 2) {
+        for (int k = start_offset; k < n_coefficients / 2 + start_offset; ++k, j+= 2) {
             fftw->transform[j] = fftw->ts_out[k][0];
             fftw->transform[j + 1] = fftw->ts_out[k][1] * -1;
         }
@@ -50,10 +50,9 @@ void fft_from_ts(
 
     // normalizing fft result in frequency domain to allow for lower bounding
     ts_type norm_factor = index->norm_factor;
-    for (int i = 0; i < coeff_number; ++i) {
+    for (int i = 0; i < n_coefficients; ++i) {
         fftw->transform[i] *= norm_factor;
     }
-    return;
 }
 
 /*
@@ -62,11 +61,11 @@ void fft_from_ts(
 */
 void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_sfa_word) {
     unsigned long ts_length = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
     int cardinality = index->settings->sax_alphabet_cardinality;
     int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
 
-    for (int k = 0; k < paa_segments; ++k) {
+    for (int k = 0; k < n_segments; ++k) {
         unsigned int c;
         for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {
             if (cur_transform[k] < index->bins[k][c]) {
@@ -82,11 +81,11 @@ void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_
 */
 enum response sfa_from_ts(isax_index *index, sax_type *sax_out, fftw_workspace *fftw) {
 
-    int use_best = index->settings->coeff_number != 0;
-    fft_from_ts(index, index->settings->paa_segments, use_best, fftw);
+    int use_best = index->settings->n_coefficients != 0;
+    fft_from_ts(index, index->settings->n_segments, use_best, fftw);
 
-    ts_type *cur_coeff_line = calloc(index->settings->paa_segments, sizeof(ts_type));
-    memcpy(cur_coeff_line, fftw->transform, sizeof(ts_type) * index->settings->paa_segments);
+    ts_type *cur_coeff_line = calloc(index->settings->n_segments, sizeof(ts_type));
+    memcpy(cur_coeff_line, fftw->transform, sizeof(ts_type) * index->settings->n_segments);
 
     sfa_from_fft(index, cur_coeff_line, sax_out);
 

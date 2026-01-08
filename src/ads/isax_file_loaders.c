@@ -32,6 +32,7 @@
 #include "ads/inmemory_query_engine.h"
 #include "ads/sax/ts.h"
 #include "ads/sfa/dft.h"
+#include "ads/spartan/spartan.h"
 
 void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
                             float minimum_distance, int min_checked_leaves,
@@ -55,16 +56,11 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-
-    //SFA
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fftw_workspace fftw = {0};
-
     if (index->settings->function_type == 4) {
-        unsigned long ts_length = index->settings->timeseries_size;
-
-        fftw_workspace_init(&fftw, ts_length);
+        fftw_workspace_init(&fftw, index->settings->timeseries_size);
     }
 
 
@@ -77,15 +73,13 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         //Parse TS and make FFT representation
         if (index->settings->function_type == 4) {
             memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
-            int use_best = index->settings->coeff_number != 0;
-            fft_from_ts(index, index->settings->paa_segments, use_best, &fftw);
+            int use_best = index->settings->n_coefficients != 0;
+            fft_from_ts(index, index->settings->n_segments, use_best, &fftw);
 
-            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
-        }
-
-
-            // Parse ts and make PAA representation
-        else {
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
+        } else if (index->settings->function_type == 5) {
+            pca_from_ts(index, ts, paa);
+        } else {
             paa_from_ts(ts, paa, index->settings);
         }
 
@@ -100,9 +94,9 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -143,7 +137,7 @@ void isax_query_binary_file_traditional(
     int q_loaded = 0;
 
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
@@ -166,7 +160,7 @@ void isax_query_binary_file_traditional(
     if (filetype_int) {
         ts_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size);
     }
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     unsigned long ts_length = index->settings->timeseries_size;
 
@@ -205,13 +199,15 @@ void isax_query_binary_file_traditional(
             //SFA: parse ts and make fft representation
             memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
-            int use_best = index->settings->coeff_number != 0;
+            int use_best = index->settings->n_coefficients != 0;
             fft_from_ts(
 				index,
-				index->settings->paa_segments,
+				index->settings->n_segments,
 				use_best, &fftw);
 
-            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
+        } else if (index->settings->function_type == 5) {
+            pca_from_ts(index, ts, paa);
         } else {
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
@@ -273,16 +269,29 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+    fftw_workspace fftw = {0};
+    if (index->settings->function_type == 4) {
+        fftw_workspace_init(&fftw, index->settings->timeseries_size);
+    }
 
     while (q_loaded < q_num) {
         COUNT_INPUT_TIME_START
         fread(ts, sizeof(ts_type), index->settings->timeseries_size, ifile);
         COUNT_INPUT_TIME_END
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
-        // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings);
+        if (index->settings->function_type == 4) {
+            memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
+            int use_best = index->settings->n_coefficients != 0;
+            fft_from_ts(index, index->settings->n_segments, use_best, &fftw);
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
+        } else if (index->settings->function_type == 5) {
+            pca_from_ts(index, ts, paa);
+        } else {
+            // Parse ts and make PAA representation
+            paa_from_ts(ts, paa, index->settings);
+        }
         query_result bsf = search_function(ts, paa, index, minimum_distance, min_checked_leaves, FLT_MAX);
         COUNT_TOTAL_TIME_START
         query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, bsf.distance);
@@ -293,9 +302,9 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -304,6 +313,9 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
+    if (index->settings->function_type == 4) {
+        fftw_workspace_destroy(&fftw);
+    }
 
 }
 
@@ -329,8 +341,8 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
         COUNT_INPUT_TIME_START
@@ -350,9 +362,9 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
         PRINT_STATS(result.knn[result.k - 1])
         fflush(stdout);
 
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
         q_loaded++;
     }
@@ -396,8 +408,8 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
         COUNT_INPUT_TIME_START
@@ -432,9 +444,9 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
         //PRINT_STATS(result.knn[result.k-1])
         fflush(stdout);
 
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
         q_loaded++;
         free(classcounter);
@@ -471,7 +483,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     int q_loaded = 0;
 
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
@@ -495,7 +507,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
         ts_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size);
     }
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     int ts_length = index->settings->timeseries_size;
 
     if (index->settings->function_type == 4) {
@@ -531,10 +543,12 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
             //SFA: parse ts and make fft representation
             memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
-            int use_best = index->settings->coeff_number != 0;
-            fft_from_ts(index, index->settings->paa_segments, use_best, &fftw);
+            int use_best = index->settings->n_coefficients != 0;
+            fft_from_ts(index, index->settings->n_segments, use_best, &fftw);
 
-            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->paa_segments);
+            memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
+        } else if (index->settings->function_type == 5) {
+            pca_from_ts(index, ts, paa);
         } else {
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
@@ -606,10 +620,10 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->paa_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
@@ -659,9 +673,9 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
         //PRINT_STATS(result.knn[result.k-1])
         fflush(stdout);
 
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
         q_loaded++;
         free(classcounter);
@@ -697,23 +711,23 @@ void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *
 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size * q_num);
-    ts_type *paa = malloc(sizeof(ts_type) * index->settings->paa_segments * q_num);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments * q_num);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fread(ts, sizeof(ts_type), index->settings->timeseries_size * q_num, ifile);
     while (q_loaded < q_num) {
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(&(ts[index->settings->timeseries_size * q_loaded]),
-                    &(paa[index->settings->paa_segments * q_loaded]), index->settings);
+                    &(paa[index->settings->n_segments * q_loaded]), index->settings);
 
 
         fflush(stdout);
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -755,7 +769,7 @@ void isax_index_binary_file(const char *ifilename, int ts_num, isax_index *index
     int ts_loaded = 0;
 
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     file_position_type *pos = malloc(sizeof(file_position_type));
 
     index->settings->raw_filename = malloc(256);
@@ -1044,8 +1058,8 @@ void isax_merge_sorted_index_binary_file(const char *ifilename, int ts_num, isax
     int j;
     unsigned long i;
     int segment;
-    sax_type *removals = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    for (i = 0; i < index->settings->paa_segments; i++) {
+    sax_type *removals = malloc(sizeof(sax_type) * index->settings->n_segments);
+    for (i = 0; i < index->settings->n_segments; i++) {
         removals[i] = 0;
     }
 
@@ -1057,7 +1071,7 @@ void isax_merge_sorted_index_binary_file(const char *ifilename, int ts_num, isax
     do {
         // If I remove 1 bit from a segment what is the average page utilization?
         int best_segment = prev_best_segment + 1;
-        if (best_segment >= index->settings->paa_segments) {
+        if (best_segment >= index->settings->n_segments) {
             best_segment = 0;
         }
         prev_best_segment = best_segment;
@@ -1067,13 +1081,13 @@ void isax_merge_sorted_index_binary_file(const char *ifilename, int ts_num, isax
         char updated = 0;
 
         //printf("Starting with: %d\n", best_segment);
-        for (segment = 0; segment < index->settings->paa_segments; segment++) {
+        for (segment = 0; segment < index->settings->n_segments; segment++) {
 
             for (i = 0; i < ts_num; i++) {
                 memcpy(&new_dataset[i], &sax_vectors[i], sizeof(sax_vector));
                 sax_type *sax_cpy = (sax_type *) &(new_dataset[i].sax);
                 int k;
-                for (k = 0; k < index->settings->paa_segments; k++) {
+                for (k = 0; k < index->settings->n_segments; k++) {
                     if (k == segment) {
                         sax_cpy[k] = (sax_cpy[k] >> (removals[k] + 1));
                     } else {

@@ -25,7 +25,7 @@ int simple_split_decision(isax_node_split_data *split_data,
         return 0;
 
     split_data->splitpoint = 1;
-    while (split_data->splitpoint < settings->paa_segments) {
+    while (split_data->splitpoint < settings->n_segments) {
         if (split_data->split_mask[split_data->splitpoint] <
             split_data->split_mask[split_data->splitpoint - 1]) {
 
@@ -41,31 +41,31 @@ int informed_split_decision(isax_node_split_data *split_data,
                             isax_index_settings *settings,
                             isax_node_record *records_buffer,
                             int records_buffer_size) {
-    double *segment_mean = malloc(sizeof(double) * settings->paa_segments);
-    double *segment_stdev = malloc(sizeof(double) * settings->paa_segments);
+    double *segment_mean = malloc(sizeof(double) * settings->n_segments);
+    double *segment_stdev = malloc(sizeof(double) * settings->n_segments);
 
 
     int i, j;
-    for (i = 0; i < settings->paa_segments; i++) {
+    for (i = 0; i < settings->n_segments; i++) {
         segment_mean[i] = 0;
         segment_stdev[i] = 0;
     }
     for (i = 0; i < records_buffer_size; i++) {
-        for (j = 0; j < settings->paa_segments; j++) {
+        for (j = 0; j < settings->n_segments; j++) {
             segment_mean[j] += (int) records_buffer[i].sax[j];
 
         }
     }
-    for (i = 0; i < settings->paa_segments; i++) {
+    for (i = 0; i < settings->n_segments; i++) {
         segment_mean[i] /= (records_buffer_size);
         //printf("mean: %lf\n", segment_mean[i]);
     }
     for (i = 0; i < records_buffer_size; i++) {
-        for (j = 0; j < settings->paa_segments; j++) {
+        for (j = 0; j < settings->n_segments; j++) {
             segment_stdev[j] += pow(segment_mean[j] - (int) records_buffer[i].sax[j], 2);
         }
     }
-    for (i = 0; i < settings->paa_segments; i++) {
+    for (i = 0; i < settings->n_segments; i++) {
         segment_stdev[i] = sqrt(segment_stdev[i] / (records_buffer_size));
         //printf("stdev: %lf\n", segment_stdev[i]);
     }
@@ -75,7 +75,7 @@ int informed_split_decision(isax_node_split_data *split_data,
     // Decide split point based on the above calculations
     int segment_to_split = -1;
     int segment_to_split_b = -1;
-    for (i = 0; i < settings->paa_segments; i++) {
+    for (i = 0; i < settings->n_segments; i++) {
         if (split_data->split_mask[i] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         } else {
@@ -140,18 +140,18 @@ void split_node(isax_index *index, isax_node *node) {
     if (split_data == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split data.\n");
     }
-    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->n_segments);
     if (split_data->split_mask == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split mask.\n");
     }
 
     if (node->parent == NULL) {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = 0;
         }
         split_data->splitpoint = 0;
     } else {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = node->parent->split_data->split_mask[i];
         }
     }
@@ -266,7 +266,7 @@ void split_node(isax_index *index, isax_node *node) {
                     continue;
                 } else {
                     if (!fread(split_buffer[split_buffer_index].sax, sizeof(sax_type),
-                               index->settings->paa_segments, full_file)) {
+                               index->settings->n_segments, full_file)) {
                         // Free because it is not inserted in the tree
                         free(split_buffer[split_buffer_index].position);
                         free(split_buffer[split_buffer_index].sax);
@@ -333,7 +333,7 @@ void split_node(isax_index *index, isax_node *node) {
                     continue;
                 } else {
                     if (!fread(split_buffer[split_buffer_index].sax, sizeof(sax_type),
-                               index->settings->paa_segments, partial_file)) {
+                               index->settings->n_segments, partial_file)) {
                         // Free because it is not inserted in the tree
                         free(split_buffer[split_buffer_index].position);
                         free(split_buffer[split_buffer_index].sax);
@@ -429,18 +429,18 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
     if (split_data == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split data.\n");
     }
-    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->n_segments);
     if (split_data->split_mask == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split mask.\n");
     }
 
     if (node->parent == NULL) {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = 0;
         }
         split_data->splitpoint = 0;
     } else {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = node->parent->split_data->split_mask[i];
         }
     }
@@ -598,18 +598,18 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
     if (split_data == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split data.\n");
     }
-    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    split_data->split_mask = malloc(sizeof(sax_type) * index->settings->n_segments);
     if (split_data->split_mask == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split mask.\n");
     }
 
     if (node->parent == NULL) {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = 0;
         }
         split_data->splitpoint = 0;
     } else {
-        for (i = 0; i < index->settings->paa_segments; i++) {
+        for (i = 0; i < index->settings->n_segments; i++) {
             split_data->split_mask[i] = node->parent->split_data->split_mask[i];
         }
     }
@@ -725,7 +725,7 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
                     continue;
                 } else {
                     if (!fread(split_buffer[split_buffer_index].sax, sizeof(sax_type),
-                               index->settings->paa_segments, full_file)) {
+                               index->settings->n_segments, full_file)) {
                         // Free because it is not inserted in the tree
                         free(split_buffer[split_buffer_index].position);
                         free(split_buffer[split_buffer_index].sax);
@@ -794,7 +794,7 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
                     continue;
                 } else {
                     if (!fread(split_buffer[split_buffer_index].sax, sizeof(sax_type),
-                               index->settings->paa_segments, partial_file)) {
+                               index->settings->n_segments, partial_file)) {
                         // Free because it is not inserted in the tree
                         free(split_buffer[split_buffer_index].position);
                         free(split_buffer[split_buffer_index].sax);

@@ -191,7 +191,7 @@ isax_node * insert_to_fbl(first_buffer_layer *fbl, sax_type *sax,
     #ifdef DEBUG
     printf("*** Added to node ***\n\n");
     #ifdef TOY
-    sax_print(sax, index->settings->paa_segments, 
+    sax_print(sax, index->settings->n_segments, 
               index->settings->sax_bit_cardinality);
     #endif
     #endif

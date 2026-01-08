@@ -44,13 +44,13 @@ cdef class Index:
                   char is_norm=0,
                   int histogram_type=2,
                   int sample_type=3,
-                  int coeff_number=32,
+                  int n_coefficients=32,
                   int max_query_threads=1,
                   root_directory=None):
         cdef messi_index_params params
         cdef bytes root_dir_bytes
         params.timeseries_size = timeseries_size
-        params.paa_segments = DEFAULT_PAA_SEGMENTS
+        params.n_segments = DEFAULT_PAA_SEGMENTS
         params.sax_bit_cardinality = sax_bit_cardinality
         params.max_leaf_size = max_leaf_size
         params.min_leaf_size = min_leaf_size
@@ -66,7 +66,7 @@ cdef class Index:
         params.is_norm = is_norm
         params.histogram_type = histogram_type
         params.sample_type = sample_type
-        params.coeff_number = coeff_number
+        params.n_coefficients = n_coefficients
         params.max_query_threads = max_query_threads
         params.queue_count = max_query_threads
         cdef const char *root_ptr = <const char *> 0

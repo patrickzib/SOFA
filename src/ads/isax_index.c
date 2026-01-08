@@ -70,13 +70,13 @@
  This function initializes the settings of an isax index
  */
 isax_index_settings * isax_index_settings_init(const char * root_directory, int timeseries_size, 
-                                                int paa_segments, int sax_bit_cardinality, 
+                                                int n_segments, int sax_bit_cardinality, 
                                                 int max_leaf_size, int min_leaf_size,
                                                 int initial_leaf_buffer_size,
                                                 int max_total_buffer_size, int initial_fbl_buffer_size,
                                                 int total_loaded_leaves, int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag, int sample_size,
-                                                char is_norm, int histogram_type, int sample_type, int coeff_number)
+                                                char is_norm, int histogram_type, int sample_type, int n_coefficients)
 {
     int i;
     isax_index_settings *settings = malloc(sizeof(isax_index_settings));
@@ -109,15 +109,15 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
         //settings->initial_fbl_buffer_size = 0;
     }
 
-    if(paa_segments > (int)(8 * (int)sizeof(root_mask_type))){
+    if(n_segments > (int)(8 * (int)sizeof(root_mask_type))){
         fprintf(stderr,"error: Too many paa segments. The maximum value is %zu.\n", 
                 8 * sizeof(root_mask_type));
         return NULL;
     }
-    if(paa_segments>timeseries_size)
+    if(n_segments>timeseries_size)
     {
         fprintf(stderr,"error: Too many paa-segments. Using timeseries-size as paa-segments instead.\n");
-        paa_segments = timeseries_size;
+        n_segments = timeseries_size;
     }
         
     if(initial_leaf_buffer_size < max_leaf_size)
@@ -130,9 +130,9 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->raw_filename = NULL;
 
     settings->timeseries_size = timeseries_size;
-    settings->paa_segments = paa_segments;
-    // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) paa_segments);
-    settings->ts_values_per_paa_segment =timeseries_size/ paa_segments;
+    settings->n_segments = n_segments;
+    // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) n_segments);
+    settings->ts_values_per_paa_segment =timeseries_size/ n_segments;
     settings->max_leaf_size = max_leaf_size;
     settings->min_leaf_size = min_leaf_size;
     settings->initial_leaf_buffer_size = initial_leaf_buffer_size;
@@ -141,7 +141,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 	settings->tight_bound = tight_bound;
     settings->aggressive_check = aggressive_check;
 	
-    settings->sax_byte_size = (sizeof(sax_type) * paa_segments);
+    settings->sax_byte_size = (sizeof(sax_type) * n_segments);
     settings->ts_byte_size = (sizeof(ts_type) * timeseries_size);
     settings->position_byte_size = sizeof(file_position_type);
     
@@ -154,34 +154,34 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sax_bit_cardinality = sax_bit_cardinality;
     settings->sax_alphabet_cardinality = pow(2, sax_bit_cardinality);
 	
-	settings->max_sax_cardinalities = malloc(sizeof(sax_type) * settings->paa_segments);
-	for(i=0; i<settings->paa_segments;i++)
+	settings->max_sax_cardinalities = malloc(sizeof(sax_type) * settings->n_segments);
+	for(i=0; i<settings->n_segments;i++)
 		settings->max_sax_cardinalities[i] = settings->sax_bit_cardinality;
 	
     //settings->mindist_sqrt = sqrtf((float) settings->timeseries_size /
-    //                               (float) settings->paa_segments);
+    //                               (float) settings->n_segments);
     settings->mindist_sqrt = ((float) settings->timeseries_size /
-                                   (float) settings->paa_segments);
-    settings->root_nodes_size = pow(2, settings->paa_segments);
+                                   (float) settings->n_segments);
+    settings->root_nodes_size = pow(2, settings->n_segments);
     
     // SEGMENTS * (CARDINALITY)
     float c_size = ceil(log10(settings->sax_alphabet_cardinality + 1));
-    settings->max_filename_size = settings->paa_segments * 
+    settings->max_filename_size = settings->n_segments * 
                                   ((c_size * 2) + 2)
                                   + 5 + strlen(root_directory);
     
     
-    if(paa_segments > sax_bit_cardinality)
+    if(n_segments > sax_bit_cardinality)
     {
-        settings->bit_masks = malloc(sizeof(root_mask_type) * (paa_segments+1));
+        settings->bit_masks = malloc(sizeof(root_mask_type) * (n_segments+1));
         if(settings->bit_masks == NULL) {
             fprintf(stderr,"error: could not allocate memory for bit masks.\n");
             return NULL;
         }
         
-        for (; paa_segments>=0; paa_segments--)
+        for (; n_segments>=0; n_segments--)
         {
-            settings->bit_masks[paa_segments] = pow(2, paa_segments);
+            settings->bit_masks[n_segments] = pow(2, n_segments);
         }
     }
     else
@@ -216,7 +216,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sample_type = sample_type;
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
-    settings->coeff_number = coeff_number;
+    settings->n_coefficients = n_coefficients;
 
     return settings;
 }
@@ -243,7 +243,7 @@ isax_index * isax_index_init(isax_index_settings *settings)
     index->settings = settings;
     index->first_node = NULL;
     index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
-                                pow(2, settings->paa_segments), 
+                                pow(2, settings->n_segments), 
                                 settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     char *sax_filename = malloc((strlen(settings->root_directory) + 15) * sizeof(char));
     sax_filename = strcpy(sax_filename, settings->root_directory);
@@ -267,6 +267,10 @@ isax_index * isax_index_init(isax_index_settings *settings)
     //index->locations = malloc(sizeof(int) * settings->timeseries_size);
 
     index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
+    index->pca_mean = NULL;
+    index->pca_components = NULL;
+    index->pca_components_count = 0;
+    index->pca_dim = 0;
 
     return index;
 }
@@ -307,6 +311,13 @@ void isax_index_destroy(isax_index *index, isax_node *node)
         }
         if(index->sax_cache != NULL)
             free(index->sax_cache);
+        if (index->pca_mean != NULL) {
+            free(index->pca_mean);
+        }
+        if (index->pca_components != NULL) {
+            free(index->pca_components);
+        }
+        index->pca_dim = 0;
         free(index);
     }
     else {
@@ -372,6 +383,13 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
         }
         if(index->sax_cache != NULL)
             free(index->sax_cache);
+        if (index->pca_mean != NULL) {
+            free(index->pca_mean);
+        }
+        if (index->pca_components != NULL) {
+            free(index->pca_components);
+        }
+        index->pca_dim = 0;
         free(index);
     }
     else {
@@ -559,7 +577,7 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
         
         curr_node = new_node;
     }
-    isax_node_record * record = isax_node_record_init(index->settings->paa_segments, 
+    isax_node_record * record = isax_node_record_init(index->settings->n_segments, 
                                                       index->settings->timeseries_size,
                                                       NO_TMP | PARTIAL);
     
@@ -598,11 +616,11 @@ enum response create_node_filename(isax_index *index,
     
     // If this has a parent then it is not a root node and as such it does have some 
     // split data on its parent about the cardinalities.
-    node->isax_values = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    node->isax_values = malloc(sizeof(sax_type) * index->settings->n_segments);
+    node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->n_segments);
     
     if (node->parent) {
-        for (i=0; i<index->settings->paa_segments; i++) {
+        for (i=0; i<index->settings->n_segments; i++) {
             root_mask_type mask = 0x00;
             int k; 
             for (k=0; k <= node->parent->split_data->split_mask[i]; k++) 
@@ -629,7 +647,7 @@ enum response create_node_filename(isax_index *index,
     {
         root_mask_type mask = 0x00;
         
-        for (i=0; i<index->settings->paa_segments; i++) {
+        for (i=0; i<index->settings->n_segments; i++) {
             
             mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
             mask = mask >> index->settings->sax_bit_cardinality - 1;
@@ -692,7 +710,7 @@ isax_node * add_record_to_node(isax_index *index,
         if (node->filename == NULL) {
             create_node_filename(index,node,record);
         }
-        add_to_node_buffer(node->buffer, record, index->settings->paa_segments, 
+        add_to_node_buffer(node->buffer, record, index->settings->n_segments, 
                            index->settings->timeseries_size);
         node->leaf_size++;
 
@@ -795,7 +813,7 @@ enum response flush_subtree_leaf_buffers (isax_index *index, isax_node *node)
         index->memory_info.disk_data_partial += (node->buffer->partial_buffer_size + 
                                                  node->buffer->tmp_partial_buffer_size); 
 
-        flush_node_buffer(node->buffer, index->settings->paa_segments, 
+        flush_node_buffer(node->buffer, index->settings->n_segments, 
                           index->settings->timeseries_size,
                           node->filename);
     }
@@ -857,10 +875,10 @@ enum response flush_subtree_leaf_buffers_m1(isax_index *index, isax_node *node,p
         //COUNT_CAL_TIME_END
         pthread_mutex_unlock(lock_index);
 
-        //flush_node_buffer(node->buffer, index->settings->paa_segments, 
+        //flush_node_buffer(node->buffer, index->settings->n_segments, 
         //                  index->settings->timeseries_size,
          //                 node->filename);
-        flush_node_buffer_m(node->buffer, index->settings->paa_segments,
+        flush_node_buffer_m(node->buffer, index->settings->n_segments,
                           index->settings->timeseries_size,
                           node->filename,lock_write);
     }
@@ -937,10 +955,10 @@ enum response flush_subtree_leaf_buffers_m(isax_index *index, isax_node *node,pt
         //COUNT_CAL_TIME_END
         pthread_mutex_unlock(lock_index);
 
-        //flush_node_buffer(node->buffer, index->settings->paa_segments, 
+        //flush_node_buffer(node->buffer, index->settings->n_segments, 
         //                  index->settings->timeseries_size,
          //                 node->filename);
-        flush_node_buffer_m(node->buffer, index->settings->paa_segments,
+        flush_node_buffer_m(node->buffer, index->settings->n_segments,
                           index->settings->timeseries_size,
                           node->filename,lock_write);
     }
@@ -1202,7 +1220,7 @@ float isax_index_load_node(isax_index *index, isax_node *c_node, ts_type * query
                 load_buffer[load_buffer_index].destination = node;
                 COUNT_INPUT_TIME_START
                 fread(load_buffer[load_buffer_index].position, sizeof(file_position_type), 1, partial_file);
-                fread(load_buffer[load_buffer_index].sax, sizeof(sax_type), index->settings->paa_segments, partial_file);
+                fread(load_buffer[load_buffer_index].sax, sizeof(sax_type), index->settings->n_segments, partial_file);
                 COUNT_INPUT_TIME_END
                 load_buffer_index++;
             }
@@ -1264,7 +1282,7 @@ float isax_index_load_node(isax_index *index, isax_node *c_node, ts_type * query
         
         add_to_node_buffer(((isax_node *)load_buffer[i].destination)->buffer, 
                            &load_buffer[i], 
-                           index->settings->paa_segments, 
+                           index->settings->n_segments, 
                            index->settings->timeseries_size);
     }
     free(load_buffer);
@@ -1402,7 +1420,7 @@ void isax_index_load_node_topk(isax_index *index, isax_node *c_node, ts_type * q
                 load_buffer[load_buffer_index].destination = node;
                 COUNT_INPUT_TIME_START
                 fread(load_buffer[load_buffer_index].position, sizeof(file_position_type), 1, partial_file);
-                fread(load_buffer[load_buffer_index].sax, sizeof(sax_type), index->settings->paa_segments, partial_file);
+                fread(load_buffer[load_buffer_index].sax, sizeof(sax_type), index->settings->n_segments, partial_file);
                 COUNT_INPUT_TIME_END
                 load_buffer_index++;
             }
@@ -1465,7 +1483,7 @@ void isax_index_load_node_topk(isax_index *index, isax_node *c_node, ts_type * q
         
         add_to_node_buffer(((isax_node *)load_buffer[i].destination)->buffer, 
                            &load_buffer[i], 
-                           index->settings->paa_segments, 
+                           index->settings->n_segments, 
                            index->settings->timeseries_size);
     }
     free(load_buffer);
@@ -1493,7 +1511,7 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
                                                                      node->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,  
                                                                      index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->paa_segments, 
+                                                                     index->settings->n_segments, 
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
 	float bsfRecord = FLT_MAX;																 
@@ -1509,15 +1527,15 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			strcat(partial_fname, ".part");
 			COUNT_INPUT_TIME_START
 			FILE * partial_file = fopen(partial_fname, "r");
-			sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+			sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 			file_position_type *pos = malloc(sizeof(file_position_type));
 			while(!feof(partial_file)) {
 				if(fread(pos, sizeof(file_position_type), 1, partial_file)) {
-					if(fread(sax, sizeof(sax_type), index->settings->paa_segments, partial_file)) {
+					if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
 						float mindist = minidist_paa_to_isax_raw(query, sax, index->settings->max_sax_cardinalities,
 															 index->settings->sax_bit_cardinality,
 															 index->settings->sax_alphabet_cardinality,
-															 index->settings->paa_segments, MINVAL, MAXVAL,
+															 index->settings->n_segments, MINVAL, MAXVAL,
 															 index->settings->mindist_sqrt);
     //			printf("+[FILE] %lf\n", mindist);
 
@@ -1539,7 +1557,7 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 				float mindist = minidist_paa_to_isax_raw(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
 													 index->settings->sax_bit_cardinality,
 													 index->settings->sax_alphabet_cardinality,
-													 index->settings->paa_segments, MINVAL, MAXVAL,
+													 index->settings->n_segments, MINVAL, MAXVAL,
 													 index->settings->mindist_sqrt);
     //				printf("+[PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
@@ -1551,7 +1569,7 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 				float mindist = minidist_paa_to_isax_raw(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
 													 index->settings->sax_bit_cardinality,
 													 index->settings->sax_alphabet_cardinality,
-													 index->settings->paa_segments, MINVAL, MAXVAL,
+													 index->settings->n_segments, MINVAL, MAXVAL,
 													 index->settings->mindist_sqrt);
     //				printf("+[TMP_PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
@@ -1596,7 +1614,7 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
                                                                      node->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,  
                                                                      index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->paa_segments, 
+                                                                     index->settings->n_segments, 
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
     float bsfRecord = FLT_MAX;                                                               
@@ -1612,15 +1630,15 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
             strcat(partial_fname, ".part");
             COUNT_INPUT_TIME_START
             FILE * partial_file = fopen(partial_fname, "r");
-            sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+            sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
             file_position_type *pos = malloc(sizeof(file_position_type));
             while(!feof(partial_file)) {
                 if(fread(pos, sizeof(file_position_type), 1, partial_file)) {
-                    if(fread(sax, sizeof(sax_type), index->settings->paa_segments, partial_file)) {
+                    if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
                         float mindist = minidist_paa_to_isax_raw_SIMD(query, sax, index->settings->max_sax_cardinalities,
                                                              index->settings->sax_bit_cardinality,
                                                              index->settings->sax_alphabet_cardinality,
-                                                             index->settings->paa_segments, MINVAL, MAXVAL,
+                                                             index->settings->n_segments, MINVAL, MAXVAL,
                                                              index->settings->mindist_sqrt);
     //          printf("+[FILE] %lf\n", mindist);
 
@@ -1642,7 +1660,7 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
                 float mindist = minidist_paa_to_isax_raw_SIMD(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
                                                      index->settings->sax_bit_cardinality,
                                                      index->settings->sax_alphabet_cardinality,
-                                                     index->settings->paa_segments, MINVAL, MAXVAL,
+                                                     index->settings->n_segments, MINVAL, MAXVAL,
                                                      index->settings->mindist_sqrt);
     //              printf("+[PARTIAL] %lf\n", mindist);
                 if(mindist < bsfRecord) {
@@ -1654,7 +1672,7 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
                 float mindist = minidist_paa_to_isax_raw_SIMD(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
                                                      index->settings->sax_bit_cardinality,
                                                      index->settings->sax_alphabet_cardinality,
-                                                     index->settings->paa_segments, MINVAL, MAXVAL,
+                                                     index->settings->n_segments, MINVAL, MAXVAL,
                                                      index->settings->mindist_sqrt);
     //              printf("+[TMP_PARTIAL] %lf\n", mindist);
                 if(mindist < bsfRecord) {
@@ -2061,7 +2079,7 @@ void complete_index(isax_index *index, int ts_num)
     while (ts_loaded<ts_num)
     {
         ts_type * ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-        sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+        sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
         
 #ifndef DEBUG  
 #if VERBOSE_LEVEL == 2
@@ -2176,14 +2194,14 @@ void node_write(isax_index *index, isax_node *node, FILE *file) {
 	}
 	else {
 		fwrite(&(node->split_data->splitpoint), sizeof(int), 1, file);
-		fwrite(node->split_data->split_mask, sizeof(sax_type), index->settings->paa_segments, file);
+		fwrite(node->split_data->split_mask, sizeof(sax_type), index->settings->n_segments, file);
 	}
 
 	if(node->isax_cardinalities != NULL) {
 		char has_isax_data = 1;
 		fwrite(&has_isax_data, sizeof(char), 1, file);
-		fwrite(node->isax_cardinalities, sizeof(sax_type), index->settings->paa_segments, file);
-		fwrite(node->isax_values, sizeof(sax_type), index->settings->paa_segments, file);
+		fwrite(node->isax_cardinalities, sizeof(sax_type), index->settings->n_segments, file);
+		fwrite(node->isax_values, sizeof(sax_type), index->settings->n_segments, file);
 	}
 	else {
 		char has_isax_data = 0;
@@ -2266,10 +2284,10 @@ isax_node *node_read(isax_index *index, FILE *file) {
 		node->has_partial_data_file = 0;
 		node->leaf_size = 0;
 		node->split_data = malloc(sizeof(isax_node_split_data));
-		node->split_data->split_mask = malloc(sizeof(sax_type) * index->settings->paa_segments);
+		node->split_data->split_mask = malloc(sizeof(sax_type) * index->settings->n_segments);
 
 		fread(&(node->split_data->splitpoint), sizeof(int), 1, file);
-		fread(node->split_data->split_mask, sizeof(sax_type), index->settings->paa_segments, file);
+		fread(node->split_data->split_mask, sizeof(sax_type), index->settings->n_segments, file);
 	}
 	node->mask = mask;
 
@@ -2277,10 +2295,10 @@ isax_node *node_read(isax_index *index, FILE *file) {
 	fread(&has_isax_data, sizeof(char), 1, file);
 
 	if(has_isax_data) {
-		node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->paa_segments);
-		node->isax_values = malloc(sizeof(sax_type) * index->settings->paa_segments);
-		fread(node->isax_cardinalities, sizeof(sax_type), index->settings->paa_segments, file);
-		fread(node->isax_values, sizeof(sax_type), index->settings->paa_segments, file);
+		node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->n_segments);
+		node->isax_values = malloc(sizeof(sax_type) * index->settings->n_segments);
+		fread(node->isax_cardinalities, sizeof(sax_type), index->settings->n_segments, file);
+		fread(node->isax_values, sizeof(sax_type), index->settings->n_segments, file);
 	}
 	else {
 		node->isax_cardinalities = NULL;
@@ -2307,7 +2325,7 @@ void index_write(isax_index *index)
 
 	int raw_filename_size = strlen(index->settings->raw_filename);
 	int timeseries_size = index->settings->timeseries_size;
-	int paa_segments = index->settings->paa_segments;
+	int n_segments = index->settings->n_segments;
 	int sax_bit_cardinality = index->settings->sax_bit_cardinality;
 	int max_leaf_size = index->settings->max_leaf_size;
 	int min_leaf_size = index->settings->min_leaf_size;
@@ -2322,7 +2340,7 @@ void index_write(isax_index *index)
 	fwrite(&raw_filename_size, sizeof(int), 1, file);
 	fwrite(index->settings->raw_filename, sizeof(char), raw_filename_size, file);
 	fwrite(&timeseries_size, sizeof(int), 1, file);
-	fwrite(&paa_segments, sizeof(int), 1, file);
+	fwrite(&n_segments, sizeof(int), 1, file);
 	fwrite(&sax_bit_cardinality, sizeof(int), 1, file);
 	fwrite(&max_leaf_size, sizeof(int), 1, file);
 	fwrite(&min_leaf_size, sizeof(int), 1, file);
@@ -2368,7 +2386,7 @@ void index_mRecBuf_write(isax_index *index)
     int function_type = index->settings->function_type;
     int raw_filename_size = strlen(index->settings->raw_filename);
     int timeseries_size = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
     int sax_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_leaf_size = index->settings->max_leaf_size;
     int min_leaf_size = index->settings->min_leaf_size;
@@ -2385,7 +2403,7 @@ void index_mRecBuf_write(isax_index *index)
     fwrite(index->settings->raw_filename, sizeof(char), raw_filename_size, file);
     fwrite(&function_type, sizeof(int), 1, file);
     fwrite(&timeseries_size, sizeof(int), 1, file);
-    fwrite(&paa_segments, sizeof(int), 1, file);
+    fwrite(&n_segments, sizeof(int), 1, file);
     fwrite(&sax_bit_cardinality, sizeof(int), 1, file);
     fwrite(&max_leaf_size, sizeof(int), 1, file);
     fwrite(&min_leaf_size, sizeof(int), 1, file);
@@ -2409,12 +2427,12 @@ void index_mRecBuf_write(isax_index *index)
         fwrite(&sample_type, sizeof(int), 1, file);
         fwrite(&hist_type, sizeof(int), 1, file);
 
-        if(index->settings->coeff_number!=0)
+        if(index->settings->n_coefficients!=0)
         {
-            fwrite(index->coefficients, sizeof(int), index->settings->paa_segments/2, file);
+            fwrite(index->coefficients, sizeof(int), index->settings->n_segments/2, file);
         }
 
-        for(int i=0; i<index->settings->paa_segments; ++i)
+        for(int i=0; i<index->settings->n_segments; ++i)
         {
             fwrite(index->bins[i], sizeof(float), index->settings->sax_alphabet_cardinality-1, file);
             /*
@@ -2459,7 +2477,7 @@ isax_index * index_read(const char* root_directory) {
 	int raw_filename_size = 0;
 	char *raw_filename = NULL;
 	int timeseries_size = 0;
-	int paa_segments = 0;
+	int n_segments = 0;
 	int sax_bit_cardinality = 0;
 	int max_leaf_size = 0;
 	int min_leaf_size = 0;
@@ -2477,7 +2495,7 @@ isax_index * index_read(const char* root_directory) {
 	raw_filename[raw_filename_size] = '\0';
     
     fread(&timeseries_size, sizeof(int), 1, file);
-	fread(&paa_segments, sizeof(int), 1, file);
+	fread(&n_segments, sizeof(int), 1, file);
 	fread(&sax_bit_cardinality, sizeof(int), 1, file);
 	fread(&max_leaf_size, sizeof(int), 1, file);
 	fread(&min_leaf_size, sizeof(int), 1, file);
@@ -2490,7 +2508,7 @@ isax_index * index_read(const char* root_directory) {
 
 	isax_index_settings *idx_settings = isax_index_settings_init(root_directory,
 																timeseries_size,
-																paa_segments,
+																n_segments,
 																sax_bit_cardinality,
 																max_leaf_size,
 																min_leaf_size,
@@ -2768,19 +2786,19 @@ void print_settings(isax_index_settings *settings) {
     if (settings->function_type == 3) {
         fprintf(stderr,"## Using MESSI + SAX. \n");
         fprintf(stderr,"## \n## [SAX SETTINGS]\n");
-        fprintf(stderr,"## paa_segments:       \t%d\n",settings->paa_segments);
+        fprintf(stderr,"## n_segments:       \t%d\n",settings->n_segments);
         fprintf(stderr,"## sax_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
         fprintf(stderr,"## sax_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
     }
     else if (settings->function_type == 4) {
         fprintf(stderr, "## Using MESSI + SFA. \n");
-        fprintf(stderr,"## dft_coefficients:   \t%d\n",settings->paa_segments);
+        fprintf(stderr,"## dft_coefficients:   \t%d\n",settings->n_segments);
         fprintf(stderr,"## sfa_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
         fprintf(stderr,"## sfa_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
 
         fprintf(stderr,"## \n## [SFA SETTINGS]\n");
         fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
-        fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->coeff_number > 0);
+        fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->n_coefficients > 0);
         if (settings->histogram_type==3) {
             fprintf(stderr, "## \t Equi-Width Binning. \n");
         } else if (settings->histogram_type==4) {
@@ -2788,15 +2806,37 @@ void print_settings(isax_index_settings *settings) {
         }
 
         if (settings->sample_type == 1) {
-            fprintf(stderr,"## Sampling Type:                        \tfirst-n-values\n");
+            fprintf(stderr,"## Sampling Type:      \tfirst-n-values\n");
         } else if (settings->sample_type == 2) {
-            fprintf(stderr, "## Sampling Type:                       \tuniform sampling\n");
+            fprintf(stderr, "## Sampling Type:     \tuniform sampling\n");
         } else if (settings->sample_type == 3) {
-            fprintf(stderr, "## Sampling Type:                       \trandom sampling\n");
+            fprintf(stderr, "## Sampling Type:     \trandom sampling\n");
         }
-        fprintf(stderr,"## Sampling Size:                            \t%d\n", settings->sample_size);
+        fprintf(stderr,"## Sampling Size:          \t%d\n", settings->sample_size);
 
     }
+    else if (settings->function_type == 5) {
+        fprintf(stderr, "## Using MESSI + SPARTAN. \n");
+        fprintf(stderr,"## pca_coefficients:   \t%d\n",settings->n_segments);
+        fprintf(stderr,"## spartan_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
+        fprintf(stderr,"## spartan_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
+
+        fprintf(stderr,"## \n## [SPARTAN SETTINGS]\n");
+        if (settings->histogram_type==3) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
+        } else if (settings->histogram_type==4) {
+            fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        }
+        if (settings->sample_type == 1) {
+            fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
+        } else if (settings->sample_type == 2) {
+            fprintf(stderr, "## Sampling Type:    \tuniform sampling\n");
+        } else if (settings->sample_type == 3) {
+            fprintf(stderr, "## Sampling Type:    \trandom sampling\n");
+        }
+        fprintf(stderr,"## Sampling Size:         \t%d\n", settings->sample_size);
+    }
+
 
 	fprintf(stderr,"## \n## [QUERY ANSWERING SETTINGS]\n");
 	fprintf(stderr, "## aggressive_check:  \t%d\n", settings->aggressive_check);
@@ -2814,7 +2854,7 @@ meminfo get_memory_utilization_info(isax_index *index) {
 
     bytes_mem_info.mem_data = index->allocated_memory;
     bytes_mem_info.mem_tree_structure *= sizeof(isax_node);
-    bytes_mem_info.mem_summaries *= (index->settings->paa_segments * sizeof(sax_type));
+    bytes_mem_info.mem_summaries *= (index->settings->n_segments * sizeof(sax_type));
     bytes_mem_info.disk_data_full *= PAGE_SIZE;
     bytes_mem_info.disk_data_partial *= PAGE_SIZE;
 
@@ -2831,5 +2871,3 @@ void print_mem_info(isax_index *index) {
     printf("# (DISK)    PARTIAL:            %ld\n",    bytes_mem_info.disk_data_partial);
     printf("################################################################\n"); 
 }
-
-

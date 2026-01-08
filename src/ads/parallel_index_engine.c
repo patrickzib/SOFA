@@ -96,8 +96,8 @@ void isax_index_binary_file_m(const char *ifilename, int ts_num, isax_index *ind
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts2;
-    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
-    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
     sax_type * saxv2;
     
     index->settings->raw_filename = malloc(256);
@@ -369,8 +369,8 @@ void isax_index_binary_file_m_new(const char *ifilename, int ts_num, isax_index 
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts2;
-    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
-    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
     sax_type * saxv2;
     
     index->settings->raw_filename = malloc(256);
@@ -608,7 +608,7 @@ void isax_index_binary_file_pRecBuf(const char *ifilename, int ts_num, isax_inde
     pthread_barrier_init(&lock_barrier2, NULL, calculate_thread);
     destroy_fbl(index->fbl);
         index->fbl = (first_buffer_layer*)initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->paa_segments), 
+                                pow(2, index->settings->n_segments), 
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     // set the thread on decided cpu
 
@@ -654,8 +654,8 @@ void isax_index_binary_file_pRecBuf(const char *ifilename, int ts_num, isax_inde
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts2;
-    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
-    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
     sax_type * saxv2;
     
     index->settings->raw_filename = malloc(256);
@@ -882,7 +882,7 @@ void isax_index_binary_file_2RecBuf(const char *ifilename, int ts_num, isax_inde
     pthread_barrier_init(&lock_barrier4, NULL, calculate_thread/2-propotion_number);
     destroy_fbl(index->fbl);
         index->fbl = (first_buffer_layer*)initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->paa_segments), 
+                                pow(2, index->settings->n_segments), 
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     // set the thread on decided cpu
     int indexconstructionroundchose=0;
@@ -933,8 +933,8 @@ void isax_index_binary_file_2RecBuf(const char *ifilename, int ts_num, isax_inde
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread/2+propotion_number));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread/2+propotion_number));
     ts_type * ts2;
-    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread/2+propotion_number));
-    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread/2+propotion_number));
+    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread/2+propotion_number));
+    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread/2+propotion_number));
     sax_type * saxv2;
     
     for (i = 0; i < (calculate_thread/2+propotion_number); i++)
@@ -1265,7 +1265,7 @@ void isax_index_binary_file_2nRecBuf(const char *ifilename, int ts_num, isax_ind
     pthread_barrier_init(&lock_barrier4, NULL, calculate_thread/2-propotion_number);
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer*)initialize_2pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->paa_segments), 
+                                pow(2, index->settings->n_segments), 
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     first_buffer_layer *fbltran;
     // set the thread on decided cpu
@@ -1316,8 +1316,8 @@ void isax_index_binary_file_2nRecBuf(const char *ifilename, int ts_num, isax_ind
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread/2+propotion_number));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread/2+propotion_number));
     ts_type * ts2;
-    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread/2+propotion_number));
-    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread/2+propotion_number));
+    sax_type * saxv  = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread/2+propotion_number));
+    sax_type * saxv1 = malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread/2+propotion_number));
     sax_type * saxv2;
     
     for (i = 0; i < (calculate_thread/2+propotion_number); i++)
@@ -1542,13 +1542,13 @@ void isax_index_binary_file_2nRecBuf(const char *ifilename, int ts_num, isax_ind
 
 void* indexbulkloadingworker(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv;
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0;
     pthread_barrier_t *lock_barrier1, *lock_barrier2;
@@ -1563,7 +1563,7 @@ void* indexbulkloadingworker(void *transferdata)
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
-                memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+                memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
                 isax_fbl_index_insert_m(index, sax, pos, ((index_buffer_data*)transferdata)->lock_record, ((index_buffer_data*)transferdata)->lock_fbl,
                                     ((index_buffer_data*)transferdata)->lock_cbl,((index_buffer_data*)transferdata)->lock_firstnode,((index_buffer_data*)transferdata)->lock_index,((index_buffer_data*)transferdata)->lock_disk);
             }
@@ -1582,13 +1582,13 @@ void* indexbulkloadingworker(void *transferdata)
 }
 void* indexbulkloadingworker_new2(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv;
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0;
     pthread_barrier_t *lock_barrier1=((index_buffer_data*)transferdata)->lock_barrier1;
@@ -1603,7 +1603,7 @@ void* indexbulkloadingworker_new2(void *transferdata)
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
-                memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+                memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
                 isax_fbl_index_insert_m_new(index, sax, pos, ((index_buffer_data*)transferdata)->lock_record, ((index_buffer_data*)transferdata)->lock_fbl,
                                     ((index_buffer_data*)transferdata)->lock_cbl,((index_buffer_data*)transferdata)->lock_firstnode,((index_buffer_data*)transferdata)->lock_index,((index_buffer_data*)transferdata)->lock_disk);
             }
@@ -1623,13 +1623,13 @@ void* indexbulkloadingworker_new2(void *transferdata)
 
 void* indexbulkloadingworker_new(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv;
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0,j;
     pthread_barrier_t *lock_barrier1=((index_buffer_data*)transferdata)->lock_barrier1;
@@ -1645,7 +1645,7 @@ void* indexbulkloadingworker_new(void *transferdata)
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
-                memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+                memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
                 isax_fbl_index_insert_m(index, sax, pos, ((index_buffer_data*)transferdata)->lock_record, ((index_buffer_data*)transferdata)->lock_fbl,
                                     ((index_buffer_data*)transferdata)->lock_cbl,((index_buffer_data*)transferdata)->lock_firstnode,((index_buffer_data*)transferdata)->lock_index,((index_buffer_data*)transferdata)->lock_disk);
             }
@@ -1689,13 +1689,13 @@ void* indexbulkloadingworker_new(void *transferdata)
 }
 /*void* indexbulkloadingworker_pRecBuf_old(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv=(((index_buffer_data*)transferdata)->saxv);
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0;
     for (i=0;i<fin_number;i++)
@@ -1710,14 +1710,14 @@ void* indexbulkloadingworker_new(void *transferdata)
         {
             *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
             
-            //for(j=0;j<((index_buffer_data*)transferdata)->index->settings->paa_segments;j++)
+            //for(j=0;j<((index_buffer_data*)transferdata)->index->settings->n_segments;j++)
             //{
-                //saxv[offset_saxv+i*paa_segments+j]=sax[j];
-                //printf("the sax [%d ]%d\n",i,(int)saxv[offset_saxv+i*paa_segments+j]);
+                //saxv[offset_saxv+i*n_segments+j]=sax[j];
+                //printf("the sax [%d ]%d\n",i,(int)saxv[offset_saxv+i*n_segments+j]);
                  //printf("the sax [%d ]%d\n",i,(int)sax[j]);
             //}
                         
-            memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+            memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
         
             #ifdef CLUSTERED
             root_mask_type first_bit_mask = 0x00;
@@ -1753,15 +1753,15 @@ void* indexbulkloadingworker_new(void *transferdata)
 }*/
 void* indexbulkloadingworker_pRecBuf(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
 
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv;
 
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0;
     pthread_barrier_t *lock_barrier1=((index_buffer_data*)transferdata)->lock_barrier1;
@@ -1777,7 +1777,7 @@ void* indexbulkloadingworker_pRecBuf(void *transferdata)
             if(sax_from_ts(((ts_type*)(((index_buffer_data*)transferdata)->ts)+i*index->settings->timeseries_size), sax, index->settings) == SUCCESS)
             {
                 *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
-                memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+                memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
                 isax_pRecBuf_index_insert(index, sax, pos, ((index_buffer_data*)transferdata)->lock_record,((index_buffer_data*)transferdata)->lock_firstnode,((index_buffer_data*)transferdata)->workernumber,((index_buffer_data*)transferdata)->total_workernumber);
 
             }
@@ -1798,15 +1798,15 @@ void* indexbulkloadingworker_pRecBuf(void *transferdata)
 }
 void* indexbulkloadingworker_2RecBuf(void *transferdata)
 {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
 
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv;
     file_position_type readpos;
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
             int initialworkernumber=((index_buffer_data*)transferdata)->workernumber;
             int workernumber=initialworkernumber;
@@ -1828,7 +1828,7 @@ void* indexbulkloadingworker_2RecBuf(void *transferdata)
             if(sax_from_ts((ts+i*index->settings->timeseries_size), sax, index->settings) == SUCCESS)
             {
                 *pos=readpos +index->settings->timeseries_size*sizeof(ts_type)*i;
-                memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+                memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
                 isax_2pRecBuf_index_insert(index, sax, pos, ((index_buffer_data*)transferdata)->lock_record,((index_buffer_data*)transferdata)->lock_firstnode,workernumber,total_workernumber);
             }
             else
@@ -1950,7 +1950,7 @@ isax_node * insert_to_fbl_m(first_buffer_layer *fbl, sax_type *sax,
     #ifdef DEBUG
     printf("*** Added to node ***\n\n");
     #ifdef TOY
-    sax_print(sax, index->settings->paa_segments, 
+    sax_print(sax, index->settings->n_segments, 
               index->settings->sax_bit_cardinality);
     #endif
     #endif
@@ -2065,7 +2065,7 @@ isax_node * insert_to_fbl_m_new(first_buffer_layer *fbl, sax_type *sax,
     #ifdef DEBUG
     printf("*** Added to node ***\n\n");
     #ifdef TOY
-    sax_print(sax, index->settings->paa_segments, 
+    sax_print(sax, index->settings->n_segments, 
               index->settings->sax_bit_cardinality);
     #endif
     #endif
@@ -2180,15 +2180,15 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
     current_buffer_number=current_buffer->buffer_size[workernumber];
     filepointer=(file_position_type *)current_buffer->pos_records[workernumber];
     saxpointer=(sax_type *)current_buffer->sax_records[workernumber];
-    //printf("the work number is %d sax is  %d \n",workernumber,saxpointer[current_buffer_number*index->settings->paa_segments]);
-    memcpy((void *) (&saxpointer[current_buffer_number*index->settings->paa_segments]), (void *) sax, index->settings->sax_byte_size);
+    //printf("the work number is %d sax is  %d \n",workernumber,saxpointer[current_buffer_number*index->settings->n_segments]);
+    memcpy((void *) (&saxpointer[current_buffer_number*index->settings->n_segments]), (void *) sax, index->settings->sax_byte_size);
     memcpy((void *) (&filepointer[current_buffer_number]), (void *) pos, index->settings->position_byte_size);
     
    
     #ifdef DEBUG
     printf("*** Added to node ***\n\n");
     #ifdef TOY
-    sax_print(sax, index->settings->paa_segments, 
+    sax_print(sax, index->settings->n_segments, 
               index->settings->sax_bit_cardinality);
     #endif
     #endif
@@ -2303,14 +2303,14 @@ isax_node * insert_to_2pRecBuf(parallel_dfirst_buffer_layer *fbl, sax_type *sax,
     saxpointer=(sax_type **)current_buffer->sax_records[workernumber];
     saxpointer[current_buffer_number]=((parallel_dfirst_buffer_layer*)index->fbl)->hard_buffer+*pos/sizeof(ts_type)/index->settings->timeseries_size*index->settings->sax_byte_size;
     filepointer[current_buffer_number]=(file_position_type *)(((parallel_dfirst_buffer_layer*)index->fbl)->hard_buffer+*pos/sizeof(ts_type)/index->settings->timeseries_size*index->settings->sax_byte_size+index->settings->sax_byte_size);
-    //printf("the work number is %d sax is  %d \n",workernumber,saxpointer[current_buffer_number*index->settings->paa_segments]);
+    //printf("the work number is %d sax is  %d \n",workernumber,saxpointer[current_buffer_number*index->settings->n_segments]);
     //memcpy((void *) (&saxpointer[current_buffer_number]), (void *) ((parallel_dfirst_buffer_layer*)index->fbl)->hard_buffer+*pos/sizeof(ts_type)/index->settings->timeseries_size*index->settings->sax_byte_size , sizeof(sax_type *));
     //memcpy((void *) (&filepointer[current_buffer_number]), (void *) ((parallel_dfirst_buffer_layer*)index->fbl)->hard_buffer+*pos/sizeof(ts_type)/index->settings->timeseries_size*index->settings->sax_byte_size+index->settings->sax_byte_size, sizeof(file_position_type *));
     
     #ifdef DEBUG
     printf("*** Added to node ***\n\n");
     #ifdef TOY
-    sax_print(sax, index->settings->paa_segments, 
+    sax_print(sax, index->settings->n_segments, 
               index->settings->sax_bit_cardinality);
     #endif
     #endif
@@ -2845,7 +2845,7 @@ void* indexconstructionworker_pRecBuf(void *input)
             have_record=true;
             for (i=0; i<current_fbl_node->buffer_size[k]; i++) 
             {
-                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i*index->settings->paa_segments]);
+                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i*index->settings->n_segments]);
                 r->position = (file_position_type *) &((file_position_type *)(current_fbl_node->pos_records[k]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
@@ -2932,7 +2932,7 @@ void* indexconstructionworker_pRecBuf_new(void *input)
             have_record=true;
             for (i=0; i<current_fbl_node->buffer_size[k]; i++) 
             {
-                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i*index->settings->paa_segments]);
+                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i*index->settings->n_segments]);
                 r->position = (file_position_type *) &((file_position_type *)(current_fbl_node->pos_records[k]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
@@ -3016,7 +3016,7 @@ void* indexconstructionworker_2RecBuf(void *input)
         //for (i=((index_buffer_data*)transferdata)->bufferpresize[j]; i<current_fbl_node->buffer_size; i++) 
             for (i=((trans_fbl_input*)input)->buffersize[j+fbloffset*index->fbl->number_of_buffers]; i<current_fbl_node->buffer_size[fbloffset]; i++) 
             {
-                r->sax = (sax_type *) &(((current_fbl_node->sax_records[fbloffset]))[i*index->settings->paa_segments]);
+                r->sax = (sax_type *) &(((current_fbl_node->sax_records[fbloffset]))[i*index->settings->n_segments]);
                 r->position = (file_position_type *) &((file_position_type *)(current_fbl_node->pos_records[fbloffset]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
@@ -3203,7 +3203,7 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
     // set the thread on decided cpu
     destroy_fbl(index->fbl);
         index->fbl = initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->paa_segments), 
+                                pow(2, index->settings->n_segments), 
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
 
 
@@ -3239,8 +3239,8 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts2;
-    sax_type * saxv  =malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
-    sax_type * saxv1 =malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv  =malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv1 =malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
     sax_type * saxv2;
                 
 
@@ -3430,8 +3430,8 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
     ts_type * ts     = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts1    = malloc(sizeof(ts_type) * index->settings->timeseries_size*read_block_length*(calculate_thread-1));
     ts_type * ts2;
-    sax_type * saxv  =malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
-    sax_type * saxv1 =malloc(sizeof(sax_type) * index->settings->paa_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv  =malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
+    sax_type * saxv1 =malloc(sizeof(sax_type) * index->settings->n_segments*read_block_length*(calculate_thread-1));
     sax_type * saxv2;
                 
 
@@ -3574,13 +3574,13 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
 
 /*void* indexbulkloadingworker_old(void *transferdata)
     {
-    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->paa_segments);
+    sax_type * sax = malloc(sizeof(sax_type) * ((index_buffer_data*)transferdata)->index->settings->n_segments);
 
     int fin_number=((index_buffer_data*)transferdata)->fin_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
     sax_type * saxv=(((index_buffer_data*)transferdata)->saxv);
-    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->paa_segments;
-    int paa_segments=((index_buffer_data*)transferdata)->index->settings->paa_segments;
+    int offset_saxv=((index_buffer_data*)transferdata)->blocid*((index_buffer_data*)transferdata)->index->settings->n_segments;
+    int n_segments=((index_buffer_data*)transferdata)->index->settings->n_segments;
     isax_index *index= ((index_buffer_data*)transferdata)->index;
     int i=0;
     for (i=0;i<fin_number;i++)
@@ -3594,14 +3594,14 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
         {
             *pos= ((index_buffer_data*)transferdata)->pos+index->settings->timeseries_size*sizeof(ts_type)*i;
             
-            //for(j=0;j<((index_buffer_data*)transferdata)->index->settings->paa_segments;j++)
+            //for(j=0;j<((index_buffer_data*)transferdata)->index->settings->n_segments;j++)
             //{
-                //saxv[offset_saxv+i*paa_segments+j]=sax[j];
-                //printf("the sax [%d ]%d\n",i,(int)saxv[offset_saxv+i*paa_segments+j]);
+                //saxv[offset_saxv+i*n_segments+j]=sax[j];
+                //printf("the sax [%d ]%d\n",i,(int)saxv[offset_saxv+i*n_segments+j]);
                  //printf("the sax [%d ]%d\n",i,(int)sax[j]);
             //}
                         
-            memcpy(&(saxv[offset_saxv+i*paa_segments]), sax, sizeof(sax_type) * paa_segments);
+            memcpy(&(saxv[offset_saxv+i*n_segments]), sax, sizeof(sax_type) * n_segments);
         
 
             #ifdef CLUSTERED

@@ -39,7 +39,7 @@ typedef struct {
     // ALWAYS: TIMESERIES_SIZE = TS_VALUES_PER_PAA_SEGMENT * PAA_SEGMENTS
     int timeseries_size;
     int ts_values_per_paa_segment;
-    int paa_segments;
+    int n_segments;
 	
 	int tight_bound;
 	int aggressive_check;
@@ -76,7 +76,7 @@ typedef struct {
     unsigned int sample_size;
     int histogram_type;
     int sample_type;
-    int coeff_number;
+    int n_coefficients;
 
     // int filetype_int;
 
@@ -109,6 +109,10 @@ typedef struct {
     ts_type norm_factor;
 
     int * coefficients;
+    ts_type *pca_mean;
+    ts_type *pca_components;
+    int pca_components_count;
+    int pca_dim;
 
 } isax_index;
 
@@ -119,7 +123,7 @@ typedef struct {
 isax_index * isax_index_init(isax_index_settings *settings);
 isax_index_settings * isax_index_settings_init (const char * root_directory,
                                                 int timeseries_size, 
-                                                int paa_segments, 
+                                                int n_segments, 
                                                 int sax_bit_cardinality,
                                                 int max_leaf_size,
                                                 int min_leaf_size,
@@ -130,7 +134,7 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
 												int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag,
                                                 int sample_size, char is_norm, int histogram_type,
-                                                int sample_type, int coeff_number);
+                                                int sample_type, int n_coefficients);
 void print_settings(isax_index_settings *settings);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node, 

@@ -13,11 +13,11 @@ INITIAL_LBL_SIZE=$LEAF_SIZE
 CPU_TYPE=${82:-1}
 QUEUE_NUMBER=${8:-1}
 
-./build/bin/MESSI \
+./bin/MESSI \
   --dataset $FILE_PATH \
   --in-memory \
   --timeseries-size $TS_SIZE \
-  --function-type 3 \
+  --function-type 5 \
   --dataset-size $DATASET_SIZE \
   --flush-limit 300000 \
   --read-block 200 \

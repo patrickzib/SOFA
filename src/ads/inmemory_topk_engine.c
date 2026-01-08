@@ -17,6 +17,7 @@
 #include "ads/inmemory_topk_engine.h"
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
+#include "ads/spartan/spartan.h"
 #include "ads/calc_utils.h"
 #include "omp.h"
 #include "ads/parallel_inmemory_query_engine.h"
@@ -26,14 +27,14 @@ float *MINDISTS;
 #define NTHREADS 4
 
 void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf) {
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
 
     if (index->settings->function_type == 4) {
         sfa_from_fft(index, paa, sax);
-    }
-    //SAX
-    else {
+    } else if (index->settings->function_type == 5) {
+        spartan_from_pca(index, paa, sax);
+    } else {
         sax_from_paa(paa, sax, index->settings);
     }
     root_mask_type root_mask = 0;
@@ -326,7 +327,7 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
     // END
     COUNT_OUTPUT_TIME_START
     for (i = 0; i < index->sax_cache_size; i++) {
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if (MINDISTS[i] <= pq_bsf->knn[k - 1]) {
             ts_buffer = &rawfile[i * index->settings->timeseries_size];
             float dist = ts_euclidean_distance(ts, ts_buffer, index->settings->timeseries_size,

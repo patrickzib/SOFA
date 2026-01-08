@@ -41,31 +41,27 @@
 */
 enum response sfa_bins_init(isax_index *index) {
     int num_symbols = index->settings->sax_alphabet_cardinality;
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
 
     index->bins = NULL;
-    index->bins = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
-    index->binsv = (ts_type *) calloc(paa_segments * (num_symbols - 1), sizeof(ts_type));
+    index->bins = (ts_type **) calloc(n_segments, sizeof(ts_type * ));
+    index->binsv = (ts_type *) calloc(n_segments * (num_symbols - 1), sizeof(ts_type));
 
     //allocate num_symbols-1 memory slots for each word
-    for (int i = 0; i < paa_segments; ++i) {
+    for (int i = 0; i < n_segments; ++i) {
         index->bins[i] = calloc(num_symbols - 1, sizeof(ts_type));
-        if (index == NULL) {
-            fprintf(stderr, "Error in sfa.c: Could not allocate memory for bins structure.\n");
-            return FAILURE;
-        }
         for (int j = 0; j < num_symbols - 1; ++j) {
             index->bins[i][j] = FLT_MAX;
         }
 
     }
-    for (int j = 0; j < paa_segments * (num_symbols - 1); ++j) {
+    for (int j = 0; j < n_segments * (num_symbols - 1); ++j) {
         index->binsv[j] = FLT_MAX;
     }
-    fprintf(stderr, ">>> SFA: Initialized bins[%d][%d] \n", paa_segments, num_symbols - 1);
+    fprintf(stderr, ">>> SFA: Initialized bins[%d][%d] \n", n_segments, num_symbols - 1);
 
-    if (index->settings->coeff_number != 0) {
-        index->coefficients = calloc(paa_segments / 2, sizeof(int));
+    if (index->settings->n_coefficients != 0) {
+        index->coefficients = calloc(n_segments / 2, sizeof(int));
     }
 
     return SUCCESS;
@@ -75,7 +71,7 @@ enum response sfa_bins_init(isax_index *index) {
   This functions frees the allocated bins-array
 */
 void sfa_free_bins(isax_index *index) {
-    for (int i = 0; i < index->settings->paa_segments; ++i) {
+    for (int i = 0; i < index->settings->n_segments; ++i) {
         free(index->bins[i]);
     }
     free(index->bins);
@@ -92,26 +88,26 @@ void sfa_set_bins(
         long int ts_num, int maxquerythread,
         int filetype_int, int apply_znorm) {
 
-    int paa_segments = index->settings->paa_segments;
-    int coeff_number = 0;
+    int n_segments = index->settings->n_segments;
+    int n_coefficients = 0;
     int ts_length = index->settings->timeseries_size;
     unsigned int sample_size = index->settings->sample_size;
-    int use_variance = index->settings->coeff_number > 0;
+    int use_variance = index->settings->n_coefficients > 0;
 
     // a) select best coefficients based no variance
     if (use_variance) {
-        coeff_number = index->settings->coeff_number;
+        n_coefficients = index->settings->n_coefficients;
     }
         // b) use the first coefficients
     else {
-        coeff_number = index->settings->paa_segments;
+        n_coefficients = index->settings->n_segments;
     }
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
 
-    ts_type **dft_mem_array = (ts_type **) calloc(coeff_number, sizeof(ts_type * ));
-    for (int k = 0; k < coeff_number; ++k) {
+    ts_type **dft_mem_array = (ts_type **) calloc(n_coefficients, sizeof(ts_type * ));
+    for (int k = 0; k < n_coefficients; ++k) {
         dft_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
 
@@ -179,14 +175,14 @@ void sfa_set_bins(
         // calculate coefficient-wise variance
         dft_mem_array_coeff = calculate_variance_coeff(index, dft_mem_array);
 
-        free_dft_memory(index, coeff_number, dft_mem_array);
+        free_dft_memory(index, n_coefficients, dft_mem_array);
     }
 
     for (int i = 0; i < maxquerythread; i++) {
         fftw_workspace_destroy(&input_data[i].fftw);
 
-        input_data[i].start_number = i * (paa_segments / maxquerythread);
-        input_data[i].stop_number = (i + 1) * (paa_segments / maxquerythread);
+        input_data[i].start_number = i * (n_segments / maxquerythread);
+        input_data[i].stop_number = (i + 1) * (n_segments / maxquerythread);
 
         if (use_variance) {
             // replace with new ordering
@@ -194,8 +190,8 @@ void sfa_set_bins(
         }
     }
 
-    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (paa_segments / maxquerythread);
-    input_data[maxquerythread - 1].stop_number = paa_segments;
+    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (n_segments / maxquerythread);
+    input_data[maxquerythread - 1].stop_number = n_segments;
 
     //initiate worker threads for splitting coefficients into intervals
     for (int i = 0; i < maxquerythread; i++) {
@@ -209,9 +205,9 @@ void sfa_set_bins(
     free(input_data);
 
     if (use_variance) {
-        free_dft_memory(index, index->settings->paa_segments, dft_mem_array_coeff);
+        free_dft_memory(index, index->settings->n_segments, dft_mem_array_coeff);
     } else {
-        free_dft_memory(index, index->settings->paa_segments, dft_mem_array);
+        free_dft_memory(index, index->settings->n_segments, dft_mem_array);
     }
 
     COUNT_BINNING_TIME_END
@@ -225,13 +221,13 @@ void sfa_set_bins(
   It returns a trimmed dft_mem_array with only the highest-variance coeff.
 */
 ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
-    int coeff_number = index->settings->coeff_number;
-    int paa_segments = index->settings->paa_segments;
+    int n_coefficients = index->settings->n_coefficients;
+    int n_segments = index->settings->n_segments;
     unsigned int sample_size = index->settings->sample_size;
 
-    struct variance_coeff_index var_coeff_index[coeff_number / 2];
+    struct variance_coeff_index var_coeff_index[n_coefficients / 2];
 
-    for (int i = 0; i < coeff_number / 2; ++i) {
+    for (int i = 0; i < n_coefficients / 2; ++i) {
         double mean_real = 0.0;
         double mean_imag = 0.0;
         double var_real = 0.0;
@@ -259,39 +255,39 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     /*
     fprintf(stderr, "Variance: ");
-    for (int i = 0; i < coeff_number; ++i) {
+    for (int i = 0; i < n_coefficients; ++i) {
         // fprintf(stderr, "%.3f\tposition %d\n", var_coeff_index[i].variance, var_coeff_index[i].coeff_index);
         fprintf(stderr, "%.4f, ", var_coeff_index[i].variance);
     }
     fprintf(stderr, "\n");
     */
 
-    qsort(var_coeff_index, coeff_number / 2, sizeof(var_coeff_index[0]), compare_var);
+    qsort(var_coeff_index, n_coefficients / 2, sizeof(var_coeff_index[0]), compare_var);
 
     fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
-    for (int i = 0; i < coeff_number / 2; ++i) {
+    for (int i = 0; i < n_coefficients / 2; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index, var_coeff_index[i].variance);
     }
     fprintf(stderr, "\n");
 
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    for (int i = 0; i < n_segments / 2; ++i) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
     // sorting needed?
-    qsort(index->coefficients, paa_segments / 2, sizeof(int), compare_int);
+    qsort(index->coefficients, n_segments / 2, sizeof(int), compare_int);
     fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    for (int i = 0; i < n_segments / 2; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
 
-    ts_type **dft_mem_array_coeff = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
-    for (int k = 0; k < paa_segments; ++k) {
+    ts_type **dft_mem_array_coeff = (ts_type **) calloc(n_segments, sizeof(ts_type * ));
+    for (int k = 0; k < n_segments; ++k) {
         dft_mem_array_coeff[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
 
-    for (int i = 0; i < paa_segments / 2; ++i) {
+    for (int i = 0; i < n_segments / 2; ++i) {
         int coeff = index->coefficients[i];
 
         memcpy(dft_mem_array_coeff[i * 2],
@@ -306,7 +302,7 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 }
 
 /*
-    Worker method for sampling values, calculating FFT coefficients (the first coeff_number coefficients) and saving them to dft_mem_array
+    Worker method for sampling values, calculating FFT coefficients (the first n_coefficients coefficients) and saving them to dft_mem_array
 */
 void *set_bins_worker_dft(void *transferdata) {
     struct bins_data_inmemory *bins_data = (bins_data_inmemory *) transferdata;
@@ -319,14 +315,14 @@ void *set_bins_worker_dft(void *transferdata) {
 
     unsigned long ts_length = index->settings->timeseries_size;
 
-    int coeff_number = 0;
+    int n_coefficients = 0;
     // Variance based coefficients
-    if (index->settings->coeff_number > 0) {
-        coeff_number = index->settings->coeff_number;
+    if (index->settings->n_coefficients > 0) {
+        n_coefficients = index->settings->n_coefficients;
     }
         // first coefficients
     else {
-        coeff_number = index->settings->paa_segments;
+        n_coefficients = index->settings->n_segments;
     }
 
     unsigned long start_index = start_number * ts_length * sizeof(ts_type);
@@ -352,8 +348,8 @@ void *set_bins_worker_dft(void *transferdata) {
     ts_type *ts = bins_data->fftw.ts;
     fftw_workspace *fftw = &bins_data->fftw;
 
-    file_type *ts_orig1;
-    ts_type *ts_orig2;
+    file_type *ts_orig1 = NULL;
+    ts_type *ts_orig2 = NULL;
 
     if (filetype_int) {
         ts_orig1 = (file_type *) calloc(index->settings->timeseries_size, sizeof(file_type));
@@ -384,14 +380,14 @@ void *set_bins_worker_dft(void *transferdata) {
             znorm(ts, ts_length);
         }
 
-        int use_best = index->settings->coeff_number != 0;
+        int use_best = index->settings->n_coefficients != 0;
         if (use_best) {
-            fft_from_ts(index, index->settings->coeff_number, 0, fftw);
+            fft_from_ts(index, index->settings->n_coefficients, 0, fftw);
         } else {
-            fft_from_ts(index, index->settings->paa_segments, 0, fftw);
+            fft_from_ts(index, index->settings->n_segments, 0, fftw);
         }
 
-        for (int j = 0; j < coeff_number; ++j) {
+        for (int j = 0; j < n_coefficients; ++j) {
             ts_type value = fftw->transform[j];
             dft_mem_array[j][i + (bins_data->workernumber * bins_data->records_offset)] = value;
         }
@@ -414,11 +410,8 @@ void *set_bins_worker_dft(void *transferdata) {
          */
     }
 
-    if (filetype_int) {
-        free(ts_orig1);
-    } else {
-        free(ts_orig2);
-    }
+    free(ts_orig1);
+    free(ts_orig2);
     fclose(ifile);
 }
 
@@ -435,7 +428,7 @@ void *order_divide_worker(void *transferdata) {
     unsigned long stop_number = bins_data->stop_number;
 
     unsigned int sample_size = index->settings->sample_size;
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
     ts_type *cur_coeff_line;
 
     for (int j = start_number; j < stop_number; ++j) {
@@ -486,9 +479,9 @@ void sfa_print_bins(isax_index *index) {
 
 
     /*
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
     fprintf(stderr,"[\n");
-    for (int i = 0; i < paa_segments; ++i)
+    for (int i = 0; i < n_segments; ++i)
     {
         fprintf(stderr,"-Inf\t");
         for (int j=0; j < index->settings->sax_alphabet_cardinality-1; ++j)
@@ -506,9 +499,9 @@ void sfa_print_bins(isax_index *index) {
 
 }
 
-void free_dft_memory(isax_index *index, int coeff_number, ts_type **dft_mem_array) {
-    // int paa_segments = index->settings->paa_segments;
-    for (int k = 0; k < coeff_number; ++k) {
+void free_dft_memory(isax_index *index, int n_coefficients, ts_type **dft_mem_array) {
+    // int n_segments = index->settings->n_segments;
+    for (int k = 0; k < n_coefficients; ++k) {
         free(dft_mem_array[k]);
     }
     free(dft_mem_array);
@@ -578,7 +571,7 @@ get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sa
 ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
-    int number_of_segments = index->settings->paa_segments;
+    int number_of_segments = index->settings->n_segments;
 
     ts_type distance = 0.0;
     int i = 0;
@@ -586,7 +579,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
     //special case: for not normalized time series, the first coefficient has to be treated spacially
     //for normalized data, this part is skipped
     if (!index->settings->is_norm &&
-        (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
+        (index->settings->n_coefficients == 0 || index->coefficients[0] == 0)) {
         distance += get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
                 max_bit_cardinality, max_cardinality, 1.0);
@@ -595,7 +588,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
             return distance;
         }
 
-        if (index->settings->coeff_number == 0) {
+        if (index->settings->n_coefficients == 0) {
             // if no variance-based coefficient selection is chosen
             // skip the imaginary part of the first coefficient
             i = 2;

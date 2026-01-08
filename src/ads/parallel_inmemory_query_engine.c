@@ -37,7 +37,7 @@
 query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index *index) {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
@@ -343,10 +343,10 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
     for (int i = 0; i < batch_number; i++) {
         omp_init_lock(&(bsflock[i]));
         approximate_result[i] = approximate_search_inmemory(&(ts[i * index->settings->timeseries_size]),
-                                                            &(paa[i * index->settings->paa_segments]), index);
+                                                            &(paa[i * index->settings->n_segments]), index);
         if (approximate_result[i].distance == FLT_MAX || min_checked_leaves > 1) {
             approximate_result[i] = refine_answer_inmemory(&(ts[i * index->settings->timeseries_size]),
-                                                           &(paa[i * index->settings->paa_segments]), index,
+                                                           &(paa[i * index->settings->n_segments]), index,
                                                            approximate_result[i], minimum_distance, min_checked_leaves);
         }
 
@@ -357,13 +357,13 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
     COUNT_CAL_TIME_START
 #pragma omp parallel for num_threads(maxquerythread)
     for (unsigned long j = 0; j < index->sax_cache_size; j++) {
-        sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[j * index->settings->n_segments];
         for (int i = 0; i < batch_number; i++)
-            if (minidist_paa_to_isax_raw_SIMD(&(paa[i * index->settings->paa_segments]), sax,
+            if (minidist_paa_to_isax_raw_SIMD(&(paa[i * index->settings->n_segments]), sax,
                                               index->settings->max_sax_cardinalities,
                                               index->settings->sax_bit_cardinality,
                                               index->settings->sax_alphabet_cardinality,
-                                              index->settings->paa_segments, MINVAL, MAXVAL,
+                                              index->settings->n_segments, MINVAL, MAXVAL,
                                               index->settings->mindist_sqrt) <= approximate_result[i].distance) {
                 ts_buffer = &rawfile[j * index->settings->timeseries_size];
                 // float dist = ts_euclidean_distance_SIMD(&(ts[i * index->settings->timeseries_size]), ts_buffer,
@@ -404,12 +404,12 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
 
     for (i = start_number; i < stop_number; i++) {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_raw_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                 index->settings->sax_bit_cardinality,
                                                 index->settings->sax_alphabet_cardinality,
-                                                index->settings->paa_segments, MINVAL, MAXVAL,
+                                                index->settings->n_segments, MINVAL, MAXVAL,
                                                 index->settings->mindist_sqrt);
 
         if (mindist <= ((ParIS_LDCW_data *) worker_data)->bsfdistance) {
@@ -554,7 +554,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                                                         current_root_node->isax_cardinalities,
                                                         index->settings->sax_bit_cardinality,
                                                         index->settings->sax_alphabet_cardinality,
-                                                        index->settings->paa_segments,
+                                                        index->settings->n_segments,
                                                         MINVAL, MAXVAL,
                                                         index->settings->mindist_sqrt);
 
@@ -647,7 +647,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                                                                         n->node->left_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->left_child;
@@ -674,7 +674,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                                                                         n->node->right_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->right_child;
@@ -808,7 +808,7 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
     //printf("the new distance is: %f \n",approximate_result.distance);
-    //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+    //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 
@@ -921,7 +921,7 @@ pqueue_bsf exact_topk_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_inde
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
     //printf("the new distance is: %f \n",approximate_result.distance);
-    //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+    //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return *pq_bsf;
 }
 
@@ -1052,7 +1052,7 @@ query_result exact_search_serial_ParIS2_inmemory(ts_type *ts, ts_type *paa, isax
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
     //printf("the new distance is: %f \n",approximate_result.distance);
-    //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+    //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 
@@ -1072,12 +1072,12 @@ void *mindistance_worker_inmemory(void *essdata) {
 
     for (i = start_number; i < stop_number; i++) {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                  index->settings->sax_bit_cardinality,
                                                  index->settings->sax_alphabet_cardinality,
-                                                 index->settings->paa_segments, MINVAL, MAXVAL,
+                                                 index->settings->n_segments, MINVAL, MAXVAL,
                                                  index->settings->mindist_sqrt);
         if (mindist <= ((ParIS_LDCW_data *) essdata)->bsfdistance) {
             if (((ParIS_LDCW_data *) essdata)->sum_of_lab >= max_number) {
@@ -1257,11 +1257,11 @@ exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index 
     //LBDcalculationnumber=index->sax_cache_size;
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
     for (unsigned long j = 0; j < index->sax_cache_size; j++) {
-        sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[j * index->settings->n_segments];
         if (minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                            index->settings->sax_bit_cardinality,
                                            index->settings->sax_alphabet_cardinality,
-                                           index->settings->paa_segments, MINVAL, MAXVAL,
+                                           index->settings->n_segments, MINVAL, MAXVAL,
                                            index->settings->mindist_sqrt) <= bsf_distance) {
             ts_buffer = &rawfile[j * index->settings->timeseries_size];
             // float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, bsf_distance);
@@ -1323,7 +1323,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
 
     SET_APPROXIMATE(approximate_result.distance);
     bsf_distance = approximate_result.distance;
-    int numberofbuffer = pow(2, index->settings->paa_segments);
+    int numberofbuffer = pow(2, index->settings->n_segments);
     pqueue_bsf *pq = pqueue_bsf_init(numberofbuffer);
 
     int kkkk = 0;
@@ -1337,7 +1337,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
                                                   node->isax_cardinalities,
                                                   index->settings->sax_bit_cardinality,
                                                   index->settings->sax_alphabet_cardinality,
-                                                  index->settings->paa_segments,
+                                                  index->settings->n_segments,
                                                   MINVAL, MAXVAL,
                                                   index->settings->mindist_sqrt);
             //COUNT_CAL_TIME_END
@@ -1359,11 +1359,11 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
             fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[pq->position[i]];
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
             for (unsigned long j = 0; j < current_buffer->max_buffer_size; j++) {
-                sax_type *sax = &current_buffer->sax_records[j * index->settings->paa_segments];
+                sax_type *sax = &current_buffer->sax_records[j * index->settings->n_segments];
                 if (minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                    index->settings->sax_bit_cardinality,
                                                    index->settings->sax_alphabet_cardinality,
-                                                   index->settings->paa_segments, MINVAL, MAXVAL,
+                                                   index->settings->n_segments, MINVAL, MAXVAL,
                                                    index->settings->mindist_sqrt) <= bsf_distance) {
                     ts_buffer = &rawfile[current_buffer->pos_records[j]];
                     //float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size,
@@ -1434,11 +1434,11 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
 #pragma omp parallel for num_threads(maxquerythread)
     for (j = 0; j < index->sax_cache_size; j++) {
         rdcbitmap[j] = FALSE;
-        sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[j * index->settings->n_segments];
         if (minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                            index->settings->sax_bit_cardinality,
                                            index->settings->sax_alphabet_cardinality,
-                                           index->settings->paa_segments, MINVAL, MAXVAL,
+                                           index->settings->n_segments, MINVAL, MAXVAL,
                                            index->settings->mindist_sqrt) <= bsf_distance) {
             rdcbitmap[j] = TRUE;
 
@@ -2443,7 +2443,7 @@ void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bs
                                           node->isax_cardinalities,
                                           index->settings->sax_bit_cardinality,
                                           index->settings->sax_alphabet_cardinality,
-                                          index->settings->paa_segments,
+                                          index->settings->n_segments,
                                           MINVAL, MAXVAL,
                                           index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -2476,7 +2476,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
                                           node->isax_cardinalities,
                                           index->settings->sax_bit_cardinality,
                                           index->settings->sax_alphabet_cardinality,
-                                          index->settings->paa_segments,
+                                          index->settings->n_segments,
                                           MINVAL, MAXVAL,
                                           index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -2505,7 +2505,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
                                             node->isax_cardinalities,
                                             index->settings->sax_bit_cardinality,
                                             index->settings->sax_alphabet_cardinality,
-                                            index->settings->paa_segments,
+                                            index->settings->n_segments,
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -2545,7 +2545,7 @@ void insert_tree_node_m_workstealing(float *paa, isax_node *node, isax_index *in
                                           node->isax_cardinalities,
                                           index->settings->sax_bit_cardinality,
                                           index->settings->sax_alphabet_cardinality,
-                                          index->settings->paa_segments,
+                                          index->settings->n_segments,
                                           MINVAL, MAXVAL,
                                           index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -2582,7 +2582,7 @@ insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_i
                                           node->isax_cardinalities,
                                           index->settings->sax_bit_cardinality,
                                           index->settings->sax_alphabet_cardinality,
-                                          index->settings->paa_segments,
+                                          index->settings->n_segments,
                                           MINVAL, MAXVAL,
                                           index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END

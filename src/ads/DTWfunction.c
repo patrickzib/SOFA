@@ -317,17 +317,17 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
 
     int q_loaded = 0; 
     ts_type * ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type * paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-            ts_type * paaUpperLemQuery = malloc(sizeof(ts_type) * index->settings->paa_segments);
-            ts_type * paaLowerLemQuery = malloc(sizeof(ts_type) * index->settings->paa_segments);
+    ts_type * paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+            ts_type * paaUpperLemQuery = malloc(sizeof(ts_type) * index->settings->n_segments);
+            ts_type * paaLowerLemQuery = malloc(sizeof(ts_type) * index->settings->n_segments);
             
             ts_type * upperLemire = malloc(sizeof(ts_type) * index->settings->timeseries_size);
             ts_type * lowerLemire = malloc(sizeof(ts_type) * index->settings->timeseries_size);
             
 
     node_list nodelist;
-    nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->paa_segments));
+    nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->n_segments));
     nodelist.node_amount=0;
     isax_node *current_root_node = index->first_node;
     while(1)
@@ -375,9 +375,9 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
     #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
     #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -678,11 +678,11 @@ query_result exact_DTW_serial_ParIS_openmp_inmemory(ts_type *ts,ts_type *paa, ts
     //LBDcalculationnumber=index->sax_cache_size;
     #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
     for(unsigned long  j=0; j<index->sax_cache_size; j++) {
-        sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[j * index->settings->n_segments];
         if(minidist_paa_to_isax_raw_DTW_SIMD(paaU,paaL, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt) <= bsf_distance) {
             ts_buffer=&rawfile[j*index->settings->timeseries_size];
 
@@ -835,7 +835,7 @@ query_result exact_DTW_serial_ParIS_inmemory(ts_type *ts,ts_type *paa, ts_type *
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
             //printf("the new distance is: %f \n",approximate_result.distance);
-                //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+                //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 void* mindtwdistance_worker_inmemory(void *essdata)
@@ -858,12 +858,12 @@ void* mindtwdistance_worker_inmemory(void *essdata)
     for(i=start_number;i<stop_number;i++)
     {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_raw_DTW_SIMD(paaU,paaL, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) 
         {
@@ -1231,7 +1231,7 @@ void insert_tree_node_m_hybridpqueue_DTW(float *paaU,float *paaL,isax_node *node
                                             node->isax_cardinalities,
                                             index->settings->sax_bit_cardinality,
                                             index->settings->sax_alphabet_cardinality,
-                                            index->settings->paa_segments,
+                                            index->settings->n_segments,
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -1266,7 +1266,7 @@ query_result  approximate_DTW_inmemory_messi (ts_type *ts, ts_type *paa, isax_in
 {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
@@ -1383,7 +1383,7 @@ float calculate_node_DTW2_inmemory (isax_index *index, isax_node *node, ts_type 
                                                index->settings->max_sax_cardinalities,
                                                index->settings->sax_bit_cardinality,
                                                index->settings->sax_alphabet_cardinality,
-                                               index->settings->paa_segments, MINVAL, MAXVAL,
+                                               index->settings->n_segments, MINVAL, MAXVAL,
                                                index->settings->mindist_sqrt);
 
             if (distmin<bsf)
@@ -1439,7 +1439,7 @@ query_result  approximate_DTW_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_
 {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;

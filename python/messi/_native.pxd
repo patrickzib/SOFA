@@ -3,7 +3,7 @@ cdef extern from "ads/api.h":
     ctypedef struct messi_index_params:
         const char *root_directory
         int timeseries_size
-        int paa_segments
+        int n_segments
         int sax_bit_cardinality
         int max_leaf_size
         int min_leaf_size
@@ -19,7 +19,7 @@ cdef extern from "ads/api.h":
         char is_norm
         int histogram_type
         int sample_type
-        int coeff_number
+        int n_coefficients
         int max_query_threads
         int queue_count
 

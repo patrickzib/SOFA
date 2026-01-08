@@ -47,6 +47,7 @@
 #include "ads/DTWfunction.h"
 #include "ads/sfa/dft.h"
 #include "ads/sfa/sfa.h"
+#include "ads/spartan/spartan.h"
 #include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
@@ -107,7 +108,7 @@ int main(int argc, char **argv) {
     static long int dataset_size = 6000000;//testbench
     static int queries_size = 10;
     static int time_series_size = 256;
-    static int paa_segments = 16;
+    static int n_segments = 16;
     static int sax_cardinality = 8;
     static int leaf_size = 2000;
     static int min_leaf_size = 10;
@@ -129,7 +130,7 @@ int main(int argc, char **argv) {
     static char is_norm = 0;
     static int histogram_type = 1;
     static int sample_type = 1;
-    static int coeff_number = 0;
+    static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
 
@@ -252,7 +253,7 @@ int main(int argc, char **argv) {
                 break;
 
             case 'B':
-                paa_segments = atoi(optarg);
+                n_segments = atoi(optarg);
 
             case 'l':
                 leaf_size = atoi(optarg);
@@ -319,7 +320,7 @@ int main(int argc, char **argv) {
                 sample_type = atoi(optarg);
                 break;
             case 'D':
-                coeff_number = atoi(optarg);
+                n_coefficients = atoi(optarg);
                 break;
             case 'E':
                 filetype_int = 1;
@@ -375,7 +376,7 @@ int main(int argc, char **argv) {
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
-                \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between paa_segments/2 and timeseries-size/2)\n\
+                \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n_segments/2 and timeseries-size/2)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
@@ -747,17 +748,17 @@ int main(int argc, char **argv) {
             sprintf(rm_command, "rm -rf %s", index_path);
             system(rm_command);
         }
-        //check if paa_segments size is at most timeseries_size
-        if (paa_segments > time_series_size) {
+        //check if n_segments size is at most timeseries_size
+        if (n_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        //check is coeff_number is between paa_segments/2 and timeseries_size/2
-        if (coeff_number != 0 && (coeff_number < paa_segments / 2 || coeff_number > time_series_size / 2)) {
-            if (coeff_number < paa_segments || coeff_number > time_series_size) {
-                fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", paa_segments, time_series_size);
+        //check is n_coefficients is between n_segments/2 and timeseries_size/2
+        if (n_coefficients != 0 && (n_coefficients < n_segments / 2 || n_coefficients > time_series_size / 2)) {
+            if (n_coefficients < n_segments || n_coefficients > time_series_size) {
+                fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", n_segments, time_series_size);
                 return -1;
-            } else if (coeff_number % 2 != 0) {
+            } else if (n_coefficients % 2 != 0) {
                 fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
                 return -1;
             }
@@ -843,12 +844,12 @@ int main(int argc, char **argv) {
 
         fprintf(logfile,
                 "MESSI SETTINGS\nFunction type,%d\nSIMD,%u\ntimeseries length,%d\npaa segments,%d\nisax-cardinality,%d\nleaf size,%d\nsample-size,%d\nsample type,%d\n",
-                function_type, SIMD_flag, time_series_size, paa_segments, sax_cardinality, leaf_size, sample_size,
+                function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
                 sample_type);
 
         isax_index_settings *index_settings = isax_index_settings_init(index_path,             // INDEX DIRECTORY
                                                                        time_series_size,   // TIME SERIES SIZE
-                                                                       paa_segments,       // PAA SEGMENTS
+                                                                       n_segments,       // PAA SEGMENTS
                                                                        sax_cardinality,    // SAX CARDINALITY IN BITS
                                                                        leaf_size,          // LEAF SIZE
                                                                        min_leaf_size,      // MIN LEAF SIZE
@@ -866,7 +867,7 @@ int main(int argc, char **argv) {
                                                                        is_norm,            //input normalized for fft
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
-                                                                       coeff_number       //coeff number
+                                                                       n_coefficients       //coeff number
         );
 
         if (index_settings == NULL) {
@@ -919,7 +920,38 @@ int main(int argc, char **argv) {
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < paa_segments; i++) {
+            for (int i = 0; i < n_segments; i++) {
+                memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
+                       sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
+            }
+
+            //perform queries
+            if (topk && k_size > 1) {
+                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
+                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
+            } else {
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, &exact_search_MESSI);
+            }
+
+        } else if (inmemory_flag && function_type == 5) {
+            //initialize bins
+            spartan_bins_init(idx);
+
+            //set bins
+            spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
+
+            //build index
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+
+            //calculate depth (for analysis logfile only)
+            calculate_average_depth(logfile_tree, idx);
+
+            //save index building stats
+            INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_SAVE_FILE(logfile_query);
+            for (int i = 0; i < n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -1072,6 +1104,9 @@ int main(int argc, char **argv) {
 
             if (function_type == 4) {
                 sfa_free_bins(idx);
+                isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
+            } else if (function_type == 5) {
+                spartan_free_bins(idx);
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else if (function_type == 3) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);

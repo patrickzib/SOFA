@@ -25,7 +25,7 @@ void* order_divide_worker(void *transferdata);
 
 void sfa_print_bins(isax_index *index);
 
-void free_dft_memory(isax_index *index, int coeff_number, ts_type **dft_mem_array);
+void free_dft_memory(isax_index *index, int n_coefficients, ts_type **dft_mem_array);
 
 int compare_ts_type (const void * a, const void * b);
 int compare_var (const void *a, const void *b);

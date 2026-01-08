@@ -6,6 +6,7 @@
 #include "ads/sax/ts.h"
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
+#include "ads/spartan/spartan.h"
 #include <stdlib.h>
 #include <float.h>
 #include <stdint.h>
@@ -20,6 +21,8 @@ struct messi_index {
 static void populate_root_nodes(isax_index *index, node_list *list);
 static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num);
 static void finalize_sfa_bins_if_needed(isax_index *index);
+static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num);
+static void finalize_spartan_bins_if_needed(isax_index *index);
 
 static messi_index *messi_alloc(void) {
     messi_index *idx = (messi_index *) calloc(1, sizeof(messi_index));
@@ -61,7 +64,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
     isax_index_settings *settings = isax_index_settings_init(
         root_directory,
         params->timeseries_size,
-        params->paa_segments,
+        params->n_segments,
         params->sax_bit_cardinality,
         params->max_leaf_size,
         params->min_leaf_size,
@@ -79,7 +82,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
         params->is_norm,
         params->histogram_type,
         params->sample_type,
-        params->coeff_number);
+        params->n_coefficients);
 
     if (settings == NULL) {
         free(wrapper);
@@ -103,6 +106,9 @@ void messi_index_destroy(messi_index *index) {
         if (index->index->settings && index->index->settings->function_type == 4) {
             sfa_free_bins(index->index);
         }
+        if (index->index->settings && index->index->settings->function_type == 5) {
+            spartan_free_bins(index->index);
+        }
         MESSI2_index_destroy(index->index, index->index->first_node);
     }
     free(index);
@@ -113,8 +119,10 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
         return -1;
     }
     prepare_sfa_bins_if_needed(index->index, path, ts_num);
+    prepare_spartan_bins_if_needed(index->index, path, ts_num);
     index_creation_pRecBuf(path, ts_num, 0, 0, index->index);
     finalize_sfa_bins_if_needed(index->index);
+    finalize_spartan_bins_if_needed(index->index);
 
     return 0;
 }
@@ -133,7 +141,7 @@ int messi_index_search(messi_index *index,
         return -2;
     }
 
-    ts_type *paa_buffer = malloc(sizeof(ts_type) * index->index->settings->paa_segments);
+    ts_type *paa_buffer = malloc(sizeof(ts_type) * index->index->settings->n_segments);
 
     fftw_workspace fftw = {0};
 
@@ -151,13 +159,15 @@ int messi_index_search(messi_index *index,
             //SFA: parse ts and make fft representation
             memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
-            int use_best = index->index->settings->coeff_number != 0;
+            int use_best = index->index->settings->n_coefficients != 0;
             fft_from_ts(
 				index->index,
-				index->index->settings->paa_segments,
+				index->index->settings->n_segments,
 				use_best, &fftw);
 
-            memcpy(paa_buffer, fftw.transform, sizeof(ts_type) * index->index->settings->paa_segments);
+            memcpy(paa_buffer, fftw.transform, sizeof(ts_type) * index->index->settings->n_segments);
+        } else if (index->index->settings->function_type == 5) {
+            pca_from_ts(index->index, ts, paa_buffer);
         } else {
             paa_from_ts(ts,
                         paa_buffer,
@@ -214,12 +224,37 @@ static void finalize_sfa_bins_if_needed(isax_index *index) {
     if (index == NULL || index->settings->function_type != 4 || index->bins == NULL || index->binsv == NULL) {
         return;
     }
-    int paa_segments = index->settings->paa_segments;
+    int n_segments = index->settings->n_segments;
     int slice = index->settings->sax_alphabet_cardinality - 1;
     if (slice <= 0) {
         return;
     }
-    for (int i = 0; i < paa_segments; i++) {
+    for (int i = 0; i < n_segments; i++) {
+        memcpy(&index->binsv[i * slice], index->bins[i], sizeof(ts_type) * slice);
+    }
+}
+
+static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num) {
+    if (index == NULL || index->settings->function_type != 5) {
+        return;
+    }
+    if (spartan_bins_init(index) != SUCCESS) {
+        fprintf(stderr, "warning: failed to initialize SPARTAN bins.\n");
+        return;
+    }
+    spartan_set_bins(index, path, ts_num, maxquerythread, 1, !index->settings->is_norm);
+}
+
+static void finalize_spartan_bins_if_needed(isax_index *index) {
+    if (index == NULL || index->settings->function_type != 5 || index->bins == NULL || index->binsv == NULL) {
+        return;
+    }
+    int n_segments = index->settings->n_segments;
+    int slice = index->settings->sax_alphabet_cardinality - 1;
+    if (slice <= 0) {
+        return;
+    }
+    for (int i = 0; i < n_segments; i++) {
         memcpy(&index->binsv[i * slice], index->bins[i], sizeof(ts_type) * slice);
     }
 }

@@ -26,6 +26,7 @@
 #include "ads/isax_node_split.h"
 #include "ads/sfa/dft.h"
 #include "ads/sfa/sfa.h"
+#include "ads/spartan/spartan.h"
 #include "ads/calc_utils.h"
 
 #define NTHREADS 4
@@ -37,13 +38,10 @@ void *compute_mindists_in(void *ptr) {
     unsigned long i;
 
     for (i = arguments->from; i < arguments->to; i++) {
-        sax_type *sax = &(arguments->index->sax_cache[i * arguments->index->settings->paa_segments]);
-        MINDISTS[i] = minidist_paa_to_isax_raw_SIMD(arguments->paa, sax,
-                                                     arguments->index->settings->max_sax_cardinalities,
-                                                     arguments->index->settings->sax_bit_cardinality,
-                                                     arguments->index->settings->sax_alphabet_cardinality,
-                                                     arguments->index->settings->paa_segments, MINVAL, MAXVAL,
-                                                     arguments->index->settings->mindist_sqrt);
+        sax_type *sax = &(arguments->index->sax_cache[i * arguments->index->settings->n_segments]);
+        MINDISTS[i] = messi_minidist_raw(arguments->index, arguments->paa, sax,
+                                         arguments->index->settings->max_sax_cardinalities,
+                                         FLT_MAX);
     }
 
     return NULL;
@@ -52,7 +50,7 @@ void *compute_mindists_in(void *ptr) {
 query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index) {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
@@ -92,13 +90,13 @@ query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *
 query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_index *index) {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     if (index->settings->function_type == 4) {
         sfa_from_fft(index, paa, sax);
-    }
-    //SAX
-    else {
+    } else if (index->settings->function_type == 5) {
+        spartan_from_pca(index, paa, sax);
+    } else {
         sax_from_paa(paa, sax, index->settings);
     }
 
@@ -140,16 +138,15 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
 query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index) {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
 
     //SFA
     if (index->settings->function_type == 4) {
         sfa_from_fft(index, paa, sax);
-    }
-
-        //SAX
-    else {
+    } else if (index->settings->function_type == 5) {
+        spartan_from_pca(index, paa, sax);
+    } else {
         sax_from_paa(paa, sax, index->settings);
     }
 
@@ -373,7 +370,7 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     //printf("the min distance 0 is %f\n",MINDISTS[0] );
     COUNT_OUTPUT_TIME_START
     for (i = 0; i < index->sax_cache_size; i++) {
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if (MINDISTS[i] <= approximate_result.distance) {
             ts_buffer = &rawfile[i * index->settings->timeseries_size];
             checkts++;
@@ -470,7 +467,7 @@ query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_i
 
     COUNT_OUTPUT_TIME_START
     for (i = 0; i < index->sax_cache_size; i++) {
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if (MINDISTS[i] <= approximate_result.distance) {
             ts_buffer = &rawfile[i * index->settings->timeseries_size];
             diskconter++;
@@ -514,7 +511,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                                                         current_root_node->isax_cardinalities,
                                                         index->settings->sax_bit_cardinality,
                                                         index->settings->sax_alphabet_cardinality,
-                                                        index->settings->paa_segments,
+                                                        index->settings->n_segments,
                                                         MINVAL, MAXVAL,
                                                         index->settings->mindist_sqrt);
         mindist_result->node = current_root_node;
@@ -578,7 +575,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                                                                         n->node->left_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->left_child;
@@ -600,7 +597,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                                                                         n->node->right_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->right_child;
@@ -629,7 +626,7 @@ float calculate_minimum_distance_inmemory(isax_index *index, isax_node *node, ts
                                          node->isax_cardinalities,
                                          index->settings->sax_bit_cardinality,
                                          index->settings->sax_alphabet_cardinality,
-                                         index->settings->paa_segments,
+                                         index->settings->n_segments,
                                          MINVAL, MAXVAL,
                                          index->settings->mindist_sqrt);
     float bsfRecord = FLT_MAX;
@@ -647,7 +644,7 @@ float calculate_minimum_distance_inmemory(isax_index *index, isax_node *node, ts
                                                               index->settings->max_sax_cardinalities,
                                                               index->settings->sax_bit_cardinality,
                                                               index->settings->sax_alphabet_cardinality,
-                                                              index->settings->paa_segments, MINVAL, MAXVAL,
+                                                              index->settings->n_segments, MINVAL, MAXVAL,
                                                               index->settings->mindist_sqrt);
                 //              printf("+[PARTIAL] %lf\n", mindist);
                 if (mindist < bsfRecord) {
@@ -660,7 +657,7 @@ float calculate_minimum_distance_inmemory(isax_index *index, isax_node *node, ts
                                                               index->settings->max_sax_cardinalities,
                                                               index->settings->sax_bit_cardinality,
                                                               index->settings->sax_alphabet_cardinality,
-                                                              index->settings->paa_segments, MINVAL, MAXVAL,
+                                                              index->settings->n_segments, MINVAL, MAXVAL,
                                                               index->settings->mindist_sqrt);
                 //              printf("+[TMP_PARTIAL] %lf\n", mindist);
                 if (mindist < bsfRecord) {
@@ -741,7 +738,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                                         current_root_node->isax_cardinalities,
                                                         index->settings->sax_bit_cardinality,
                                                         index->settings->sax_alphabet_cardinality,
-                                                        index->settings->paa_segments,
+                                                        index->settings->n_segments,
                                                         MINVAL, MAXVAL,
                                                         index->settings->mindist_sqrt);
         mindist_result->node = current_root_node;
@@ -817,7 +814,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                                                         n->node->left_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->left_child;
@@ -843,7 +840,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                                                         n->node->right_child->isax_cardinalities,
                                                                         index->settings->sax_bit_cardinality,
                                                                         index->settings->sax_alphabet_cardinality,
-                                                                        index->settings->paa_segments,
+                                                                        index->settings->n_segments,
                                                                         MINVAL, MAXVAL,
                                                                         index->settings->mindist_sqrt);
                         mindist_result->node = n->node->right_child;
@@ -996,7 +993,7 @@ void insert_tree_node(float *paa, isax_node *node, isax_index *index, float bsf,
                                           node->isax_cardinalities,
                                           index->settings->sax_bit_cardinality,
                                           index->settings->sax_alphabet_cardinality,
-                                          index->settings->paa_segments,
+                                          index->settings->n_segments,
                                           MINVAL, MAXVAL,
                                           index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END

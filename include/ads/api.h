@@ -12,7 +12,7 @@ typedef struct messi_index messi_index;
 typedef struct {
     const char *root_directory;
     int timeseries_size;
-    int paa_segments;
+    int n_segments;
     int sax_bit_cardinality;
     int max_leaf_size;
     int min_leaf_size;
@@ -28,7 +28,7 @@ typedef struct {
     char is_norm;
     int histogram_type;
     int sample_type;
-    int coeff_number;
+    int n_coefficients;
     int max_query_threads;
     int queue_count;
 } messi_index_params;

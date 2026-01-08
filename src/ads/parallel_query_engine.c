@@ -43,7 +43,7 @@ void isax_query_binary_file_para(const char *ifilename, int q_num, isax_index *i
 
     int q_loaded = 0;
 
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     paraquery paraqueries[q_num];
     pthread_mutex_t lock_index=PTHREAD_MUTEX_INITIALIZER;
             COUNT_TOTAL_TIME_START
@@ -53,7 +53,7 @@ void isax_query_binary_file_para(const char *ifilename, int q_num, isax_index *i
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paraqueries[q_loaded].ts= malloc(sizeof(ts_type) * index->settings->timeseries_size);
-        paraqueries[q_loaded].paa= malloc(sizeof(ts_type) * index->settings->paa_segments);
+        paraqueries[q_loaded].paa= malloc(sizeof(ts_type) * index->settings->n_segments);
         paraqueries[q_loaded].index=index;
         paraqueries[q_loaded].minimum_distance=minimum_distance;
         paraqueries[q_loaded].min_checked_leaves=min_checked_leaves;
@@ -73,9 +73,9 @@ void isax_query_binary_file_para(const char *ifilename, int q_num, isax_index *i
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -142,16 +142,16 @@ query_result exact_search_serial_para(ts_type *ts, ts_type *paa, isax_index *ind
     // THREADED
     //for ( i = 0; i < 100; i++)
     //{
-    //    printf("the sax [%d ]%d\n",i,(int)(index->sax_cache[i * index->settings->paa_segments] ));
+    //    printf("the sax [%d ]%d\n",i,(int)(index->sax_cache[i * index->settings->n_segments] ));
     //}
     for(i=0; i<index->sax_cache_size; i++) 
     {
-        sax_type *sax = &(index->sax_cache[i * index->settings->paa_segments]);
+        sax_type *sax = &(index->sax_cache[i * index->settings->n_segments]);
         MINDISTS[i] = minidist_paa_to_isax_raw(paa, sax,
                                                index->settings->max_sax_cardinalities,
                                                index->settings->sax_bit_cardinality,
                                                index->settings->sax_alphabet_cardinality,
-                                               index->settings->paa_segments, MINVAL, MAXVAL,
+                                               index->settings->n_segments, MINVAL, MAXVAL,
                                                index->settings->mindist_sqrt);
     }
     // END
@@ -165,14 +165,14 @@ query_result exact_search_serial_para(ts_type *ts, ts_type *paa, isax_index *ind
 
     for(i=0; i<index->sax_cache_size; i++) 
     {
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if(MINDISTS[i] <= approximate_result.distance) 
         {
             COUNT_INPUT_TIME_START
             fseek(raw_file, i * index->settings->ts_byte_size, SEEK_SET);
             fread(ts_buffer, index->settings->ts_byte_size, 1, raw_file);
             COUNT_INPUT_TIME_END
-            //printf(" the %d sax is :  %d !!!\n",i,index->sax_cache[i* index->settings->paa_segments] );
+            //printf(" the %d sax is :  %d !!!\n",i,index->sax_cache[i* index->settings->n_segments] );
             float dist = ts_euclidean_distance(ts, ts_buffer, index->settings->timeseries_size, approximate_result.distance);
             if(dist < approximate_result.distance) 
             {
@@ -327,7 +327,7 @@ query_result exact_search_serial_ParIS(ts_type *ts, ts_type *paa, isax_index *in
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
             //printf("the new distance is: %f \n",approximate_result.distance);
-                //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+                //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 
@@ -482,7 +482,7 @@ query_result exact_search_serial_ParISnonsort(ts_type *ts, ts_type *paa, isax_in
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
             //printf("the new distance is: %f \n",approximate_result.distance);
-                //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+                //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 
@@ -617,7 +617,7 @@ pqueue_bsf exact_topk_serial_ParIS(ts_type *ts, ts_type *paa, isax_index *index,
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
             //printf("the new distance is: %f \n",approximate_result.distance);
-                //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+                //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return *pq_bsf;
 }
 
@@ -635,12 +635,12 @@ void* mindistanceinsert_worker(void *essdata)
     for(i=start_number;i<stop_number;i++)
     {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
             /*bit_array_set_bit(bitarray, i);*/
@@ -677,12 +677,12 @@ void* mindistance_worker(void *essdata)
     for(i=start_number;i<stop_number;i++)
     {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
             /*bit_array_set_bit(bitarray, i);*/
@@ -922,12 +922,12 @@ void* ParIS_nb_worker(void *essdata)
     for(i=start_number;i<stop_number;i++)
     {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_raw_SIMD(paa, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt);
 
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
@@ -1043,7 +1043,7 @@ void* refind_answer_fonction(void *rfdata)
                                               current_root_node->isax_cardinalities,
                                               index->settings->sax_bit_cardinality,
                                               index->settings->sax_alphabet_cardinality,
-                                              index->settings->paa_segments,
+                                              index->settings->n_segments,
                                               MINVAL, MAXVAL,
                                               index->settings->mindist_sqrt);
 
@@ -1141,7 +1141,7 @@ void* refind_answer_fonction(void *rfdata)
                                                                      n->node->left_child->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,
                                                                      index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->paa_segments,
+                                                                     index->settings->n_segments,
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
                     mindist_result->node = n->node->left_child;
@@ -1170,7 +1170,7 @@ void* refind_answer_fonction(void *rfdata)
                                                                      n->node->right_child->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,
                                                                      index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->paa_segments,
+                                                                     index->settings->n_segments,
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
                     mindist_result->node = n->node->right_child;
@@ -1317,7 +1317,7 @@ void* exact_search_fonction(void *rfdata)
                                               current_root_node->isax_cardinalities,
                                               index->settings->sax_bit_cardinality,
                                               index->settings->sax_alphabet_cardinality,
-                                              index->settings->paa_segments,
+                                              index->settings->n_segments,
                                               MINVAL, MAXVAL,
                                               index->settings->mindist_sqrt);
 
@@ -1420,7 +1420,7 @@ void* exact_search_fonction(void *rfdata)
                                                                      n->node->left_child->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,
                                                                      index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->paa_segments,
+                                                                     index->settings->n_segments,
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
                     mindist_result->node = n->node->left_child;
@@ -1449,7 +1449,7 @@ void* exact_search_fonction(void *rfdata)
                                                                      n->node->right_child->isax_cardinalities,
                                                                      index->settings->sax_bit_cardinality,
                                                                      index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->paa_segments,
+                                                                     index->settings->n_segments,
                                                                      MINVAL, MAXVAL,
                                                                      index->settings->mindist_sqrt);
                     mindist_result->node = n->node->right_child;
