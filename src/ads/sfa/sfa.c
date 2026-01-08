@@ -9,12 +9,9 @@
 //  Copyright 2012 University of Trento. All rights reserved.
 //
 
-#include "config.h"
 #include "globals.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
 #if ADS_HAVE_AVX2
 #include "immintrin.h"
 #endif
@@ -28,16 +25,13 @@
 #include <sys/stat.h>
 #include <float.h>
 #include <math.h>
-#include <errno.h>
 #include <unistd.h>
-#include <sys/stat.h>
 
 #include "ads/calc_utils.h"
 #include "ads/isax_index.h"
 #include "ads/sfa/dft.h"
 
 #include "ads/sfa/sfa.h"
-#include "include/ads/isax_index.h"
 
 /*
   This functions allocates a two dimensional array
@@ -52,10 +46,6 @@ enum response sfa_bins_init(isax_index *index) {
     index->bins = NULL;
     index->bins = (ts_type **) calloc(paa_segments, sizeof(ts_type * ));
     index->binsv = (ts_type *) calloc(paa_segments * (num_symbols - 1), sizeof(ts_type));
-    if (index == NULL) {
-        fprintf(stderr, "Error in sfa.c: Could not allocate memory for bins structure.\n");
-        return FAILURE;
-    }
 
     //allocate num_symbols-1 memory slots for each word
     for (int i = 0; i < paa_segments; ++i) {

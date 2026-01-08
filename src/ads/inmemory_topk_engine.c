@@ -83,7 +83,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
     while (current_root_node != NULL) {
         query_result *mindist_result = malloc(sizeof(query_result));
 
-        mindist_result->distance = messi_minidist_raw(index, paa, current_root_node->isax_values,
+        mindist_result->distance = messi_minidist(index, paa, current_root_node->isax_values,
                                                       current_root_node->isax_cardinalities, minimum_distance);
         mindist_result->node = current_root_node;
         pqueue_insert(pq, mindist_result);
@@ -135,7 +135,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                         calculate_node_topk_inmemory(index, n->node->left_child, ts, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = messi_minidist_raw(index, paa,
+                        mindist_result->distance = messi_minidist(index, paa,
                                                                       n->node->left_child->isax_values,
                                                                       n->node->left_child->isax_cardinalities,
                                                                       minimum_distance);
@@ -149,7 +149,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                         calculate_node_topk_inmemory(index, n->node->right_child, ts, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = messi_minidist_raw(index, paa,
+                        mindist_result->distance = messi_minidist(index, paa,
                                                                       n->node->right_child->isax_values,
                                                                       n->node->right_child->isax_cardinalities,
                                                                       minimum_distance);
