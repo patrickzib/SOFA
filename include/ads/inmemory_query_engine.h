@@ -2,21 +2,10 @@
 #ifndef al_inmemory_query_engine_h
 #define al_inmemory_query_engine_h
 #include "config.h"
-#include "../../globals.h"
-#include "sax/ts.h"
-#include "sax/sax.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include <sys/time.h>
 
 #include "isax_index.h"
 #include "isax_query_engine.h"
 #include "isax_node.h"
-#include "pqueue.h"
-#include "isax_first_buffer_layer.h"
-#include "ads/isax_node_split.h"
 
 
 float calculate_node_distance_inmemory (isax_index *index, isax_node *node, ts_type *query , float bsf);

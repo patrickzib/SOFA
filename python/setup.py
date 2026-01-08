@@ -15,33 +15,6 @@ SIMD_CFLAGS = os.environ.get("SIMD_CFLAGS", "")
 COMMON_CFLAGS = [flag for flag in (FFTW_CFLAGS + " " + SIMD_CFLAGS).split() if flag]
 COMMON_LDFLAGS = [flag for flag in FFTW_LIBS.split() if flag]
 
-
-def _ensure_config_header() -> Path:
-    build_config_dir = Path(__file__).resolve().parent / "build_config"
-    build_config_dir.mkdir(parents=True, exist_ok=True)
-    config_path = build_config_dir / "config.h"
-    config_path.write_text(
-        "\n".join(
-            [
-                "/* Auto-generated for Python builds; run ./configure for full detection. */",
-                "#ifndef MESSI_CONFIG_H",
-                "#define MESSI_CONFIG_H",
-                "#define ADS_HAVE_AVX2 0",
-                "#define BENCHMARK 1",
-                "#define HAVE_PTHREAD_BARRIER 0",
-                "#define VERBOSE 0",
-                "#define VERBOSE_LEVEL 0",
-                "#endif /* MESSI_CONFIG_H */",
-                "",
-            ]
-        ),
-        encoding="ascii",
-    )
-    return build_config_dir
-
-
-PY_CONFIG_DIR = _ensure_config_header()
-
 sources = [
     "src/ads/api.c",
     "src/ads/isax_file_loaders.c",
@@ -94,7 +67,7 @@ source_file = "messi/_index.pyx" if cythonize is not None else "messi/_index.c"
 extension = Extension(
     "messi._index",
     sources=[source_file] + sourcedirs,
-    include_dirs=[str(PY_CONFIG_DIR), str(ROOT), str(ROOT / "include"), numpy.get_include()],
+    include_dirs=[str(ROOT), str(ROOT / "include"), numpy.get_include()],
     extra_compile_args=COMMON_CFLAGS + omp_compile + ["-fcommon", "-O0", "-g"] + asan_compile_flags,
     extra_link_args=COMMON_LDFLAGS + omp_link + asan_link_flags,
     language="c",

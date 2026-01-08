@@ -1,34 +1,13 @@
 #ifndef isaxlib_dtw_h
 #define isaxlib_dtw_h
 
-#include <float.h>
 #include "config.h"
-#include "../../globals.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
 #include <pthread.h>
-#include <stdbool.h>
-#include <sys/wait.h>
-#include "config.h"
-#include "../../globals.h"
-#include "ads/sax/sax.h"
-#include "ads/sax/ts.h"
-#include "ads/sax/sax_breakpoints.h"
 #include "ads/isax_index.h"
 
-#include "omp.h"  
 #include "ads/isax_query_engine.h"
 #include "ads/inmemory_index_engine.h"
-#include "ads/inmemory_query_engine.h"
-#include "ads/parallel_inmemory_query_engine.h"
-#include "ads/parallel_index_engine.h"
-#include "ads/isax_first_buffer_layer.h"
 #include "ads/pqueue.h"
-#include "ads/sax/sax.h"
-#include "ads/isax_node_split.h"
-#include "ads/inmemory_topk_engine.h"
 
 
 void lower_upper_lemire(float *t, int len, int r, float *l, float *u);

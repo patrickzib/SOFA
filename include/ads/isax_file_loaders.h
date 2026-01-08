@@ -8,13 +8,6 @@
 #ifndef isax_isax_file_loaders_h
 #define isax_isax_file_loaders_h
 #include "config.h"
-#include "../../globals.h"
-#include "sax/ts.h"
-#include "sax/sax.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <pthread.h>
 #include "isax_index.h"
 #include "isax_query_engine.h"
 #include "inmemory_index_engine.h"

@@ -3,18 +3,10 @@
 #define al_inmemory_topk_engine_h
 #include "config.h"
 #include "../../globals.h"
-#include "sax/ts.h"
-#include "sax/sax.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include "isax_index.h"
-#include "isax_query_engine.h"
 #include "isax_node.h"
-#include "pqueue.h"
-#include "isax_first_buffer_layer.h"
 #include "inmemory_index_engine.h"
-#include "ads/isax_node_split.h"
+
 void approximate_topk_inmemory (ts_type *ts, ts_type *paa, isax_index *index,pqueue_bsf *pq_bsf);
 void calculate_node2_topk_inmemory (isax_index *index, isax_node *node, ts_type *query,ts_type *paa, pqueue_bsf *pq_bsf, pthread_rwlock_t *lock_queue) ;
 void calculate_node_topk_inmemory (isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf);
