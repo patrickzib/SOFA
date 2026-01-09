@@ -43,7 +43,7 @@ cdef class Index:
                   int sample_size=1000,
                   char is_norm=0,
                   int histogram_type=2,
-                  int sample_type=3,
+                  int sample_type=1,
                   int n_coefficients=32,
                   int filetype_int=0,
                   int max_query_threads=1,

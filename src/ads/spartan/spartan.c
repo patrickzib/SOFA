@@ -114,9 +114,30 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
         }
     }
 
+    long int *positions = NULL;
+    if (index->settings->sample_type == 3) {
+        positions = malloc(sizeof(long int) * records);
+        if (positions == NULL) {
+            fclose(ifile);
+            free(ts);
+            free(ts_orig1);
+            free(ts_orig2);
+            return FAILURE;
+        }
+        for (unsigned int i = 0; i < records; ++i) {
+            positions[i] = (long int) i;
+        }
+        for (long int i = (long int) records; i < ts_num; ++i) {
+            long int j = spartan_random_at_most(i);
+            if (j < (long int) records) {
+                positions[j] = i;
+            }
+        }
+    }
+
     for (unsigned int i = 0; i < records; ++i) {
         if (index->settings->sample_type == 3) {
-            long int position = spartan_random_at_most((long) ts_num - 1);
+            long int position = positions[i];
             fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
         }
 
@@ -145,6 +166,7 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
     free(ts);
     free(ts_orig1);
     free(ts_orig2);
+    free(positions);
 
     return SUCCESS;
 }

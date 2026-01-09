@@ -209,8 +209,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     if(SIMD_flag)   settings->SIMD_flag='1';
     else            settings->SIMD_flag=false;
 
-    if(is_norm)     settings->is_norm='1';
-    else            settings->is_norm=false;   
+    settings->is_norm = is_norm ? 1 : 0;
 
     settings->sample_size = sample_size;
     settings->sample_type = sample_type;

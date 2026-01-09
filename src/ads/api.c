@@ -124,9 +124,12 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
     if (index == NULL || index->index == NULL || path == NULL) {
         return -1;
     }
+    int apply_znorm = index->index->settings ? !index->index->settings->is_norm : 0;
+    fprintf(stderr, ">>> API apply_znorm: %d (is_norm: %d)\n",
+            apply_znorm, index->index->settings ? index->index->settings->is_norm : -1);
     prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
     prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int);
-    index_creation_pRecBuf(path, ts_num, index->filetype_int, 0, index->index);
+    index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index);
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
 

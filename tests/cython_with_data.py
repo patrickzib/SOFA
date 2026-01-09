@@ -30,8 +30,8 @@ def main() -> None:
         max_query_threads=8,
         function_type=5,
         histogram_type=2,
-        sample_size=sample_size,
-        sample_type=1,
+        # sample_size=sample_size,
+        # sample_type=1,
         is_norm=1)
 
     samples = np.fromfile(data_path, dtype=np.float32, count=sample_size * TS_SIZE)
@@ -39,7 +39,9 @@ def main() -> None:
         raise RuntimeError(f"Expected at least {sample_size * TS_SIZE} floats, got {samples.size}")    
     samples = samples.reshape(sample_size, TS_SIZE)
     
-    cov = np.cov(samples, rowvar=False, bias=False)
+    mean = samples.astype(np.float32).sum(axis=0, dtype=np.float32) / sample_size
+    centered = samples.astype(np.float64) - mean.astype(np.float64)
+    cov = (centered.T @ centered) / (sample_size - 1)
     evals, _ = np.linalg.eigh(cov)
     order = np.argsort(evals)[::-1]
 
@@ -67,7 +69,6 @@ def main() -> None:
     print(f"index_seconds: {index_seconds:.4f}")
     print(f"query_seconds: {query_seconds:.4f}")
     #, "labels:", labels
-
 
 if __name__ == "__main__":
     main()
