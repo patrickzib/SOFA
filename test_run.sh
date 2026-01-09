@@ -13,9 +13,8 @@ QUEUE_NUMBER=${8:-1}
 
 ./bin/MESSI \
   --dataset $FILE_PATH \
-  --in-memory \
   --timeseries-size $TS_SIZE \
-  --function-type 4 \
+  --function-type 3 \
   --dataset-size $DATASET_SIZE \
   --sax-cardinality 8 \
   --queries $QUERIES_PATH \

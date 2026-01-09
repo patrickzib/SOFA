@@ -190,7 +190,8 @@ void isax_query_binary_file_traditional(
         }
 
         COUNT_INPUT_TIME_END
-        printf("%d: ", q_loaded);
+        PRINT_STATS_HEADER();
+        printf("%3d: ", q_loaded);
 
         COUNT_QUERYING_TIME_START
         COUNT_INIT_TIME_START
@@ -643,7 +644,8 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
         COUNT_INPUT_TIME_END
         // printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // printf("Querying for: %d\n", q_loaded);
-        printf("%d: ", q_loaded);
+        PRINT_STATS_HEADER();
+        printf("%3d: ", q_loaded);
 
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);

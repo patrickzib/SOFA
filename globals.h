@@ -143,6 +143,7 @@ void* LOGFILE;
         int checked_nodes;
         int loaded_nodes_all;
         int checked_nodes_all;
+        int stats_header_printed;
         file_position_type loaded_records;
         unsigned long int LBDcalculationnumber;
         unsigned long int RDcalculationnumber;
@@ -188,13 +189,29 @@ void* LOGFILE;
                             total_real_dist_calc_time_all=0.0;\
                             TOTAL_INDEXING_PART_TIME = 0.0;\
                             TOTAL_TRANSFORMATION_PART_TIME = 0.0;\
-          printf("input\t output\t nodes\t checked_nodes\t bytes_accessed\t loaded_nodes\t loaded_records\t approximate_distance\t distance\t total\n");
-        #define PRINT_STATS(result_distance) printf("%lf\t %lf\t %d\t %d\t %ld\t %d\t %lld\t %lf\t %lf\t %lf\n", \
-        total_input_time, total_output_time, \
-        total_tree_nodes, checked_nodes, \
-        BYTES_ACCESSED, loaded_nodes, \
-        loaded_records, APPROXIMATE,\
-        result_distance, total_time);
+                            stats_header_printed = 0;
+        #define PRINT_STATS(result_distance) do { \
+            if (!stats_header_printed) { \
+                printf("%4s %10s %10s %6s %13s %12s %12s %12s %14s %12s %12s\n", \
+                       "idx:", "input", "output", "nodes", "checked_nodes", "bytes_accessed", \
+                       "loaded_nodes", "loaded_records", "approximate_distance", "distance", "total"); \
+                stats_header_printed = 1; \
+            } \
+            printf("%10.3f %10.3f %6d %13d %12ld %12d %12lld %14.6f %12.6f %12.3f\n", \
+                   total_input_time, total_output_time, \
+                   total_tree_nodes, checked_nodes, \
+                   BYTES_ACCESSED, loaded_nodes, \
+                   loaded_records, APPROXIMATE, \
+                   result_distance, total_time); \
+        } while (0);
+        #define PRINT_STATS_HEADER() do { \
+            if (!stats_header_printed) { \
+                printf("%4s %10s %10s %6s %13s %12s %12s %12s %14s %12s %12s\n", \
+                       "idx:", "input", "output", "nodes", "checked_nodes", "bytes_accessed", \
+                       "loaded_nodes", "loaded_records", "approximate_distance", "distance", "total"); \
+                stats_header_printed = 1; \
+            } \
+        } while (0);
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
         #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%lf,%lf,%ld,%ld,%lf,", total_binning_time, total_indexing_time,\
         TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));

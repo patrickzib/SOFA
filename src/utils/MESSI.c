@@ -847,6 +847,12 @@ int main(int argc, char **argv) {
                 function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
                 sample_type);
 
+        if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5)) {
+            fprintf(stderr, "warning: function_type %d requires in-memory mode; enabling --inmemory.\n",
+                    function_type);
+            inmemory_flag = 1;
+        }
+
         isax_index_settings *index_settings = isax_index_settings_init(index_path,             // INDEX DIRECTORY
                                                                        time_series_size,   // TIME SERIES SIZE
                                                                        n_segments,       // PAA SEGMENTS
