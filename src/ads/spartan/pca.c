@@ -1,10 +1,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "config.h"
 #include "globals.h"
 #include "ads/spartan/pca.h"
+
+extern void dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda,
+                   double *w, double *work, int *lwork, int *info);
 
 static void pca_free_model(isax_index *index) {
     if (index->pca_mean != NULL) {
@@ -99,6 +103,34 @@ static void pca_jacobi_eigen(double *matrix, int n, double *eigvals, double *eig
     }
 }
 
+static int pca_lapack_eigen(double *matrix, int n, double *eigvals) {
+    char jobz = 'V';
+    char uplo = 'U';
+    int lda = n;
+    int info = 0;
+    int lwork = -1;
+    double wkopt = 0.0;
+
+    dsyev_(&jobz, &uplo, &n, matrix, &lda, eigvals, &wkopt, &lwork, &info);
+    if (info != 0) {
+        return info;
+    }
+
+    lwork = (int) wkopt;
+    if (lwork < 1) {
+        return -1;
+    }
+
+    double *work = malloc(sizeof(double) * (size_t) lwork);
+    if (work == NULL) {
+        return -1;
+    }
+
+    dsyev_(&jobz, &uplo, &n, matrix, &lda, eigvals, work, &lwork, &info);
+    free(work);
+    return info;
+}
+
 static int pca_compare_variance(const void *a, const void *b) {
     const double *da = (const double *) a;
     const double *db = (const double *) b;
@@ -166,7 +198,12 @@ enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sa
         }
     }
 
-    pca_jacobi_eigen(cov, dim, eigvals, eigvecs);
+    memcpy(eigvecs, cov, sizeof(double) * (size_t) dim * (size_t) dim);
+    int info = pca_lapack_eigen(eigvecs, dim, eigvals);
+    if (info != 0) {
+        fprintf(stderr, "warning: LAPACK dsyev failed (%d), falling back to Jacobi.\n", info);
+        pca_jacobi_eigen(cov, dim, eigvals, eigvecs);
+    }
 
     for (int i = 0; i < dim; ++i) {
         ranked[i * 2] = (double) i;

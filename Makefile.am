@@ -14,5 +14,5 @@ bin_PROGRAMS = bin/MESSI
 
 bin_MESSI_SOURCES = src/utils/MESSI.c
 bin_MESSI_CFLAGS = -I/opt/local/include -I/usr/include/ -I/usr/local/include/ $(FFTW_CFLAGS) -march=native $(SIMD_CFLAGS) -fcommon
-bin_MESSI_LDADD = lib/libads.a $(FFTW_LIBS) -lreadline -lm -lpthread
+bin_MESSI_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) -lreadline -lm -lpthread
 bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ $(SIMD_CFLAGS) -fopenmp

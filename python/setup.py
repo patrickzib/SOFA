@@ -11,9 +11,10 @@ except ImportError:  # pragma: no cover - fallback for runtime without Cython
 ROOT = Path(__file__).resolve().parent.parent
 FFTW_CFLAGS = os.environ.get("FFTW_CFLAGS", "")
 FFTW_LIBS = os.environ.get("FFTW_LIBS", "")
+LAPACK_LIBS = os.environ.get("LAPACK_LIBS", "")
 SIMD_CFLAGS = os.environ.get("SIMD_CFLAGS", "")
 COMMON_CFLAGS = [flag for flag in (FFTW_CFLAGS + " " + SIMD_CFLAGS).split() if flag]
-COMMON_LDFLAGS = [flag for flag in FFTW_LIBS.split() if flag]
+COMMON_LDFLAGS = [flag for flag in (FFTW_LIBS + " " + LAPACK_LIBS).split() if flag]
 
 sources = [
     "src/ads/api.c",
