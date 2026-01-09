@@ -29,6 +29,7 @@ typedef struct {
     int histogram_type;
     int sample_type;
     int n_coefficients;
+    int filetype_int;
     int max_query_threads;
     int queue_count;
 } messi_index_params;

@@ -45,6 +45,7 @@ cdef class Index:
                   int histogram_type=2,
                   int sample_type=3,
                   int n_coefficients=32,
+                  int filetype_int=0,
                   int max_query_threads=1,
                   root_directory=None):
         cdef messi_index_params params
@@ -67,6 +68,7 @@ cdef class Index:
         params.histogram_type = histogram_type
         params.sample_type = sample_type
         params.n_coefficients = n_coefficients
+        params.filetype_int = filetype_int
         params.max_query_threads = max_query_threads
         params.queue_count = max_query_threads
         cdef const char *root_ptr = <const char *> 0

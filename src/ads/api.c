@@ -16,12 +16,13 @@
 
 struct messi_index {
     isax_index *index;
+    int filetype_int;
 };
 
 static void populate_root_nodes(isax_index *index, node_list *list);
-static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num);
+static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_sfa_bins_if_needed(isax_index *index);
-static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num);
+static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_spartan_bins_if_needed(isax_index *index);
 
 static messi_index *messi_alloc(void) {
@@ -94,6 +95,11 @@ messi_index *messi_index_create(const messi_index_params *params) {
         free(wrapper);
         return NULL;
     }
+    int filetype_int = params->filetype_int;
+    if (filetype_int != 0 && filetype_int != 1) {
+        filetype_int = 0;
+    }
+    wrapper->filetype_int = filetype_int;
 
     return wrapper;
 }
@@ -118,9 +124,9 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
     if (index == NULL || index->index == NULL || path == NULL) {
         return -1;
     }
-    prepare_sfa_bins_if_needed(index->index, path, ts_num);
-    prepare_spartan_bins_if_needed(index->index, path, ts_num);
-    index_creation_pRecBuf(path, ts_num, 0, 0, index->index);
+    prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
+    prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int);
+    index_creation_pRecBuf(path, ts_num, index->filetype_int, 0, index->index);
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
 
@@ -209,7 +215,7 @@ static void populate_root_nodes(isax_index *index, node_list *list) {
     }
 }
 
-static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num) {
+static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
     if (index == NULL || index->settings->function_type != 4) {
         return;
     }
@@ -217,7 +223,7 @@ static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long
         fprintf(stderr, "warning: failed to initialize SFA bins.\n");
         return;
     }
-    sfa_set_bins(index, path, ts_num, maxquerythread, 1, !index->settings->is_norm);
+    sfa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
 }
 
 static void finalize_sfa_bins_if_needed(isax_index *index) {
@@ -234,7 +240,7 @@ static void finalize_sfa_bins_if_needed(isax_index *index) {
     }
 }
 
-static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num) {
+static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
     if (index == NULL || index->settings->function_type != 5) {
         return;
     }
@@ -242,7 +248,7 @@ static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, 
         fprintf(stderr, "warning: failed to initialize SPARTAN bins.\n");
         return;
     }
-    spartan_set_bins(index, path, ts_num, maxquerythread, 1, !index->settings->is_norm);
+    spartan_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
 }
 
 static void finalize_spartan_bins_if_needed(isax_index *index) {

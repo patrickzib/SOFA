@@ -211,6 +211,12 @@ enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sa
     }
     qsort(ranked, dim, sizeof(double) * 2, pca_compare_variance);
 
+    fprintf(stderr, ">>> SPARTAN: PCA Eigenvalues Sorted:\n");
+    for (int i = 0; i < components; ++i) {
+        fprintf(stderr, "%d, (%.4f) ", (int) ranked[i * 2], ranked[i * 2 + 1]);
+    }
+    fprintf(stderr, "\n");
+
     for (int k = 0; k < components; ++k) {
         int idx = (int) ranked[k * 2];
         for (int i = 0; i < dim; ++i) {

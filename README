@@ -7,6 +7,12 @@ This is the supporting website for the paper "Fast and Exact Similarity Search i
 make
 ```
 
+# Build environment variables (set these if FFTW/LAPACK aren’t in default paths)
+```bash
+export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
+export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
+```
+
 # Scripts
 
 See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
