@@ -25,6 +25,7 @@ if [ -z "$3" ]
 # -- function-type
 #   SFA: 4
 #   SAX: 3
+#   SPARTAN: 5
 # -- sample-type
 #   first-n-values sampling: 1
 #   uniform sampling: 2
@@ -41,20 +42,26 @@ COEFF_NUMBER=32
 DATASET_SIZE=100000000
 SAMPLE_SIZE=1000000
 QUERY_SIZE=100
+LEAF_SIZE=20000
+
+COMMON_ARGS="--dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --cpu-type $1 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --SIMD"
+SAMPLE_ARGS="--sample-size $SAMPLE_SIZE --sample-type 3 --is-norm --tight-bound"
+
+run_messi() {
+    $MESSI_BINARY $COMMON_ARGS "$@"
+}
 
 # messi+sax+simd
-$MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 3 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --cpu-type $1 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --SIMD
-
-# $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 3 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --cpu-type $1 --is-norm --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --SIMD
-
-# messi+sfa+variance+equi-depth
-# $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 1 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --coeff-number 0 --SIMD
+run_messi --function-type 3
 
 # messi+sfa+variance+simd+equi-depth
-$MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 1 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --coeff-number $COEFF_NUMBER --SIMD
-
-# messi+sfa+variance+equi-width
-# $MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --coeff-number 0 --SIMD
+run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 1 --coeff-number $COEFF_NUMBER
 
 # messi+sfa+variance+simd+equi-width
-$MESSI_BINARY --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE --sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 --coeff-number $COEFF_NUMBER  --SIMD
+run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 2 --coeff-number $COEFF_NUMBER
+
+# messi+spartan+variance+simd+equi-depth
+run_messi --function-type 5 $SAMPLE_ARGS --histogram-type 1
+
+# messi+spartan+variance+simd+equi-width
+run_messi --function-type 5 $SAMPLE_ARGS --histogram-type 2
