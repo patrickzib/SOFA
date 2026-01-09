@@ -41,7 +41,7 @@ cdef class Index:
                   int function_type=3,
                   char simd=1,
                   int sample_size=1000,
-                  char is_norm=0,
+                  char is_norm=1,
                   int histogram_type=2,
                   int sample_type=1,
                   int n_coefficients=32,

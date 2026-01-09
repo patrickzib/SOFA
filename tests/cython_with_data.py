@@ -29,10 +29,11 @@ def main() -> None:
         timeseries_size=TS_SIZE,
         max_query_threads=8,
         function_type=5,
-        histogram_type=2,
-        # sample_size=sample_size,
+        sample_size=sample_size,
+        # histogram_type=2,
         # sample_type=1,
-        is_norm=1)
+        # is_norm=1
+        )
 
     samples = np.fromfile(data_path, dtype=np.float32, count=sample_size * TS_SIZE)
     if samples.size < sample_size * TS_SIZE:

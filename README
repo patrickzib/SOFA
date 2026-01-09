@@ -1,7 +1,7 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# To compile MESSI v2.0 (Autotools, from repo root)
+# To compile SOFA (Autotools, from repo root)
 ```bash
 ./configure
 make
@@ -11,6 +11,32 @@ make
 ```bash
 export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
 export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
+```
+
+# Build Python (Cython) API (from repo root)
+Set these if FFTW/LAPACK aren’t in default paths or to enable SIMD in the extension build.
+```bash
+export FFTW_CFLAGS="-I/opt/local/include"
+export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
+export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
+export SIMD_CFLAGS="-mavx -mavx2 -msse3"
+
+python3 -m pip install -e ./python
+```
+
+# Minimal Python API usage
+The API consumes float32 binary datasets (same format as CLI). This mirrors `tests/cython_with_data.py`.
+```python
+import numpy as np
+from messi import Index
+
+ts_size = 256
+idx = Index(timeseries_size=ts_size, function_type=5, sample_size=1000, max_query_threads=8)
+idx.add("data_head/astro_head.bin", ts_num=1000)
+
+queries = np.fromfile("data_queries/astro_queries.bin", dtype=np.float32, count=10 * ts_size)
+queries = queries.reshape(10, ts_size)
+distances, labels = idx.search(queries, k=1)
 ```
 
 # Scripts

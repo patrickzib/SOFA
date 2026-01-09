@@ -46,6 +46,7 @@ enum response spartan_bins_init(isax_index *index) {
     index->bins = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     index->binsv = (ts_type *) calloc(n_segments * (num_symbols - 1), sizeof(ts_type));
 
+    // allocate num_symbols-1 memory slots for each word
     for (int i = 0; i < n_segments; ++i) {
         index->bins[i] = calloc(num_symbols - 1, sizeof(ts_type));
         for (int j = 0; j < num_symbols - 1; ++j) {
@@ -86,13 +87,9 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
     }
 
     unsigned long ts_length = index->settings->timeseries_size;
-    ts_type *ts = malloc(sizeof(ts_type) * ts_length);
     file_type *ts_orig1 = NULL;
-    ts_type *ts_orig2 = NULL;
     if (filetype_int) {
         ts_orig1 = (file_type *) calloc(ts_length, sizeof(file_type));
-    } else {
-        ts_orig2 = (ts_type *) calloc(ts_length, sizeof(ts_type));
     }
 
     unsigned int records = sample_size;
@@ -117,13 +114,6 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
     long int *positions = NULL;
     if (index->settings->sample_type == 3) {
         positions = malloc(sizeof(long int) * records);
-        if (positions == NULL) {
-            fclose(ifile);
-            free(ts);
-            free(ts_orig1);
-            free(ts_orig2);
-            return FAILURE;
-        }
         for (unsigned int i = 0; i < records; ++i) {
             positions[i] = (long int) i;
         }
@@ -136,6 +126,7 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
     }
 
     for (unsigned int i = 0; i < records; ++i) {
+        ts_type *ts = samples + (i * ts_length);
         if (index->settings->sample_type == 3) {
             long int position = positions[i];
             fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
@@ -147,25 +138,23 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                 ts[j] = (ts_type) ts_orig1[j];
             }
         } else {
-            fread(ts_orig2, sizeof(ts_type), ts_length, ifile);
-            memcpy(ts, ts_orig2, sizeof(ts_type) * ts_length);
+            fread(ts, sizeof(ts_type), ts_length, ifile);
         }
-
-        if (apply_znorm) {
-            znorm(ts, ts_length);
-        }
-
-        memcpy(samples + (i * ts_length), ts, sizeof(ts_type) * ts_length);
 
         if (index->settings->sample_type == 2 && skip_elements > 0) {
             fseek(ifile, skip_elements * ts_length * sizeof(ts_type), SEEK_CUR);
         }
     }
 
+    if (apply_znorm) {
+        #pragma omp parallel for schedule(static)
+        for (unsigned int i = 0; i < records; ++i) {
+            znorm(samples + (i * ts_length), ts_length);
+        }
+    }
+
     fclose(ifile);
-    free(ts);
     free(ts_orig1);
-    free(ts_orig2);
     free(positions);
 
     return SUCCESS;
@@ -188,6 +177,7 @@ static void *spartan_order_divide_worker(void *transferdata) {
         qsort(cur_coeff_line, sample_size, sizeof(ts_type), &compare_ts_type);
     }
 
+    // equi-depth splitting
     if (index->settings->histogram_type == 1) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
         ts_type depth = (ts_type) sample_size / num_symbols;
@@ -200,7 +190,9 @@ static void *spartan_order_divide_worker(void *transferdata) {
                 index->bins[i][j] = cur_coeff_line[(int) bin_index];
             }
         }
-    } else if (index->settings->histogram_type == 2) {
+    }
+    // equi-width splitting
+    else if (index->settings->histogram_type == 2) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
 
         for (int i = start_number; i < stop_number; ++i) {
@@ -558,4 +550,23 @@ void spartan_print_bins(isax_index *index) {
     } else if (index->settings->histogram_type == 2) {
         fprintf(stderr, ">>> SPARTAN: Using Equi-width histograms\n");
     }
+
+    /*
+    int n_segments = index->settings->n_segments;
+    fprintf(stderr,"[\n");
+    for (int i = 0; i < n_segments; ++i)
+    {
+        fprintf(stderr,"-Inf\t");
+        for (int j=0; j < index->settings->sax_alphabet_cardinality-1; ++j)
+        {
+            ts_type value = roundf(index->bins[i][j]*100.0)/100.0;
+            if (value == FLT_MAX)
+                fprintf(stderr,",Inf\n");
+            else
+                fprintf(stderr,",%g",value);
+        }
+        fprintf(stderr,";\n");
+    }
+    fprintf(stderr,"]\n");
+    */
 }

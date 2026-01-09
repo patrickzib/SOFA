@@ -47,13 +47,12 @@ enum response sfa_bins_init(isax_index *index) {
     index->bins = (ts_type **) calloc(n_segments, sizeof(ts_type * ));
     index->binsv = (ts_type *) calloc(n_segments * (num_symbols - 1), sizeof(ts_type));
 
-    //allocate num_symbols-1 memory slots for each word
+    // allocate num_symbols-1 memory slots for each word
     for (int i = 0; i < n_segments; ++i) {
         index->bins[i] = calloc(num_symbols - 1, sizeof(ts_type));
         for (int j = 0; j < num_symbols - 1; ++j) {
             index->bins[i][j] = FLT_MAX;
         }
-
     }
     for (int j = 0; j < n_segments * (num_symbols - 1); ++j) {
         index->binsv[j] = FLT_MAX;
@@ -435,6 +434,7 @@ void *order_divide_worker(void *transferdata) {
         cur_coeff_line = (ts_type *) dft_mem_array[j];
         qsort(cur_coeff_line, sample_size, sizeof(ts_type), &compare_ts_type);
     }
+
     // equi-depth splitting
     if (index->settings->histogram_type == 1) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
@@ -463,6 +463,10 @@ void *order_divide_worker(void *transferdata) {
             }
         }
     }
+
+    if (n_segments == 0) {
+        fprintf(stderr, "warning: SFA has zero segments.\n");
+    }
 }
 
 
@@ -476,7 +480,6 @@ void sfa_print_bins(isax_index *index) {
     } else if (index->settings->histogram_type == 2) {
         fprintf(stderr, ">>> SFA: Using Equi-width histograms\n");
     }
-
 
     /*
     int n_segments = index->settings->n_segments;
@@ -496,7 +499,6 @@ void sfa_print_bins(isax_index *index) {
     }
     fprintf(stderr,"]\n");
     */
-
 }
 
 void free_dft_memory(isax_index *index, int n_coefficients, ts_type **dft_mem_array) {
@@ -576,28 +578,19 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
     ts_type distance = 0.0;
     int i = 0;
 
-    //special case: for not normalized time series, the first coefficient has to be treated spacially
-    //for normalized data, this part is skipped
+    // Special case: for non-normalized series, treat the first coefficient specially.
     if (!index->settings->is_norm &&
         (index->settings->n_coefficients == 0 || index->coefficients[0] == 0)) {
-        distance += get_lb_distance(
-                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 1.0);
-
+        distance += get_lb_distance(index->bins[0], fft[0], sax[0], sax_cardinalities[0],
+                                    max_bit_cardinality, max_cardinality, 1.0);
         if (distance > bsf) {
             return distance;
         }
-
-        if (index->settings->n_coefficients == 0) {
-            // if no variance-based coefficient selection is chosen
-            // skip the imaginary part of the first coefficient
-            i = 2;
-        } else {
-            i = 1;
-        }
+        // Skip the imaginary part of the first coefficient when no variance-based selection is used.
+        i = (index->settings->n_coefficients == 0) ? 2 : 1;
     }
 
-    for (; i < number_of_segments; i++) {
+    for (; i < number_of_segments; ++i) {
         distance += get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
                 max_bit_cardinality, max_cardinality, 2.0);

@@ -31,11 +31,7 @@ static inline ts_type messi_minidist_raw(isax_index *index,
         if (index->settings->function_type == 5) {
             return minidist_pca_to_spartan_rawe_SIMD(index, paa_or_fft, sax, sax_cardinalities, bsf);
         }
-        return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities,
-                                             index->settings->sax_bit_cardinality,
-                                             index->settings->sax_alphabet_cardinality,
-                                             index->settings->n_segments, MINVAL, MAXVAL,
-                                             index->settings->mindist_sqrt);
+        return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
     }
 
     if (index->settings->function_type == 4) {
@@ -44,11 +40,7 @@ static inline ts_type messi_minidist_raw(isax_index *index,
     if (index->settings->function_type == 5) {
         return minidist_pca_to_spartan_raw(index, paa_or_fft, sax, sax_cardinalities, bsf);
     }
-    return minidist_paa_to_isax_raw(paa_or_fft, sax, sax_cardinalities,
-                                    index->settings->sax_bit_cardinality,
-                                    index->settings->sax_alphabet_cardinality,
-                                    index->settings->n_segments, MINVAL, MAXVAL,
-                                    index->settings->mindist_sqrt);
+    return minidist_paa_to_isax_raw(paa_or_fft, sax, sax_cardinalities, index->settings);
 }
 
 static inline ts_type messi_minidist(isax_index *index,
@@ -62,11 +54,7 @@ static inline ts_type messi_minidist(isax_index *index,
     if (index->settings->function_type == 5) {
         return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
     }
-    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities,
-                                index->settings->sax_bit_cardinality,
-                                index->settings->sax_alphabet_cardinality,
-                                index->settings->n_segments, MINVAL, MAXVAL,
-                                index->settings->mindist_sqrt);
+    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings);
 }
 
 #endif //MESSI_SFA_CALC_UTILS_H

@@ -326,13 +326,15 @@ void sax_print(sax_type *sax, int segments, int cardinality) {
 
 float minidist_paa_to_isax(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
-                           sax_type max_bit_cardinality,
-                           int max_cardinality,
-                           int number_of_segments,
-                           int min_val,
-                           int max_val,
-                           float ratio_sqrt) {
+                           const isax_index_settings *settings) {
     //fprintf(stderr, "paa mindist\n");
+
+    sax_type max_bit_cardinality = settings->sax_bit_cardinality;
+    int max_cardinality = settings->sax_alphabet_cardinality;
+    int number_of_segments = settings->n_segments;
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
+    float ratio_sqrt = settings->mindist_sqrt;
 
     float distance = 0.0;
     // TODO: Store offset in index settings. and pass index settings as parameter.
@@ -377,12 +379,14 @@ float minidist_paa_to_isax(float *paa, sax_type *sax,
 
 float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
                                sax_type *sax_cardinalities,
-                               sax_type max_bit_cardinality,
-                               int max_cardinality,
-                               int number_of_segments,
-                               int min_val,
-                               int max_val,
-                               float ratio_sqrt) {
+                               const isax_index_settings *settings) {
+
+    sax_type max_bit_cardinality = settings->sax_bit_cardinality;
+    int max_cardinality = settings->sax_alphabet_cardinality;
+    int number_of_segments = settings->n_segments;
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
+    float ratio_sqrt = settings->mindist_sqrt;
 
     float distance = 0;
     // TODO: Store offset in index settings. and pass index settings as parameter.
@@ -433,12 +437,14 @@ float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
 
 float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                                     sax_type *sax_cardinalities,
-                                    sax_type max_bit_cardinality,
-                                    int max_cardinality,
-                                    int number_of_segments,
-                                    int min_val,
-                                    int max_val,
-                                    float ratio_sqrt) {
+                                    const isax_index_settings *settings) {
+
+    sax_type max_bit_cardinality = settings->sax_bit_cardinality;
+    int max_cardinality = settings->sax_alphabet_cardinality;
+    int number_of_segments = settings->n_segments;
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
+    float ratio_sqrt = settings->mindist_sqrt;
 
     int region_upper[16], region_lower[16];
     float distancef[16];
@@ -609,12 +615,14 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 
 float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                                      sax_type *sax_cardinalities,
-                                     sax_type max_bit_cardinality,
-                                     int max_cardinality,
-                                     int number_of_segments,
-                                     int min_val,
-                                     int max_val,
-                                     float ratio_sqrt) {
+                                     const isax_index_settings *settings) {
+
+    sax_type max_bit_cardinality = settings->sax_bit_cardinality;
+    int max_cardinality = settings->sax_alphabet_cardinality;
+    int number_of_segments = settings->n_segments;
+    int min_val = MINVAL;
+    int max_val = MAXVAL;
+    float ratio_sqrt = settings->mindist_sqrt;
 
     int region_upper[16], region_lower[16];
     float distancef[16];

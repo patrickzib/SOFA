@@ -19,36 +19,31 @@ void printbin(unsigned long long n, int size);
 void serial_printbin (unsigned long long n, int size);
 int compare(const void *a, const void *b);
 float minidist_paa_to_isax(float *paa, sax_type *sax, sax_type *sax_cardinalities,
-                           sax_type max_bit_cardinality,
-                           int max_cardinality,
-                           int number_of_segments, 
-                           int min_val, int max_val, float ratio_sqrt);
+                           const isax_index_settings *settings);
 
 float minidist_paa_to_isax_raw(float *paa, sax_type *sax, sax_type *sax_cardinalities,
-						                              sax_type max_bit_cardinality,
-						                              int max_cardinality,
-						                              int number_of_segments, 
-						                              int min_val, int max_val, float ratio_sqrt);
-float   minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax, 
-                           sax_type *sax_cardinalities,
-                           sax_type max_bit_cardinality,
-                           int max_cardinality,
-                           int number_of_segments,
-                           int min_val,
-                           int max_val,
-                           float ratio_sqrt);
-float   minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax, 
-                           sax_type *sax_cardinalities,
-                           sax_type max_bit_cardinality,
-                           int max_cardinality,
-                           int number_of_segments,
-                           int min_val,
-                           int max_val,
-                           float ratio_sqrt);
+                               const isax_index_settings *settings);
 #if ADS_HAVE_AVX2
+float   minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           const isax_index_settings *settings);
 #else
-#define minidist_paa_to_isax_raw_SIMD minidist_paa_to_isax
-#define minidist_paa_to_isax_rawa_SIMD minidist_paa_to_isax
+static inline float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           const isax_index_settings *settings) {
+    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, settings);
+}
+#endif
+#if ADS_HAVE_AVX2
+float   minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           const isax_index_settings *settings);
+#else
+static inline float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           const isax_index_settings *settings) {
+    return minidist_paa_to_isax(paa, sax, sax_cardinalities, settings);
+}
 #endif
 
 enum response paa_from_ts (ts_type *ts_in, ts_type *paa_out, isax_index_settings *settings);

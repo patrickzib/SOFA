@@ -143,7 +143,7 @@ int main(int argc, char **argv) {
     long int labelsize = 1;
     int topk = 0;
     int dtwwindowsize = 0;
-    int sample_size = 1;
+    int sample_size = 1000;
 
     time_t time_now;
 

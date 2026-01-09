@@ -147,12 +147,7 @@ query_result exact_search_serial_para(ts_type *ts, ts_type *paa, isax_index *ind
     for(i=0; i<index->sax_cache_size; i++) 
     {
         sax_type *sax = &(index->sax_cache[i * index->settings->n_segments]);
-        MINDISTS[i] = minidist_paa_to_isax_raw(paa, sax,
-                                               index->settings->max_sax_cardinalities,
-                                               index->settings->sax_bit_cardinality,
-                                               index->settings->sax_alphabet_cardinality,
-                                               index->settings->n_segments, MINVAL, MAXVAL,
-                                               index->settings->mindist_sqrt);
+        MINDISTS[i] = minidist_paa_to_isax_raw(paa, sax, index->settings->max_sax_cardinalities, index->settings);
     }
     // END
     
@@ -637,11 +632,7 @@ void* mindistanceinsert_worker(void *essdata)
 
         sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
-        mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
-                                                         index->settings->sax_bit_cardinality,
-                                                         index->settings->sax_alphabet_cardinality,
-                                                         index->settings->n_segments, MINVAL, MAXVAL,
-                                                         index->settings->mindist_sqrt);
+        mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities, index->settings);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
             /*bit_array_set_bit(bitarray, i);*/
             //COUNT_INPUT_TIME_START
@@ -679,11 +670,7 @@ void* mindistance_worker(void *essdata)
 
         sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
-        mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities,
-                                                         index->settings->sax_bit_cardinality,
-                                                         index->settings->sax_alphabet_cardinality,
-                                                         index->settings->n_segments, MINVAL, MAXVAL,
-                                                         index->settings->mindist_sqrt);
+        mindist = minidist_paa_to_isax_rawa_SIMD(paa, sax, index->settings->max_sax_cardinalities, index->settings);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
             /*bit_array_set_bit(bitarray, i);*/
             //COUNT_INPUT_TIME_START
@@ -925,10 +912,7 @@ void* ParIS_nb_worker(void *essdata)
         sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_raw_SIMD(paa, sax, index->settings->max_sax_cardinalities,
-                                                         index->settings->sax_bit_cardinality,
-                                                         index->settings->sax_alphabet_cardinality,
-                                                         index->settings->n_segments, MINVAL, MAXVAL,
-                                                         index->settings->mindist_sqrt);
+                                                         index->settings);
 
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) {
 
@@ -1039,13 +1023,7 @@ void* refind_answer_fonction(void *rfdata)
         
 
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                              current_root_node->isax_cardinalities,
-                                              index->settings->sax_bit_cardinality,
-                                              index->settings->sax_alphabet_cardinality,
-                                              index->settings->n_segments,
-                                              MINVAL, MAXVAL,
-                                              index->settings->mindist_sqrt);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1137,13 +1115,7 @@ void* refind_answer_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                     n->node->left_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->left_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1166,13 +1138,7 @@ void* refind_answer_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                     n->node->right_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->right_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1313,13 +1279,7 @@ void* exact_search_fonction(void *rfdata)
         
 
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                              current_root_node->isax_cardinalities,
-                                              index->settings->sax_bit_cardinality,
-                                              index->settings->sax_alphabet_cardinality,
-                                              index->settings->n_segments,
-                                              MINVAL, MAXVAL,
-                                              index->settings->mindist_sqrt);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1416,13 +1376,7 @@ void* exact_search_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                     n->node->left_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->left_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1445,13 +1399,7 @@ void* exact_search_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                     n->node->right_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->right_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);

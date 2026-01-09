@@ -820,6 +820,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
         fread(rawfile_int32, sizeof(file_type), index->settings->timeseries_size * ts_num, ifile);
 
         fprintf(stderr, ">>> Converting int8 to float\n");
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
         for (long int i = 0; i < index->settings->timeseries_size * ts_num; i++) {
             // Convert int to float type
             rawfile[i] = (ts_type) rawfile_int32[i];
@@ -832,8 +833,10 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     // apply z-normalization
     if (apply_znorm) {
         fprintf(stderr, ">>> Applying z-norm\n");
-        for (long int i = 0; i < index->settings->timeseries_size * ts_num; i += index->settings->timeseries_size) {
-            znorm(&rawfile[i], index->settings->timeseries_size);
+        long int ts_length = index->settings->timeseries_size;
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+        for (long int i = 0; i < ts_num; i++) {
+            znorm(&rawfile[i * ts_length], ts_length);
         }
     }
     COUNT_INPUT_TIME_END

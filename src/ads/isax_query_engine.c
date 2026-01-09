@@ -47,10 +47,7 @@ void *compute_mindists(void *ptr) {
         sax_type *sax = &(arguments->index->sax_cache[i * arguments->index->settings->n_segments]);
         MINDISTS[i] = minidist_paa_to_isax_raw(arguments->paa, sax,
                                                arguments->index->settings->max_sax_cardinalities,
-                                               arguments->index->settings->sax_bit_cardinality,
-                                               arguments->index->settings->sax_alphabet_cardinality,
-                                               arguments->index->settings->n_segments, MINVAL, MAXVAL,
-                                               arguments->index->settings->mindist_sqrt);
+                                               arguments->index->settings);
     }
     return NULL;
 }
@@ -466,13 +463,7 @@ query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index,
     isax_node *current_root_node = index->first_node; 
     while (current_root_node != NULL) { 
     query_result * mindist_result = malloc(sizeof(query_result)); 
-    mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, 
-                                              current_root_node->isax_cardinalities, 
-                                              index->settings->sax_bit_cardinality, 
-                                              index->settings->sax_alphabet_cardinality, 
-                                              index->settings->n_segments, 
-                                              MINVAL, MAXVAL, 
-                                              index->settings->mindist_sqrt); 
+    mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings); 
     mindist_result->node = current_root_node; 
         pqueue_insert(pq, mindist_result); 
         current_root_node = current_root_node->next; 
@@ -534,13 +525,7 @@ query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index,
           } 
           else { 
                     query_result * mindist_result = malloc(sizeof(query_result)); 
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, 
-                                                                     n->node->left_child->isax_cardinalities, 
-                                                                     index->settings->sax_bit_cardinality, 
-                                                                     index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->n_segments, 
-                                                                     MINVAL, MAXVAL, 
-                                                                     index->settings->mindist_sqrt); 
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings); 
           mindist_result->node = n->node->left_child; 
                     pqueue_insert(pq, mindist_result); 
           } 
@@ -556,13 +541,7 @@ query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index,
           } 
           else { 
                     query_result * mindist_result = malloc(sizeof(query_result)); 
-          mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, 
-                                                                     n->node->right_child->isax_cardinalities, 
-                                                                     index->settings->sax_bit_cardinality, 
-                                                                     index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->n_segments, 
-                                                                     MINVAL, MAXVAL, 
-                                                                     index->settings->mindist_sqrt); 
+          mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings); 
                     mindist_result->node = n->node->right_child; 
                     pqueue_insert(pq, mindist_result); 
           } 
@@ -596,13 +575,7 @@ void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index,
     isax_node *current_root_node = index->first_node; 
     while (current_root_node != NULL) { 
     query_result * mindist_result = malloc(sizeof(query_result)); 
-    mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, 
-                                              current_root_node->isax_cardinalities, 
-                                              index->settings->sax_bit_cardinality, 
-                                              index->settings->sax_alphabet_cardinality, 
-                                              index->settings->n_segments, 
-                                              MINVAL, MAXVAL, 
-                                              index->settings->mindist_sqrt); 
+    mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings); 
     mindist_result->node = current_root_node; 
         if (mindist_result->distance < pq_bsf->knn[pq_bsf->k-1])
         {
@@ -659,13 +632,7 @@ void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index,
           } 
           else { 
                     query_result * mindist_result = malloc(sizeof(query_result)); 
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, 
-                                                                     n->node->left_child->isax_cardinalities, 
-                                                                     index->settings->sax_bit_cardinality, 
-                                                                     index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->n_segments, 
-                                                                     MINVAL, MAXVAL, 
-                                                                     index->settings->mindist_sqrt); 
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings); 
           mindist_result->node = n->node->left_child;  
             if (mindist_result->distance < pq_bsf->knn[pq_bsf->k-1])
             {
@@ -679,13 +646,7 @@ void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index,
           } 
           else { 
                     query_result * mindist_result = malloc(sizeof(query_result)); 
-          mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, 
-                                                                     n->node->right_child->isax_cardinalities, 
-                                                                     index->settings->sax_bit_cardinality, 
-                                                                     index->settings->sax_alphabet_cardinality, 
-                                                                     index->settings->n_segments, 
-                                                                     MINVAL, MAXVAL, 
-                                                                     index->settings->mindist_sqrt); 
+          mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings); 
                     mindist_result->node = n->node->right_child; 
             if (mindist_result->distance < pq_bsf->knn[pq_bsf->k-1])
             {
@@ -815,11 +776,7 @@ query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, f
         
     	sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
-    	float mindist = minidist_paa_to_isax_raw(paa, sax, index->settings->max_sax_cardinalities,
-    													 index->settings->sax_bit_cardinality,
-    													 index->settings->sax_alphabet_cardinality,
-    													 index->settings->n_segments, MINVAL, MAXVAL,
-    													 index->settings->mindist_sqrt);
+    	float mindist = minidist_paa_to_isax_raw(paa, sax, index->settings->max_sax_cardinalities, index->settings);
         
     	if(mindist <= approximate_result.distance) {
     		/*bit_array_set_bit(bitarray, i);
@@ -892,13 +849,7 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
     isax_node *current_root_node = index->first_node;
     while (current_root_node != NULL) {
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                              current_root_node->isax_cardinalities,
-                                              index->settings->sax_bit_cardinality,
-                                              index->settings->sax_alphabet_cardinality,
-                                              index->settings->n_segments,
-                                              MINVAL, MAXVAL,
-                                              index->settings->mindist_sqrt);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
         mindist_result->node = current_root_node;
         COUNT_QUEUE_TIME_START
         pqueue_insert(pq, mindist_result);
@@ -973,13 +924,7 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                     n->node->left_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->left_child;
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, mindist_result);
@@ -999,13 +944,7 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                     n->node->right_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->right_child;
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, mindist_result);
@@ -1072,13 +1011,7 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
     isax_node *current_root_node = index->first_node;
     while (current_root_node != NULL) {
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                              current_root_node->isax_cardinalities,
-                                              index->settings->sax_bit_cardinality,
-                                              index->settings->sax_alphabet_cardinality,
-                                              index->settings->n_segments,
-                                              MINVAL, MAXVAL,
-                                              index->settings->mindist_sqrt);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
         mindist_result->node = current_root_node;
         if (mindist_result->distance < pq_bsf->knn[k-1]) {
             COUNT_QUEUE_TIME_START
@@ -1140,13 +1073,7 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-                                                                     n->node->left_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->left_child;
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, mindist_result);
@@ -1159,13 +1086,7 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-                                                                     n->node->right_child->isax_cardinalities,
-                                                                     index->settings->sax_bit_cardinality,
-                                                                     index->settings->sax_alphabet_cardinality,
-                                                                     index->settings->n_segments,
-                                                                     MINVAL, MAXVAL,
-                                                                     index->settings->mindist_sqrt);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
                     mindist_result->node = n->node->right_child;
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, mindist_result);
@@ -1213,13 +1134,7 @@ query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, f
     isax_node *current_root_node = index->first_node;
     while (current_root_node != NULL) {
 		query_result * mindist_result = malloc(sizeof(query_result));
-		mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values,
-                                              current_root_node->isax_cardinalities,
-                                              index->settings->sax_bit_cardinality,
-                                              index->settings->sax_alphabet_cardinality,
-                                              index->settings->n_segments,
-                                              MINVAL, MAXVAL,
-                                              index->settings->mindist_sqrt);
+		mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
 		mindist_result->node = current_root_node;
         pqueue_insert(pq, mindist_result);
         current_root_node = current_root_node->next;
@@ -1229,13 +1144,7 @@ query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, f
     {
 		// If it is a leaf, check its real distance.
 		if (n->node->is_leaf) {
-			float isax_mindist = minidist_paa_to_isax(paa, n->node->isax_values,
-					 n->node->isax_cardinalities,
-					 index->settings->sax_bit_cardinality,
-					 index->settings->sax_alphabet_cardinality,
-					 index->settings->n_segments,
-					 MINVAL, MAXVAL,
-					 index->settings->mindist_sqrt);
+			float isax_mindist = minidist_paa_to_isax(paa, n->node->isax_values, n->node->isax_cardinalities, index->settings);
 			float tight_mindist = calculate_minimum_distance(index, n->node, ts, paa);
 			float distance = calculate_node_distance(index, n->node, ts, FLT_MAX);
 
@@ -1329,25 +1238,13 @@ query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, f
 			// and push them in the queue
 			if (n->node->left_child->isax_cardinalities != NULL) {
 				query_result * mindist_result = malloc(sizeof(query_result));
-				mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values,
-																 n->node->left_child->isax_cardinalities,
-																 index->settings->sax_bit_cardinality,
-																 index->settings->sax_alphabet_cardinality,
-																 index->settings->n_segments,
-																 MINVAL, MAXVAL,
-																 index->settings->mindist_sqrt);
+				mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
 				mindist_result->node = n->node->left_child;
 				pqueue_insert(pq, mindist_result);
 			}
 			if (n->node->right_child->isax_cardinalities != NULL) {
 				query_result * mindist_result = malloc(sizeof(query_result));
-				mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values,
-																 n->node->right_child->isax_cardinalities,
-																 index->settings->sax_bit_cardinality,
-																 index->settings->sax_alphabet_cardinality,
-																 index->settings->n_segments,
-																 MINVAL, MAXVAL,
-																 index->settings->mindist_sqrt);
+				mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
 				mindist_result->node = n->node->right_child;
 				pqueue_insert(pq, mindist_result);
 			}
