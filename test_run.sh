@@ -22,5 +22,5 @@ QUEUE_NUMBER=${8:-1}
   --queue-number $QUEUE_NUMBER \
   --function-type 3 \
   --histogram-type 2 \
-  --sfa-n-coefficients $COEFF_NUMBER
-  --is-norm \
+  --sfa-n-coefficients $COEFF_NUMBER \
+  --is-norm
