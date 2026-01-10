@@ -13,15 +13,14 @@ QUEUE_NUMBER=${8:-1}
 
 ./bin/MESSI \
   --dataset $FILE_PATH \
-  --timeseries-size $TS_SIZE \
-  --function-type 3 \
   --dataset-size $DATASET_SIZE \
-  --sax-cardinality 8 \
   --queries $QUERIES_PATH \
   --queries-size $QUERY_SIZE \
-  --queue-number $QUEUE_NUMBER \
+  --timeseries-size $TS_SIZE \
   --sample-size $SAMPLE_SIZE \
   --cpu-type $CPU_TYPE \
-  --is-norm \
+  --queue-number $QUEUE_NUMBER \
+  --function-type 3 \
   --histogram-type 2 \
-  --coeff-number $COEFF_NUMBER
+  --sfa-n-coefficients $COEFF_NUMBER
+  --is-norm \

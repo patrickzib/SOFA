@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
                 {"is-norm",             no_argument,       0,    '9'},
                 {"histogram-type",      required_argument, 0,    'A'},
                 {"sample-type",         required_argument, 0,    'C'},
-                {"coeff-number",        required_argument, 0,    'D'},
+                {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {NULL,                  0,                 NULL, 0}
@@ -376,7 +376,7 @@ int main(int argc, char **argv) {
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
-                \t--coeff-number\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n_segments/2 and timeseries-size/2)\n\
+                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n_segments/2 and timeseries-size/2)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\

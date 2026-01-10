@@ -52,7 +52,7 @@ distances, labels = idx.search(queries, k=1)
 See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
 
 - SAX command is `--function-type 3`
-- SOFA command is `--function-type 4`
+- SFA/SOFA command is `--function-type 4`
 - SPARTAN command is `--function-type 5`
 
 ```bash
@@ -75,7 +75,7 @@ QUERY_SIZE=100
   --histogram-type 2 
   --sample-type 3 
   --sample-size $SAMPLE_SIZE 
-  --coeff-number $COEFF_NUMBER  
+  --sfa-n-coefficients $COEFF_NUMBER  
   --is-norm 
   --SIMD
 ```

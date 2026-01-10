@@ -55,10 +55,10 @@ run_messi() {
 run_messi --function-type 3
 
 # messi+sfa+variance+simd+equi-depth
-run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 1 --coeff-number $COEFF_NUMBER
+run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 1 --sfa-n-coefficients $COEFF_NUMBER
 
 # messi+sfa+variance+simd+equi-width
-run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 2 --coeff-number $COEFF_NUMBER
+run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 2 --sfa-n-coefficients $COEFF_NUMBER
 
 # messi+spartan+variance+simd+equi-depth
 run_messi --function-type 5 $SAMPLE_ARGS --histogram-type 1
