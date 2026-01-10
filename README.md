@@ -54,6 +54,7 @@ See the provided scripts in the `scripts`-folder for examples to run SOFA with S
 - SAX command is `--function-type 3`
 - SFA/SOFA command is `--function-type 4`
 - SPARTAN command is `--function-type 5`
+- PISA command is `--function-type 6`
 
 ```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin

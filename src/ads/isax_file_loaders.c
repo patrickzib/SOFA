@@ -33,6 +33,7 @@
 #include "ads/sax/ts.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
+#include "ads/pisa/pisa.h"
 
 void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
                             float minimum_distance, int min_checked_leaves,
@@ -59,7 +60,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fftw_workspace fftw = {0};
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, index->settings->timeseries_size);
     }
 
@@ -79,6 +80,8 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {
             pca_from_ts(index, ts, paa);
+        } else if (index->settings->function_type == 6) {
+            pisa_pca_from_ts(index, ts, paa, &fftw);
         } else {
             paa_from_ts(ts, paa, index->settings);
         }
@@ -105,7 +108,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
 
@@ -165,7 +168,7 @@ void isax_query_binary_file_traditional(
     unsigned long ts_length = index->settings->timeseries_size;
 
     // create fftw plan
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, ts_length);
     }
 
@@ -209,6 +212,8 @@ void isax_query_binary_file_traditional(
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {
             pca_from_ts(index, ts, paa);
+        } else if (index->settings->function_type == 6) {
+            pisa_pca_from_ts(index, ts, paa, &fftw);
         } else {
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
@@ -229,7 +234,7 @@ void isax_query_binary_file_traditional(
         q_loaded++;
     }
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
 
@@ -273,7 +278,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fftw_workspace fftw = {0};
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, index->settings->timeseries_size);
     }
 
@@ -289,6 +294,8 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {
             pca_from_ts(index, ts, paa);
+        } else if (index->settings->function_type == 6) {
+            pisa_pca_from_ts(index, ts, paa, &fftw);
         } else {
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
@@ -314,7 +321,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
 
@@ -511,7 +518,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     int ts_length = index->settings->timeseries_size;
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, ts_length);
     }
 
@@ -550,6 +557,8 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {
             pca_from_ts(index, ts, paa);
+        } else if (index->settings->function_type == 6) {
+            pisa_pca_from_ts(index, ts, paa, &fftw);
         } else {
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
@@ -576,7 +585,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
     if (filetype_int) {
         free(ts_int32);
     }
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
     fclose(ifile);

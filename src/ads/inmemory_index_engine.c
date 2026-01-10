@@ -24,6 +24,7 @@
 #include "ads/isax_node_split.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
+#include "ads/pisa/pisa.h"
 
 
 void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index *index) {
@@ -1402,7 +1403,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
     fftw_workspace fftw = {0};
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         unsigned long ts_length = index->settings->timeseries_size;
 
         pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
@@ -1477,6 +1478,34 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                         failed to be created");
             }
         }
+        //PISA
+        else if (index->settings->function_type == 6) {
+            gettimeofday(&transformation_time_start, NULL);
+            if (pisa_from_ts(index, ts, sax, &fftw) == SUCCESS) {
+                gettimeofday(&current_time, NULL);
+                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                        (transformation_time_start.tv_sec * 1000000 +
+                                         (transformation_time_start.tv_usec)));
+
+                gettimeofday(&indexing_time_start, NULL);
+                *pos = (file_position_type) (i * index->settings->timeseries_size);
+
+                memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
+                       sizeof(sax_type) * index->settings->n_segments);
+
+                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
+                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
+                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
+                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
+
+                gettimeofday(&current_time, NULL);
+                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+            } else {
+                fprintf(stderr, "error: cannot insert record in index, since pisa representation\
+                        failed to be created");
+            }
+        }
 
         //MESSI iSAX
         else {
@@ -1508,7 +1537,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         }
     }
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
         fftw_workspace_destroy(&fftw);
         pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);

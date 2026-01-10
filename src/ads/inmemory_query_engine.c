@@ -92,7 +92,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         sfa_from_fft(index, paa, sax);
     } else if (index->settings->function_type == 5) {
         spartan_from_pca(index, paa, sax);
@@ -142,7 +142,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
 
     //SFA
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         sfa_from_fft(index, paa, sax);
     } else if (index->settings->function_type == 5) {
         spartan_from_pca(index, paa, sax);

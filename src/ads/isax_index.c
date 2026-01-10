@@ -2809,6 +2809,29 @@ void print_settings(isax_index_settings *settings) {
         }
         fprintf(stderr,"## Sampling Size:         \t%d\n", settings->sample_size);
     }
+    else if (settings->function_type == 6) {
+        int fft_coefficients = settings->n_coefficients > 0 ? settings->n_coefficients : settings->n_segments;
+        fprintf(stderr, "## Using MESSI + PISA. \n");
+        fprintf(stderr,"## fft_coefficients:   \t%d\n", fft_coefficients);
+        fprintf(stderr,"## pisa_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
+        fprintf(stderr,"## pisa_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
+
+        fprintf(stderr,"## \n## [PISA SETTINGS]\n");
+        fprintf(stderr,"## FFT -> PCA -> Binning\n");
+        if (settings->histogram_type==3) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
+        } else if (settings->histogram_type==4) {
+            fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        }
+        if (settings->sample_type == 1) {
+            fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
+        } else if (settings->sample_type == 2) {
+            fprintf(stderr, "## Sampling Type:    \tuniform sampling\n");
+        } else if (settings->sample_type == 3) {
+            fprintf(stderr, "## Sampling Type:    \trandom sampling\n");
+        }
+        fprintf(stderr,"## Sampling Size:         \t%d\n", settings->sample_size);
+    }
 
 
 	fprintf(stderr,"## \n## [QUERY ANSWERING SETTINGS]\n");

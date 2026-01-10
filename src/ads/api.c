@@ -7,6 +7,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
+#include "ads/pisa/pisa.h"
 #include <stdlib.h>
 #include <float.h>
 #include <stdint.h>
@@ -24,6 +25,8 @@ static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long
 static void finalize_sfa_bins_if_needed(isax_index *index);
 static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_spartan_bins_if_needed(isax_index *index);
+static void prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
+static void finalize_pisa_bins_if_needed(isax_index *index);
 
 static messi_index *messi_alloc(void) {
     messi_index *idx = (messi_index *) calloc(1, sizeof(messi_index));
@@ -115,6 +118,9 @@ void messi_index_destroy(messi_index *index) {
         if (index->index->settings && index->index->settings->function_type == 5) {
             spartan_free_bins(index->index);
         }
+        if (index->index->settings && index->index->settings->function_type == 6) {
+            pisa_free_bins(index->index);
+        }
         MESSI2_index_destroy(index->index, index->index->first_node);
     }
     free(index);
@@ -129,9 +135,11 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
             apply_znorm, index->index->settings ? index->index->settings->is_norm : -1);
     prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
     prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int);
+    prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
     index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index);
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
+    finalize_pisa_bins_if_needed(index->index);
 
     return 0;
 }
@@ -155,7 +163,7 @@ int messi_index_search(messi_index *index,
     fftw_workspace fftw = {0};
 
     unsigned long ts_length = index->index->settings->timeseries_size;
-    if (index->index->settings->function_type == 4) {
+    if (index->index->settings->function_type == 4 || index->index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, ts_length);
     }
 
@@ -177,6 +185,8 @@ int messi_index_search(messi_index *index,
             memcpy(paa_buffer, fftw.transform, sizeof(ts_type) * index->index->settings->n_segments);
         } else if (index->index->settings->function_type == 5) {
             pca_from_ts(index->index, ts, paa_buffer);
+        } else if (index->index->settings->function_type == 6) {
+            pisa_pca_from_ts(index->index, ts, paa_buffer, &fftw);
         } else {
             paa_from_ts(ts,
                         paa_buffer,
@@ -195,7 +205,7 @@ int messi_index_search(messi_index *index,
             free(nlist.nlist);
         }
     }
-    if (index->index->settings->function_type == 4) {
+    if (index->index->settings->function_type == 4 || index->index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
     free(paa_buffer);
@@ -256,6 +266,31 @@ static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, 
 
 static void finalize_spartan_bins_if_needed(isax_index *index) {
     if (index == NULL || index->settings->function_type != 5 || index->bins == NULL || index->binsv == NULL) {
+        return;
+    }
+    int n_segments = index->settings->n_segments;
+    int slice = index->settings->sax_alphabet_cardinality - 1;
+    if (slice <= 0) {
+        return;
+    }
+    for (int i = 0; i < n_segments; i++) {
+        memcpy(&index->binsv[i * slice], index->bins[i], sizeof(ts_type) * slice);
+    }
+}
+
+static void prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
+    if (index == NULL || index->settings->function_type != 6) {
+        return;
+    }
+    if (pisa_bins_init(index) != SUCCESS) {
+        fprintf(stderr, "warning: failed to initialize PISA bins.\n");
+        return;
+    }
+    pisa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
+}
+
+static void finalize_pisa_bins_if_needed(isax_index *index) {
+    if (index == NULL || index->settings->function_type != 6 || index->bins == NULL || index->binsv == NULL) {
         return;
     }
     int n_segments = index->settings->n_segments;

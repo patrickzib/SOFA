@@ -25,7 +25,7 @@ static inline ts_type messi_minidist_raw(isax_index *index,
                                          sax_type *sax_cardinalities,
                                          float bsf) {
     if (index->settings->SIMD_flag) {
-        if (index->settings->function_type == 4) {
+        if (index->settings->function_type == 4 || index->settings->function_type == 6) {
             return minidist_fft_to_sfa_rawe_SIMD(index, paa_or_fft, sax, sax_cardinalities, bsf);
         }
         if (index->settings->function_type == 5) {
@@ -34,7 +34,7 @@ static inline ts_type messi_minidist_raw(isax_index *index,
         return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
     }
 
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         return minidist_fft_to_sfa_raw(index, paa_or_fft, sax, sax_cardinalities, bsf);
     }
     if (index->settings->function_type == 5) {
@@ -48,7 +48,7 @@ static inline ts_type messi_minidist(isax_index *index,
                                      sax_type *sax,
                                      sax_type *sax_cardinalities,
                                      float bsf) {
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
     }
     if (index->settings->function_type == 5) {

@@ -28,11 +28,11 @@ def main() -> None:
     idx = Index(
         timeseries_size=TS_SIZE,
         max_query_threads=8,
-        function_type=5,
+        function_type=3,
         sample_size=sample_size,
-        # histogram_type=2,
-        # sample_type=1,
-        # is_norm=1
+        histogram_type=2,
+        sample_type=1,
+        is_norm=1
         )
 
     samples = np.fromfile(data_path, dtype=np.float32, count=sample_size * TS_SIZE)

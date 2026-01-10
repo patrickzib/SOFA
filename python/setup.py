@@ -40,6 +40,7 @@ sources = [
     "src/ads/sfa/sfa.c",
     "src/ads/spartan/pca.c",
     "src/ads/spartan/spartan.c",
+    "src/ads/pisa/pisa.c",
     "src/ads/calc_utils.c",
 ]
 sourcedirs = [str(ROOT / path) for path in sources]

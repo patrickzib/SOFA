@@ -48,6 +48,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
+#include "ads/pisa/pisa.h"
 #include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
@@ -367,6 +368,9 @@ int main(int argc, char **argv) {
                 \t\t\tParIS-TS: 1\n\
                 \t\t\tParIS: 2\n\
                 \t\t\t\\MESSI-mq: 3\n\
+                \t\t\tMESSI+SFA: 4\n\
+                \t\t\tMESSI+SPARTAN: 5\n\
+                \t\t\tMESSI+PISA: 6\n\
                 \t--SIMD\t\t\tSet for search with SIMD intrinsics\n\
                 \t--sample-size\t\t\tSet sample size for MCB\n\
                 \t--sample-type\t\t\tSet for sampling strategy\n\
@@ -847,7 +851,7 @@ int main(int argc, char **argv) {
                 function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
                 sample_type);
 
-        if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5)) {
+        if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5 || function_type == 6)) {
             fprintf(stderr, "warning: function_type %d requires in-memory mode; enabling --inmemory.\n",
                     function_type);
             inmemory_flag = 1;
@@ -947,6 +951,37 @@ int main(int argc, char **argv) {
 
             //set bins
             spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
+
+            //build index
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+
+            //calculate depth (for analysis logfile only)
+            calculate_average_depth(logfile_tree, idx);
+
+            //save index building stats
+            INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_SAVE_FILE(logfile_query);
+            for (int i = 0; i < n_segments; i++) {
+                memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
+                       sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
+            }
+
+            //perform queries
+            if (topk && k_size > 1) {
+                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
+                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
+            } else {
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, &exact_search_MESSI);
+            }
+
+        } else if (inmemory_flag && function_type == 6) {
+            //initialize bins
+            pisa_bins_init(idx);
+
+            //set bins
+            pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
@@ -1113,6 +1148,9 @@ int main(int argc, char **argv) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else if (function_type == 5) {
                 spartan_free_bins(idx);
+                isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
+            } else if (function_type == 6) {
+                pisa_free_bins(idx);
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else if (function_type == 3) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
