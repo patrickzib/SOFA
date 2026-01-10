@@ -1,0 +1,9 @@
+MESSI SETTINGS
+Function type,5
+SIMD,1
+timeseries length,100
+paa segments,16
+isax-cardinality,8
+leaf size,100
+sample-size,1000000
+sample type,3
