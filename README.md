@@ -1,20 +1,25 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# To compile SOFA (Autotools, from repo root)
-```bash
-./configure
-make
-```
-
-# Build environment variables (set these if FFTW/LAPACK aren’t in default paths)
+# Build environment variables
+Set these if FFTW/LAPACK aren’t in default paths
 ```bash
 export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
 export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
 ```
 
-# Build Python (Cython) API (from repo root)
-Set these if FFTW/LAPACK aren’t in default paths or to enable SIMD in the extension build.
+# To compile SOFA 
+Using Autotools, call from repo root.
+```bash
+./configure
+make
+```
+
+
+# Build Python (Cython) API 
+Again, set environment-variables, if FFTW/LAPACK aren’t in default paths or to enable SIMD in the extension build.
+
+Call from repo root.
 ```bash
 export FFTW_CFLAGS="-I/opt/local/include"
 export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
@@ -25,7 +30,10 @@ python3 -m pip install -e ./python
 ```
 
 # Minimal Python API usage
-The API consumes float32 binary datasets (same format as CLI). This mirrors `tests/cython_with_data.py`.
+The API consumes float32 binary datasets (same format as CLI). 
+
+This mirrors `tests/cython_with_data.py`.
+
 ```python
 import numpy as np
 from messi import Index
@@ -43,7 +51,9 @@ distances, labels = idx.search(queries, k=1)
 
 See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
 
-The SOFA command is 
+- SAX command is `--function-type 3`
+- SOFA command is `--function-type 4`
+- SPARTAN command is `--function-type 5`
 
 ```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin
@@ -55,11 +65,19 @@ DATASET_SIZE=100000000
 SAMPLE_SIZE=1000000
 QUERY_SIZE=100
 
-./MESSI --dataset --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 
---dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 
---queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE 
---sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size 20000 --min-leaf-size 20000 
---initial-lbl-size 20000 --coeff-number $COEFF_NUMBER  --SIMD
+./MESSI 
+  --dataset --dataset $FILE_PATH 
+  --dataset-size $DATASET_SIZE 
+  --queries $QUERIES_PATH 
+  --queries-size $QUERY_SIZE 
+  --timeseries-size $TS_SIZE  
+  --function-type 4 
+  --histogram-type 2 
+  --sample-type 3 
+  --sample-size $SAMPLE_SIZE 
+  --coeff-number $COEFF_NUMBER  
+  --is-norm 
+  --SIMD
 ```
 
 For help, please type:
