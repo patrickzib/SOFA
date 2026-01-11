@@ -581,7 +581,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
     // Special case: for non-normalized series, treat the first coefficient specially.
     if (!index->settings->is_norm &&
         (index->settings->n_coefficients == 0 || index->coefficients[0] == 0)) {
-        distance += get_lb_distance(index->bins[0], fft[0], sax[0], sax_cardinalities[0],
+        distance += get_lb_distance(index->bins[0], fft[0], sax[0], max_cardinality,
                                     max_bit_cardinality, max_cardinality, 1.0);
         if (distance > bsf) {
             return distance;
@@ -592,7 +592,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
 
     for (; i < number_of_segments; ++i) {
         distance += get_lb_distance(
-                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                index->bins[i], fft[i], sax[i], max_cardinality,
                 max_bit_cardinality, max_cardinality, 2.0);
 
         if (distance > bsf) {
