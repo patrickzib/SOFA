@@ -31,11 +31,11 @@ FILE_PATH=/vol/tmp/schaefpa/messi_datasets/SCEDC.bin
 QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/SCEDC_queries.bin
 TS_SIZE=256
 
-COEFF_NUMBER=32
+COEFF_NUMBER=64
 DATASET_SIZE=100000000
 SAMPLE_SIZE=1000000
 QUERY_SIZE=100
-LEAF_SIZE=100
+LEAF_SIZE=20000
 
 COMMON_ARGS="--dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE --dataset-size $DATASET_SIZE --flush-limit 300000 --read-block $LEAF_SIZE --sax-cardinality 8 --queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --cpu-type $1 --leaf-size $LEAF_SIZE --min-leaf-size $LEAF_SIZE --initial-lbl-size $LEAF_SIZE --SIMD"
 SAMPLE_ARGS="--sample-size $SAMPLE_SIZE --sample-type 3 --is-norm --tight-bound"
@@ -46,6 +46,12 @@ run_messi() {
 
 # messi+sax+simd
 run_messi --function-type 3
+
+# messi+pisa+variance+simd+equi-depth
+run_messi --function-type 6 $SAMPLE_ARGS --histogram-type 1 --sfa-n-coefficients $COEFF_NUMBER
+
+# messi+pisa+variance+simd+equi-width
+run_messi --function-type 6 $SAMPLE_ARGS --histogram-type 2 --sfa-n-coefficients $COEFF_NUMBER
 
 # messi+sfa+variance+simd+equi-depth
 run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 1 --sfa-n-coefficients $COEFF_NUMBER
