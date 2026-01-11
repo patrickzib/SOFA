@@ -673,7 +673,7 @@ minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
 
     __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
 
-    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
+    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) index->settings->max_sax_cardinalities);
     __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
     __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
     __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
