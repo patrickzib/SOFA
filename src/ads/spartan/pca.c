@@ -30,79 +30,6 @@ void pca_free(isax_index *index) {
     pca_free_model(index);
 }
 
-static void pca_identity(double *matrix, int n) {
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            matrix[i * n + j] = (i == j) ? 1.0 : 0.0;
-        }
-    }
-}
-
-static void pca_jacobi_eigen(double *matrix, int n, double *eigvals, double *eigvecs) {
-    const double eps = 1e-10;
-    const int max_iter = 50 * n * n;
-
-    pca_identity(eigvecs, n);
-
-    for (int iter = 0; iter < max_iter; ++iter) {
-        int p = 0;
-        int q = 1;
-        double max_off = 0.0;
-
-        for (int i = 0; i < n; ++i) {
-            for (int j = i + 1; j < n; ++j) {
-                double value = fabs(matrix[i * n + j]);
-                if (value > max_off) {
-                    max_off = value;
-                    p = i;
-                    q = j;
-                }
-            }
-        }
-
-        if (max_off < eps) {
-            break;
-        }
-
-        double app = matrix[p * n + p];
-        double aqq = matrix[q * n + q];
-        double apq = matrix[p * n + q];
-        double phi = 0.5 * atan2(2.0 * apq, (aqq - app));
-        double c = cos(phi);
-        double s = sin(phi);
-
-        for (int i = 0; i < n; ++i) {
-            double aip = matrix[i * n + p];
-            double aiq = matrix[i * n + q];
-            matrix[i * n + p] = c * aip - s * aiq;
-            matrix[i * n + q] = s * aip + c * aiq;
-        }
-
-        for (int i = 0; i < n; ++i) {
-            double api = matrix[p * n + i];
-            double aqi = matrix[q * n + i];
-            matrix[p * n + i] = c * api - s * aqi;
-            matrix[q * n + i] = s * api + c * aqi;
-        }
-
-        matrix[p * n + p] = c * c * app - 2.0 * s * c * apq + s * s * aqq;
-        matrix[q * n + q] = s * s * app + 2.0 * s * c * apq + c * c * aqq;
-        matrix[p * n + q] = 0.0;
-        matrix[q * n + p] = 0.0;
-
-        for (int i = 0; i < n; ++i) {
-            double vip = eigvecs[i * n + p];
-            double viq = eigvecs[i * n + q];
-            eigvecs[i * n + p] = c * vip - s * viq;
-            eigvecs[i * n + q] = s * vip + c * viq;
-        }
-    }
-
-    for (int i = 0; i < n; ++i) {
-        eigvals[i] = matrix[i * n + i];
-    }
-}
-
 static int pca_lapack_eigen(double *matrix, int n, double *eigvals) {
     char jobz = 'V';
     char uplo = 'U';
@@ -201,8 +128,14 @@ enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sa
     memcpy(eigvecs, cov, sizeof(double) * (size_t) dim * (size_t) dim);
     int info = pca_lapack_eigen(eigvecs, dim, eigvals);
     if (info != 0) {
-        fprintf(stderr, "warning: LAPACK dsyev failed (%d), falling back to Jacobi.\n", info);
-        pca_jacobi_eigen(cov, dim, eigvals, eigvecs);
+        fprintf(stderr, "error: LAPACK dsyev failed (%d).\n", info);
+        free(mean);
+        free(cov);
+        free(eigvecs);
+        free(eigvals);
+        free(ranked);
+        free(components_matrix);
+        return FAILURE;
     }
 
     for (int i = 0; i < dim; ++i) {
