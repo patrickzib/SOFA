@@ -359,7 +359,7 @@ ts_type minidist_pca_to_spartan(isax_index *index, float *pca, sax_type *sax, sa
     ts_type distance = 0.0;
     for (int i = 0; i < number_of_segments; i++) {
         distance += get_lb_distance(
-                index->bins[i], pca[i], sax[i], sax_cardinalities[i],
+                index->bins[i], pca[i], sax[i], max_cardinality,
                 max_bit_cardinality, max_cardinality, 1.0);
 
         if (distance > bsf) {
