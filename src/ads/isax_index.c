@@ -2773,9 +2773,9 @@ void print_settings(isax_index_settings *settings) {
         fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
         fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->n_coefficients > 0);
         if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        } else if (settings->histogram_type==2) {
             fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        } else if (settings->histogram_type==2) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
         }
 
         if (settings->sample_type == 1) {
@@ -2796,9 +2796,9 @@ void print_settings(isax_index_settings *settings) {
 
         fprintf(stderr,"## \n## [SPARTAN SETTINGS]\n");
         if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        } else if (settings->histogram_type==2) {
             fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        } else if (settings->histogram_type==2) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
         }
         if (settings->sample_type == 1) {
             fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
@@ -2819,9 +2819,9 @@ void print_settings(isax_index_settings *settings) {
         fprintf(stderr,"## \n## [PISA SETTINGS]\n");
         fprintf(stderr,"## FFT -> PCA -> Binning\n");
         if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        } else if (settings->histogram_type==2) {
             fprintf(stderr, "## \t Equi-Depth Binning. \n");
+        } else if (settings->histogram_type==2) {
+            fprintf(stderr, "## \t Equi-Width Binning. \n");
         }
         if (settings->sample_type == 1) {
             fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
