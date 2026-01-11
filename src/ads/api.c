@@ -93,7 +93,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
         return NULL;
     }
 
-    wrapper->index = isax_index_init(settings);
+    wrapper->index = isax_index_init_inmemory(settings);
     if (wrapper->index == NULL) {
         free(wrapper);
         return NULL;
