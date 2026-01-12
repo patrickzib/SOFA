@@ -351,8 +351,8 @@ float minidist_paa_to_isax(float *paa, sax_type *sax,
 
         sax_type region_lower = (v << (c_m - c_c));
         sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
-        float breakpoint_lower; // <-- TODO: calculate breakpoints.
-        float breakpoint_upper; // <-- - || -
+        float breakpoint_lower;
+        float breakpoint_upper;
 
         if (region_lower == 0) {
             breakpoint_lower = min_val;
@@ -406,9 +406,8 @@ float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
         sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
         //printf("[%d, %d] %d -- %d\n", sax[i], c_c, region_lower, region_upper);
 
-        float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
-        float breakpoint_upper = 0; // <-- - || -
-
+        float breakpoint_lower = 0;
+        float breakpoint_upper = 0;
 
         if (region_lower == 0) {
             breakpoint_lower = min_val;

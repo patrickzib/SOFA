@@ -77,6 +77,7 @@ typedef struct {
     int histogram_type;
     int sample_type;
     int n_coefficients;
+    int node_split_criterion;
 
     // int filetype_int;
 

@@ -216,6 +216,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->node_split_criterion = 1;
 
     return settings;
 }
@@ -2750,6 +2751,22 @@ void print_settings(isax_index_settings *settings) {
 	fprintf(stderr,"## \n## [LEAF SETTINGS]\n");
 	fprintf(stderr, "## max_leaf_size:\t%d\n", settings->max_leaf_size);
 	fprintf(stderr, "## min_leaf_size:\t%d\n",settings->min_leaf_size);
+	const char *split_name = "informed_split_decision";
+	switch (settings->node_split_criterion) {
+		case 2:
+			split_name = "simple_split_decision";
+			break;
+		case 3:
+			split_name = "maxvar_split_decision";
+			break;
+		case 4:
+			split_name = "maxbin_split_decision";
+			break;
+		default:
+			break;
+	}
+	fprintf(stderr, "## node_split_criterion:\t%d (%s)\n",
+			settings->node_split_criterion, split_name);
 
 	fprintf(stderr,"## \n## [Symbolic Transform SETTINGS]\n");
     if (settings->SIMD_flag) {

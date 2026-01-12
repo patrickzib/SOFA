@@ -60,11 +60,7 @@ void fft_from_ts(
     The current transform is pointed to by dft_mem_array
 */
 void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_sfa_word) {
-    unsigned long ts_length = index->settings->timeseries_size;
     int n_segments = index->settings->n_segments;
-    int cardinality = index->settings->sax_alphabet_cardinality;
-    int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
-
     for (int k = 0; k < n_segments; ++k) {
         unsigned int c;
         for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {

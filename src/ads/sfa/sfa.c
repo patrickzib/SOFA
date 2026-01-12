@@ -78,7 +78,7 @@ void sfa_free_bins(isax_index *index) {
 
 
 /*
-  In this function, the intervals are caluclated (multiple coeff. binning).
+  In this function, the intervals are calculated (multiple coeff. binning).
   The coefficients with the highest variance or the first ones are chosen and
   these values are saved to bins
 */
@@ -599,7 +599,6 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
             return distance;
         }
     }
-
     return distance;
 }
 

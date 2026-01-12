@@ -12,12 +12,31 @@
 #include <math.h>
 #include <float.h>
 #include <pthread.h>
+#include <limits.h>
 
 #include "ads/sax/sax.h"
 #include "ads/sax/sax_breakpoints.h"
 #include "ads/isax_node.h"
 #include "ads/isax_index.h"
 #include "ads/isax_node_split.h"
+
+static int select_split_point(isax_node_split_data *split_data,
+                              isax_index_settings *settings,
+                              isax_node_record *records_buffer,
+                              int records_buffer_size) {
+    switch (settings->node_split_criterion) {
+        case 1:
+            return informed_split_decision(split_data, settings, records_buffer, records_buffer_size);
+        case 2:
+            return simple_split_decision(split_data, settings);
+        case 3:
+            return maxvar_split_decision(split_data, settings, records_buffer, records_buffer_size);
+        case 4:
+            return maxbin_split_decision(split_data, settings, records_buffer, records_buffer_size);
+        default:
+            return informed_split_decision(split_data, settings, records_buffer, records_buffer_size);
+    }
+}
 
 int simple_split_decision(isax_node_split_data *split_data,
                           isax_index_settings *settings) {
@@ -78,33 +97,32 @@ int informed_split_decision(isax_node_split_data *split_data,
     for (i = 0; i < settings->n_segments; i++) {
         if (split_data->split_mask[i] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
-        } else {
-            // TODO: Optimize this.
-            // Calculate break point for new cardinality, a bit complex.
-            int new_bit_cardinality = split_data->split_mask[i] + 1;
-            int break_point_id = records_buffer[0].sax[i];
-            break_point_id = (break_point_id >> ((settings->sax_bit_cardinality) -
-                                                 (new_bit_cardinality))) << 1;
-            int new_cardinality = pow(2, new_bit_cardinality + 1);
-            int right_offset = ((new_cardinality - 1) * (new_cardinality - 2)) / 2
-                               + new_cardinality - 2;
-            float b = sax_breakpoints[right_offset - break_point_id];
+        }
+        // TODO: Optimize this.
+        // Calculate break point for new cardinality, a bit complex.
+        int new_bit_cardinality = split_data->split_mask[i] + 1;
+        int break_point_id = records_buffer[0].sax[i];
+        break_point_id = (break_point_id >> ((settings->sax_bit_cardinality) -
+                                             (new_bit_cardinality))) << 1;
+        int new_cardinality = pow(2, new_bit_cardinality + 1);
+        int right_offset = ((new_cardinality - 1) * (new_cardinality - 2)) / 2
+                           + new_cardinality - 2;
+        float b = sax_breakpoints[right_offset - break_point_id];
 
-            if (segment_to_split == -1) {
+        if (segment_to_split == -1) {
+            segment_to_split = i;
+            segment_to_split_b = b;
+            continue;
+        }
+
+        float left_range = segment_mean[i] - (3 * segment_stdev[i]);
+        float right_range = segment_mean[i] + (3 * segment_stdev[i]);
+        //printf("%d, %lf -- %lf \n", i, left_range, right_range);
+
+        if (left_range <= b && b <= right_range) {
+            if (abs(segment_mean[i] - b) <= abs(segment_mean[i] - segment_to_split_b)) {
                 segment_to_split = i;
                 segment_to_split_b = b;
-                continue;
-            }
-
-            float left_range = segment_mean[i] - (3 * segment_stdev[i]);
-            float right_range = segment_mean[i] + (3 * segment_stdev[i]);
-            //printf("%d, %lf -- %lf \n", i, left_range, right_range);
-
-            if (left_range <= b && b <= right_range) {
-                if (abs(segment_mean[i] - b) <= abs(segment_mean[i] - segment_to_split_b)) {
-                    segment_to_split = i;
-                    segment_to_split_b = b;
-                }
             }
         }
     }
@@ -112,6 +130,75 @@ int informed_split_decision(isax_node_split_data *split_data,
     free(segment_mean);
     free(segment_stdev);
     return segment_to_split;
+}
+
+int maxvar_split_decision(isax_node_split_data *split_data,
+                          isax_index_settings *settings,
+                          isax_node_record *records_buffer,
+                          int records_buffer_size) {
+    int best_segment = -1;
+    double best_variance = -1.0;
+
+    for (int segment = 0; segment < settings->n_segments; ++segment) {
+        if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
+            continue;
+        }
+
+        double mean = 0.0;
+        for (int i = 0; i < records_buffer_size; ++i) {
+            mean += (double) records_buffer[i].sax[segment];
+        }
+        mean /= (double) records_buffer_size;
+
+        double variance = 0.0;
+        for (int i = 0; i < records_buffer_size; ++i) {
+            double diff = (double) records_buffer[i].sax[segment] - mean;
+            variance += diff * diff;
+        }
+        variance /= (double) records_buffer_size;
+
+        if (variance > best_variance) {
+            best_variance = variance;
+            best_segment = segment;
+        }
+    }
+
+    return best_segment;
+}
+
+int maxbin_split_decision(isax_node_split_data *split_data,
+                          isax_index_settings *settings,
+                          isax_node_record *records_buffer,
+                          int records_buffer_size) {
+    int best_segment = -1;
+    int best_imbalance = INT_MAX;
+
+    for (int segment = 0; segment < settings->n_segments; ++segment) {
+        if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
+            continue;
+        }
+
+        int new_bit_cardinality = split_data->split_mask[segment] + 1;
+        root_mask_type mask = settings->bit_masks[settings->sax_bit_cardinality - new_bit_cardinality - 1];
+
+        int left_count = 0;
+        int right_count = 0;
+        for (int i = 0; i < records_buffer_size; ++i) {
+            if (records_buffer[i].sax[segment] & mask) {
+                right_count++;
+            } else {
+                left_count++;
+            }
+        }
+
+        int imbalance = abs(left_count - right_count);
+        if (imbalance < best_imbalance) {
+            best_imbalance = imbalance;
+            best_segment = segment;
+        }
+    }
+
+    return best_segment;
 }
 
 
@@ -364,13 +451,8 @@ void split_node(isax_index *index, isax_node *node) {
     // Insert buffered data in children
 
 
-    // Decide split point...
-    //printf("informed decision: %d\n",
-    //       informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index)));
-
-    split_data->splitpoint = informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index));
-    // Decide split point...
-    //split_data->splitpoint = simple_split_decision(split_data, index->settings);
+    split_data->splitpoint = select_split_point(split_data, index->settings,
+                                                split_buffer, split_buffer_index);
 
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
@@ -532,13 +614,8 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
     // Insert buffered data in children
 
 
-    // Decide split point...
-    //printf("informed decision: %d\n",
-    //       informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index)));
-
-    split_data->splitpoint = informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index));
-    // Decide split point...
-    //split_data->splitpoint = simple_split_decision(split_data, index->settings);
+    split_data->splitpoint = select_split_point(split_data, index->settings,
+                                                split_buffer, split_buffer_index);
 
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
@@ -825,13 +902,8 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
     // Insert buffered data in children
 
 
-    // Decide split point...
-    //printf("informed decision: %d\n",
-    //       informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index)));
-
-    split_data->splitpoint = informed_split_decision(split_data, index->settings, split_buffer, (split_buffer_index));
-    // Decide split point...
-    //split_data->splitpoint = simple_split_decision(split_data, index->settings);
+    split_data->splitpoint = select_split_point(split_data, index->settings,
+                                                split_buffer, split_buffer_index);
 
 
     //printf("not informed decision: %d\n", split_data->splitpoint);

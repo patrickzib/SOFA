@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
+    static int node_split_criterion = 1;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -192,6 +193,7 @@ int main(int argc, char **argv) {
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
+                {"node-split-criterion", required_argument, 0,   'G'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -329,6 +331,14 @@ int main(int argc, char **argv) {
             case 'F':
                 apply_znorm = 1;
                 break;
+            case 'G':
+                node_split_criterion = atoi(optarg);
+                if (node_split_criterion < 1 || node_split_criterion > 4) {
+                    fprintf(stderr, "error: node-split-criterion must be 1-4 (received %d).\n",
+                            node_split_criterion);
+                    return EXIT_FAILURE;
+                }
+                break;
 
             case 'h':
 #ifdef BENCHMARK
@@ -350,6 +360,7 @@ int main(int argc, char **argv) {
                 \t--initial-lbl-size XX\t\tThe initial lbl buffer size for each buffer.\n\
                 \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
+                \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -884,6 +895,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "error: failed to initialize index settings.\n");
             return EXIT_FAILURE;
         }
+
+        index_settings->node_split_criterion = node_split_criterion;
 
 
         if (!inmemory_flag) {
