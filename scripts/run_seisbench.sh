@@ -56,17 +56,23 @@ run_messi() {
     $MESSI_BINARY $COMMON_ARGS "$@"
 }
 
-# messi+sax+simd
+# messi+SAX+simd
 run_messi --function-type 3
 
-# messi+sfa+variance+simd+equi-depth
+# messi+SOFA+simd+equi-depth
 run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 1 --sfa-n-coefficients $COEFF_NUMBER
 
-# messi+sfa+variance+simd+equi-width
+# messi+SOFA+simd+equi-width
 run_messi --function-type 4 $SAMPLE_ARGS --histogram-type 2 --sfa-n-coefficients $COEFF_NUMBER
 
-# messi+spartan+variance+simd+equi-depth
+# messi+PISA+simd+equi-depth
+run_messi --function-type 6 $SAMPLE_ARGS --histogram-type 1 --sfa-n-coefficients $COEFF_NUMBER
+
+# messi+PISA+simd+equi-width
+run_messi --function-type 6 $SAMPLE_ARGS --histogram-type 2 --sfa-n-coefficients $COEFF_NUMBER
+
+# messi+SPARTAN+simd+equi-depth
 run_messi --function-type 5 $SAMPLE_ARGS --histogram-type 1
 
-# messi+spartan+variance+simd+equi-width
+# messi+SPARTAN+simd+equi-width
 run_messi --function-type 5 $SAMPLE_ARGS --histogram-type 2
