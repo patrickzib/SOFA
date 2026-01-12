@@ -6,7 +6,7 @@ COEFF_NUMBER=64
 QUERY_SIZE=10
 
 DATASET_SIZE=10000
-SAMPLE_SIZE=10000
+SAMPLE_SIZE=1000
 
 CPU_TYPE=${82:-1}
 QUEUE_NUMBER=${8:-1}
@@ -23,4 +23,4 @@ QUEUE_NUMBER=${8:-1}
   --function-type 6 \
   --histogram-type 2 \
   --sfa-n-coefficients $COEFF_NUMBER \
-  --is-norm 
+  --is-norm
