@@ -669,7 +669,7 @@ minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
     int region_upper[16], region_lower[16];
     float distancef[8], distancef2[8];
     int offset = 0;
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;refac
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
 
     __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
 
