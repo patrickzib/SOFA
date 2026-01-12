@@ -359,7 +359,7 @@ ts_type minidist_pca_to_spartan(isax_index *index, float *pca, sax_type *sax, sa
     ts_type distance = 0.0;
     for (int i = 0; i < number_of_segments; i++) {
         distance += get_lb_distance(
-                index->bins[i], pca[i], sax[i], max_cardinality,
+                index->bins[i], pca[i], sax[i], sax_cardinalities[i],
                 max_bit_cardinality, max_cardinality, 1.0);
 
         if (distance > bsf) {
@@ -385,7 +385,7 @@ minidist_pca_to_spartan_rawe_SIMD(isax_index *index, float *pca, sax_type *sax, 
 
     __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
 
-    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) index->settings->max_sax_cardinalities);
+    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
     __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
     __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
     __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
