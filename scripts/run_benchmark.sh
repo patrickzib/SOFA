@@ -12,36 +12,36 @@ do
     echo "The current $threads is: $$threads"
 
     # BigANN -
-#    ./run_bigann_norm.sh $threads $threads
-#    ./copy_files.sh BIGANN $threads
-#
-#    # SALD
-#    ./run_sald.sh $threads $threads
-#    ./copy_files.sh SALD $threads
-#
-#    # SIFT1B
-#    ./run_sift1b.sh $threads $threads
-#    ./copy_files.sh SIFT1b $threads
-#
-#    # DEEP1B
-#    ./run_deep1b.sh $threads $threads
-#    ./copy_files.sh DEEP1b $threads
-#
-#    # SCEDC
-#    ./run_scedc.sh $threads $threads
-#    ./copy_files.sh SCEDC $threads
-#
-#    # ASTRO
-#    ./run_astro.sh $threads $threads
-#    ./copy_files.sh ASTRO $threads
-#
-#    # ETHC
-#    ./run_seisbench.sh $threads $threads "ETHZ.bin" "ETHZ_queries.bin" 4999932
-#    ./copy_files.sh "ETHC" $threads
-#
-#    # ISC_EHB_DepthPhases
-#    ./run_seisbench.sh $threads $threads "ISC_EHB_DepthPhases.bin" "ISC_EHB_DepthPhases_queries.bin" 100000000
-#    ./copy_files.sh "ISC_EHB_DepthPhases" $threads
+    ./run_bigann_norm.sh $threads $threads
+    ./copy_files.sh BIGANN $threads
+
+    # SALD
+    ./run_sald.sh $threads $threads
+    ./copy_files.sh SALD $threads
+
+    # SIFT1B
+    ./run_sift1b.sh $threads $threads
+    ./copy_files.sh SIFT1b $threads
+
+    # DEEP1B
+    ./run_deep1b.sh $threads $threads
+    ./copy_files.sh DEEP1b $threads
+
+    # SCEDC
+    ./run_scedc.sh $threads $threads
+    ./copy_files.sh SCEDC $threads
+
+    # ASTRO
+    ./run_astro.sh $threads $threads
+    ./copy_files.sh ASTRO $threads
+
+    # ETHC
+    ./run_seisbench.sh $threads $threads "ETHZ.bin" "ETHZ_queries.bin" 4999932
+    ./copy_files.sh "ETHC" $threads
+
+    # ISC_EHB_DepthPhases
+    ./run_seisbench.sh $threads $threads "ISC_EHB_DepthPhases.bin" "ISC_EHB_DepthPhases_queries.bin" 100000000
+    ./copy_files.sh "ISC_EHB_DepthPhases" $threads
 
     # LenDB
     ./run_seisbench.sh $threads $threads "LenDB.bin" "LenDB_queries.bin" 37345260
