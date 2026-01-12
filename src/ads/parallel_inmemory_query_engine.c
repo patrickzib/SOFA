@@ -62,7 +62,7 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
 
             // Adaptive splitting
         }
-        result.distance = calculate_node_distance_inmemory_m(index, node, ts, FLT_MAX);
+        result.distance = calculate_node_distance_inmemory_m(index, node, ts, paa, FLT_MAX);
         result.node = node;
     } else {
         result.node = NULL;
@@ -74,45 +74,57 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
     return result;
 }
 
-float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, float bsf) {
+float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     COUNT_CHECKED_NODE()
+    float distmin;
 
     // If node has buffered data
     if (node->buffer != NULL) {
         int i;
+
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            // float dist = ts_euclidean_distance_SIMD(query, node->buffer->full_ts_buffer[i],
-            //                                         index->settings->timeseries_size, bsf);
-            float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, bsf);
+
+            if (distmin < bsf) {
+                float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
                                index->settings->timeseries_size, bsf,
                                index->settings->SIMD_flag, index->settings->is_norm);
-            if (dist < bsf) {
-                bsf = dist;
+                if (dist < bsf) {
+                    bsf = dist;
+                }
             }
         }
+
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            // float dist = ts_euclidean_distance_SIMD(query, node->buffer->tmp_full_ts_buffer[i],
-            //                                        index->settings->timeseries_size, bsf);
-            float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, bsf);
+
+            if (distmin < bsf) {
+                float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
                                index->settings->timeseries_size, bsf,
                                index->settings->SIMD_flag, index->settings->is_norm);
-            if (dist < bsf) {
-                bsf = dist;
+                if (dist < bsf) {
+                    bsf = dist;
+                }
             }
         }
+
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
-            // float dist = ts_euclidean_distance_SIMD(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-            //                                        index->settings->timeseries_size, bsf);
-            float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                               index->settings->timeseries_size, bsf,
-                               index->settings->SIMD_flag, index->settings->is_norm);
+            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, bsf);
 
-            if (dist < bsf) {
-                bsf = dist;
+            if (distmin < bsf) {
+                float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                   index->settings->timeseries_size, bsf,
+                                   index->settings->SIMD_flag, index->settings->is_norm);
+                if (dist < bsf) {
+                    bsf = dist;
+                }
             }
         }
     }
@@ -177,7 +189,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, bsf_result.distance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsf_result.distance);
                 if (distance < bsf_result.distance) {
                     bsf_result.distance = distance;
                     bsf_result.node = n->node;
@@ -192,7 +204,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts,
+                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -212,7 +224,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts,
+                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -598,7 +610,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory(index, n->node, ts, bsfdisntance);
+                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -620,7 +632,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {
@@ -641,7 +653,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {

@@ -8,7 +8,7 @@
 #include "isax_node.h"
 
 
-float calculate_node_distance_inmemory (isax_index *index, isax_node *node, ts_type *query , float bsf);
+float calculate_node_distance_inmemory (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
 ts_type* calculate_node_ts_distance_inmemory (isax_index *index, isax_node *node, ts_type *query , float bsf);
 float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
 query_result  approximate_search_inmemory (ts_type *ts, ts_type *paa, isax_index *index);

@@ -50,7 +50,7 @@ typedef struct MESSI_workerdata
 	pqueue_bsf *pq_bsf;
 }MESSI_workerdata;
 
-float calculate_node_distance_inmemory_m (isax_index *index, isax_node *node, ts_type *query, float bsf);
+float calculate_node_distance_inmemory_m (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
 
 query_result  approximate_search_inmemory_m (ts_type *ts, ts_type *paa, isax_index *index);
 query_result refine_answer_inmemory_m (ts_type *ts, ts_type *paa, isax_index *index, query_result approximate_bsf_result,float minimum_distance, int limit);
