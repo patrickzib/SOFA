@@ -199,9 +199,8 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
         int i;
 
         RDcalculationnumber = RDcalculationnumber + node->buffer->full_buffer_size;
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
                             index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
@@ -215,9 +214,8 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
         }
 
         RDcalculationnumber = RDcalculationnumber + node->buffer->tmp_full_buffer_size;
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
                                         index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
@@ -231,7 +229,6 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
         }
 
         RDcalculationnumber = RDcalculationnumber + node->buffer->partial_buffer_size;
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
             distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],

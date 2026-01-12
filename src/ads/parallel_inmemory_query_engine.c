@@ -84,7 +84,7 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
 
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
                                          index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
@@ -99,7 +99,7 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
 
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+            distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
                                          index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
@@ -375,9 +375,7 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
                                               index->settings->max_sax_cardinalities,
                                               index->settings) <= approximate_result[i].distance) {
                 ts_buffer = &rawfile[j * index->settings->timeseries_size];
-                // float dist = ts_euclidean_distance_SIMD(&(ts[i * index->settings->timeseries_size]), ts_buffer,
-                //                                         index->settings->timeseries_size,
-                //                                         approximate_result[i].distance);
+
                 float dist = ts_ed(&(ts[i * index->settings->timeseries_size]), ts_buffer,
                                    index->settings->timeseries_size,
                                    approximate_result[i].distance,
