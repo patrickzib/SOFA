@@ -78,6 +78,7 @@ fabric.properties
 
 # General
 .DS_Store
+notebooks/**/.DS_Store
 .AppleDouble
 .LSOverride
 
