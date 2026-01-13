@@ -153,7 +153,7 @@ enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sa
     for (int k = 0; k < components; ++k) {
         int idx = (int) ranked[k * 2];
         for (int i = 0; i < dim; ++i) {
-            components_matrix[k * dim + i] = (ts_type) eigvecs[i * dim + idx];
+            components_matrix[k * dim + i] = (ts_type) eigvecs[i + idx * dim];
         }
     }
 
