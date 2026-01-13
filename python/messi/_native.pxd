@@ -34,3 +34,9 @@ cdef extern from "ads/api.h":
                            size_t k,
                            float *distances,
                            long *labels)
+    int messi_index_pca_transform(messi_index *index,
+                                  const float *queries,
+                                  size_t nq,
+                                  size_t dim,
+                                  float *out,
+                                  size_t out_dim)

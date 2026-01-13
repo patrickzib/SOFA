@@ -39,6 +39,12 @@ void messi_index_destroy(messi_index *index);
 int messi_index_add_file(messi_index *index, const char *path, long ts_num);
 int messi_index_search(messi_index *index, const float *queries, size_t nq, size_t dim, size_t k,
                        float *distances, long *labels);
+int messi_index_pca_transform(messi_index *index,
+                              const float *queries,
+                              size_t nq,
+                              size_t dim,
+                              float *out,
+                              size_t out_dim);
 
 #ifdef __cplusplus
 }

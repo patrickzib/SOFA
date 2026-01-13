@@ -12,6 +12,7 @@ from ._native cimport (
     messi_index_destroy,
     messi_index_add_file,
     messi_index_search,
+    messi_index_pca_transform,
 )
 
 ctypedef np.float32_t FLOAT32_t
@@ -132,6 +133,30 @@ cdef class Index:
             raise RuntimeError("search failed")
 
         return distances, labels
+
+    def pca_transform(self, np.ndarray[FLOAT32_t, ndim=2] queries):
+        if not self._has_data:
+            raise RuntimeError("Index contains no data. Call add() before pca_transform().")
+        if queries.dtype != np.float32:
+            queries = np.asarray(queries, dtype=np.float32)
+        if queries.ndim != 2:
+            raise ValueError("queries must be 2-D")
+        if queries.shape[1] != self._dim:
+            raise ValueError("dimension mismatch")
+        cdef Py_ssize_t nq = queries.shape[0]
+        cdef np.ndarray[FLOAT32_t, ndim=2] out = np.empty((nq, DEFAULT_PAA_SEGMENTS), dtype=np.float32)
+        cdef float* q_ptr = <float*> queries.data
+        cdef float* o_ptr = <float*> out.data
+
+        if messi_index_pca_transform(self._index,
+                                     q_ptr,
+                                     nq,
+                                     self._dim,
+                                     o_ptr,
+                                     DEFAULT_PAA_SEGMENTS) != 0:
+            raise RuntimeError("pca_transform failed")
+
+        return out
 
     @property
     def is_norm(self):

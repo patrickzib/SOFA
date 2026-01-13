@@ -211,6 +211,38 @@ int messi_index_search(messi_index *index,
     free(paa_buffer);
     return 0;
 }
+
+int messi_index_pca_transform(messi_index *index,
+                              const float *queries,
+                              size_t nq,
+                              size_t dim,
+                              float *out,
+                              size_t out_dim) {
+    if (index == NULL || index->index == NULL || queries == NULL || out == NULL) {
+        return -1;
+    }
+    if (index->index->settings == NULL) {
+        return -1;
+    }
+    if (dim != (size_t) index->index->settings->timeseries_size) {
+        return -2;
+    }
+    if (out_dim != (size_t) index->index->settings->n_segments) {
+        return -3;
+    }
+    if (index->index->settings->function_type != 5) {
+        return -4;
+    }
+
+    for (size_t i = 0; i < nq; ++i) {
+        const ts_type *ts = (const ts_type *) (queries + i * dim);
+        ts_type *row_out = (ts_type *) (out + i * out_dim);
+        if (pca_from_ts(index->index, ts, row_out) != SUCCESS) {
+            return -5;
+        }
+    }
+    return 0;
+}
 static void populate_root_nodes(isax_index *index, node_list *list) {
     if (list == NULL || index == NULL) {
         return;
