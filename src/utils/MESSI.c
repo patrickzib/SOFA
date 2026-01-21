@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
                 {"in-memory",           no_argument,       0,    'v'},
                 {"cpu-type",            required_argument, 0,    'w'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
-                {"paa-segments",        required_argument, 0,    'B'},
+                {"n-segments",          required_argument, 0,    'B'},
                 {"function-type",       required_argument, 0,    'y'},
                 {"dataset-size",        required_argument, 0,    'z'},
                 {"k-size",              required_argument, 0,    '0'},
@@ -257,7 +257,8 @@ int main(int argc, char **argv) {
 
             case 'B':
                 n_segments = atoi(optarg);
-
+                break;
+                
             case 'l':
                 leaf_size = atoi(optarg);
                 break;
@@ -354,7 +355,7 @@ int main(int argc, char **argv) {
                 \t--index-path XX \t\tThe path of the output folder\n\
                 \t--timeseries-size XX\t\tThe size of each time series\n\
                 \t--sax-cardinality XX\t\tThe maximum sax cardinality in number of bits (power of two).\n\
-                \t--paa-segments XX\t\tThe number of segments to divide the time series.\n\
+                \t--n-segments XX\t\tThe number of segments to divide the time series.\n\
                 \t--leaf-size XX\t\t\tThe maximum size of each leaf\n\
                 \t--min-leaf-size XX\t\tThe minimum size of each leaf\n\
                 \t--initial-lbl-size XX\t\tThe initial lbl buffer size for each buffer.\n\
@@ -763,12 +764,12 @@ int main(int argc, char **argv) {
             sprintf(rm_command, "rm -rf %s", index_path);
             system(rm_command);
         }
-        //check if n_segments size is at most timeseries_size
+        // check if n_segments size is at most timeseries_size
         if (n_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        //check is n_coefficients is between n_segments/2 and timeseries_size/2
+        // check is n_coefficients is between n_segments/2 and timeseries_size/2
         if (n_coefficients != 0 && (n_coefficients < n_segments / 2 || n_coefficients > time_series_size / 2)) {
             if (n_coefficients < n_segments || n_coefficients > time_series_size) {
                 fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", n_segments, time_series_size);
@@ -869,9 +870,9 @@ int main(int argc, char **argv) {
             inmemory_flag = 1;
         }
 
-        isax_index_settings *index_settings = isax_index_settings_init(index_path,             // INDEX DIRECTORY
+        isax_index_settings *index_settings = isax_index_settings_init(index_path,         // INDEX DIRECTORY
                                                                        time_series_size,   // TIME SERIES SIZE
-                                                                       n_segments,       // PAA SEGMENTS
+                                                                       n_segments,         // PAA SEGMENTS
                                                                        sax_cardinality,    // SAX CARDINALITY IN BITS
                                                                        leaf_size,          // LEAF SIZE
                                                                        min_leaf_size,      // MIN LEAF SIZE
