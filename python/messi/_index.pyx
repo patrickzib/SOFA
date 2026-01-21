@@ -24,12 +24,14 @@ cdef int DEFAULT_PAA_SEGMENTS = 16
 cdef class Index:
     cdef messi_index* _index
     cdef public int _dim
+    cdef public int _n_segments
     cdef bytes _root_dir
     cdef bint _has_data
     cdef bint _is_norm
 
     def __cinit__(self,
                   int timeseries_size,
+                  int n_segments=DEFAULT_PAA_SEGMENTS,
                   int sax_bit_cardinality=8,
                   int max_leaf_size=2000,
                   int min_leaf_size=10,
@@ -52,7 +54,7 @@ cdef class Index:
         cdef messi_index_params params
         cdef bytes root_dir_bytes
         params.timeseries_size = timeseries_size
-        params.n_segments = DEFAULT_PAA_SEGMENTS
+        params.n_segments = n_segments
         params.sax_bit_cardinality = sax_bit_cardinality
         params.max_leaf_size = max_leaf_size
         params.min_leaf_size = min_leaf_size
@@ -89,6 +91,7 @@ cdef class Index:
         if self._index is NULL:
             raise MemoryError("Failed to create MESSI index")
         self._dim = timeseries_size
+        self._n_segments = n_segments
         self._has_data = False
         self._is_norm = is_norm
 
@@ -144,7 +147,7 @@ cdef class Index:
         if queries.shape[1] != self._dim:
             raise ValueError("dimension mismatch")
         cdef Py_ssize_t nq = queries.shape[0]
-        cdef np.ndarray[FLOAT32_t, ndim=2] out = np.empty((nq, DEFAULT_PAA_SEGMENTS), dtype=np.float32)
+        cdef np.ndarray[FLOAT32_t, ndim=2] out = np.empty((nq, self._n_segments), dtype=np.float32)
         cdef float* q_ptr = <float*> queries.data
         cdef float* o_ptr = <float*> out.data
 
@@ -153,7 +156,7 @@ cdef class Index:
                                      nq,
                                      self._dim,
                                      o_ptr,
-                                     DEFAULT_PAA_SEGMENTS) != 0:
+                                     self._n_segments) != 0:
             raise RuntimeError("pca_transform failed")
 
         return out

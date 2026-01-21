@@ -186,8 +186,7 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
         RDcalculationnumber = RDcalculationnumber + node->buffer->full_buffer_size;
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
             }
@@ -195,8 +194,7 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
         RDcalculationnumber = RDcalculationnumber + node->buffer->tmp_full_buffer_size;
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
             }
@@ -205,8 +203,7 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
             float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pqueue_bsf_insert(pq_bsf, dist,
                                   *node->buffer->partial_position_buffer[i] / index->settings->timeseries_size, node);
@@ -223,8 +220,7 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
         int i;
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pthread_rwlock_wrlock(lock_queue);
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
@@ -234,8 +230,7 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
 
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
             if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                 pthread_rwlock_wrlock(lock_queue);
                 pqueue_bsf_insert(pq_bsf, dist, 0, node);
@@ -250,8 +245,7 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
 
             if (distmin <= pq_bsf->knn[pq_bsf->k - 1]) {
                 float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                   index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1],
-                                   index->settings->SIMD_flag, index->settings->is_norm);
+                                   index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k - 1]);
 
                 if (dist <= pq_bsf->knn[pq_bsf->k - 1]) {
                     pthread_rwlock_wrlock(lock_queue);

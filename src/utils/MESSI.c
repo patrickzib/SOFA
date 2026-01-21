@@ -773,7 +773,8 @@ int main(int argc, char **argv) {
             if (n_coefficients < n_segments || n_coefficients > time_series_size) {
                 fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", n_segments, time_series_size);
                 return -1;
-            } else if (n_coefficients % 2 != 0) {
+            }
+            if (n_coefficients % 2 != 0) {
                 fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
                 return -1;
             }

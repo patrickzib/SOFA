@@ -136,15 +136,8 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
 #endif
 
 
-float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char is_norm) {
-    if (is_simd) {
-#if ADS_HAVE_AVX2
-        return ts_euclidean_distance_SIMD(t, s, size, bound);
-#else
-        (void) is_simd;
-#endif
-    }
-    return ts_euclidean_distance(t, s, size, bound);
+float ts_ed(ts_type * t, ts_type * s, int size, float bound) {
+    return ts_euclidean_distance_SIMD(t, s, size, bound);
 }
 
 

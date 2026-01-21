@@ -28,7 +28,8 @@ def main() -> None:
     idx = Index(
         timeseries_size=TS_SIZE,
         max_query_threads=8,
-        function_type=5,
+        n_segments=24,
+        function_type=4,
         sample_size=sample_size,
         histogram_type=2,
         #sample_type=1,
@@ -37,7 +38,7 @@ def main() -> None:
 
     samples = np.fromfile(data_path, dtype=np.float32, count=sample_size * TS_SIZE)
     if samples.size < sample_size * TS_SIZE:
-        raise RuntimeError(f"Expected at least {sample_size * TS_SIZE} floats, got {samples.size}")    
+        raise RuntimeError(f"Expected at most {samples.size*TS_SIZE} floats, got {sample_size}")
     samples = samples.reshape(sample_size, TS_SIZE)
     
     """
@@ -61,7 +62,7 @@ def main() -> None:
     queries = np.fromfile(queries_path, dtype=np.float32, count=query_count*TS_SIZE)
     
     if queries.size < query_count*TS_SIZE:
-        raise RuntimeError(f"Expected at least {query_count*TS_SIZE} floats for one query, got {queries.size}")
+        raise RuntimeError(f"Expected at most {queries.size} floats, got {query_count*TS_SIZE}")
 
     queries = queries.reshape(query_count, TS_SIZE)
 

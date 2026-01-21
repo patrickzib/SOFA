@@ -205,8 +205,7 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 
             if (distmin < bsf) {
                 float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                                    index->settings->timeseries_size, bsf,
-                                   index->settings->SIMD_flag, index->settings->is_norm);
+                                    index->settings->timeseries_size, bsf);
                 if (dist < bsf) {
                     bsf = dist;
                 }
@@ -220,8 +219,7 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 
             if (distmin < bsf) {
                 float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                                   index->settings->timeseries_size, bsf,
-                                   index->settings->SIMD_flag, index->settings->is_norm);
+                                   index->settings->timeseries_size, bsf);
                 if (dist < bsf) {
                     bsf = dist;
                 }
@@ -236,8 +234,7 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 
             if (distmin < bsf) {
                 float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                             index->settings->timeseries_size, bsf,
-                             index->settings->SIMD_flag, index->settings->is_norm);
+                             index->settings->timeseries_size, bsf);
 
                 if (dist < bsf) {
                     bsf = dist;
@@ -259,8 +256,7 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
         int i;
         for (i = 0; i < node->buffer->full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                               index->settings->timeseries_size, bsf,
-                               index->settings->SIMD_flag, index->settings->is_norm);
+                               index->settings->timeseries_size, bsf);
 
             if (dist <= bsf) {
                 bsf = dist;
@@ -270,8 +266,7 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
 
         for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
             float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                    index->settings->timeseries_size, bsf,
-                    index->settings->SIMD_flag, index->settings->is_norm);
+                    index->settings->timeseries_size, bsf);
             if (dist <= bsf) {
                 bsf = dist;
                 result = node->buffer->tmp_full_ts_buffer[i];
@@ -281,8 +276,7 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
 
             float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                    index->settings->timeseries_size, bsf,
-                    index->settings->SIMD_flag, index->settings->is_norm);
+                    index->settings->timeseries_size, bsf);
 
             if (dist <= bsf) {
                 bsf = dist;
@@ -307,8 +301,7 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
 
             if (distmin < bsf) {
                 float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                   index->settings->timeseries_size, bsf,
-                                   index->settings->SIMD_flag, index->settings->is_norm);
+                                   index->settings->timeseries_size, bsf);
 
                 //__sync_fetch_and_add(&RDcalculationnumber,1);
                 if (dist < bsf) {

@@ -18,5 +18,5 @@ float ts_euclidean_distance_dot_product_SIMD(float *X, float *Y, int size);
 float ts_euclidean_distance(ts_type * t, ts_type * s, int size, float bound);
 float ts_euclidean_distance_SIMD(ts_type * t, ts_type * s, int size, float bound);
 
-float ts_ed(ts_type * t, ts_type * s, int size, float bound, char is_simd, char is_norm);
+float ts_ed(ts_type * t, ts_type * s, int size, float bound);
 #endif
