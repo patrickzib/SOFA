@@ -77,6 +77,7 @@ typedef struct {
     int histogram_type;
     int sample_type;
     int n_coefficients;
+    int sfa_separate_variance;
     int node_split_criterion;
 
     // int filetype_int;
@@ -135,7 +136,7 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
 												int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag,
                                                 int sample_size, char is_norm, int histogram_type,
-                                                int sample_type, int n_coefficients);
+                                                int sample_type, int n_coefficients, int sfa_separate_variance);
 void print_settings(isax_index_settings *settings);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node, 

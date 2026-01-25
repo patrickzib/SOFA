@@ -48,6 +48,7 @@ cdef class Index:
                   int histogram_type=2,
                   int sample_type=1,
                   int sfa_n_coefficients=32,
+                  int sfa_separate_variance=0,
                   int filetype_int=0,
                   int max_query_threads=1,
                   root_directory=None):
@@ -71,6 +72,7 @@ cdef class Index:
         params.histogram_type = histogram_type
         params.sample_type = sample_type
         params.n_coefficients = sfa_n_coefficients
+        params.sfa_separate_variance = sfa_separate_variance
         params.filetype_int = filetype_int
         params.max_query_threads = max_query_threads
         params.queue_count = max_query_threads

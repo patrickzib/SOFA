@@ -60,7 +60,8 @@ enum response sfa_bins_init(isax_index *index) {
     fprintf(stderr, ">>> SFA: Initialized bins[%d][%d] \n", n_segments, num_symbols - 1);
 
     if (index->settings->n_coefficients != 0) {
-        index->coefficients = calloc(n_segments / 2, sizeof(int));
+        int coeff_count = index->settings->sfa_separate_variance ? n_segments : n_segments / 2;
+        index->coefficients = calloc(coeff_count, sizeof(int));
     }
 
     return SUCCESS;
@@ -223,33 +224,56 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     int n_coefficients = index->settings->n_coefficients;
     int n_segments = index->settings->n_segments;
     unsigned int sample_size = index->settings->sample_size;
+    int separate = index->settings->sfa_separate_variance;
 
-    struct variance_coeff_index var_coeff_index[n_coefficients / 2];
+    int candidate_count = separate ? n_coefficients : n_coefficients / 2;
+    struct variance_coeff_index var_coeff_index[candidate_count];
 
-    for (int i = 0; i < n_coefficients / 2; ++i) {
-        double mean_real = 0.0;
-        double mean_imag = 0.0;
-        double var_real = 0.0;
-        double var_imag = 0.0;
+    if (separate) {
+        for (int i = 0; i < candidate_count; ++i) {
+            double mean = 0.0;
+            double var = 0.0;
 
-        for (int j = 0; j < sample_size; ++j) {
-            mean_real += dft_mem_array[i * 2][j];
-            mean_imag += dft_mem_array[i * 2 + 1][j];
+            for (int j = 0; j < sample_size; ++j) {
+                mean += dft_mem_array[i][j];
+            }
+            mean = mean / (double) sample_size;
+
+            for (int j = 0; j < sample_size; ++j) {
+                double diff = dft_mem_array[i][j] - mean;
+                var += diff * diff;
+            }
+            var = var / (double) sample_size;
+
+            var_coeff_index[i].variance = var;
+            var_coeff_index[i].coeff_index = i;
         }
-        mean_real = mean_real / (double) sample_size;
-        mean_imag = mean_imag / (double) sample_size;
+    } else {
+        for (int i = 0; i < candidate_count; ++i) {
+            double mean_real = 0.0;
+            double mean_imag = 0.0;
+            double var_real = 0.0;
+            double var_imag = 0.0;
 
-        for (int j = 0; j < sample_size; ++j) {
-            var_real += (dft_mem_array[i * 2][j] - mean_real) * (dft_mem_array[i * 2][j] - mean_real);
-            var_imag += (dft_mem_array[i * 2 + 1][j] - mean_imag) * (dft_mem_array[i * 2 + 1][j] - mean_imag);
+            for (int j = 0; j < sample_size; ++j) {
+                mean_real += dft_mem_array[i * 2][j];
+                mean_imag += dft_mem_array[i * 2 + 1][j];
+            }
+            mean_real = mean_real / (double) sample_size;
+            mean_imag = mean_imag / (double) sample_size;
+
+            for (int j = 0; j < sample_size; ++j) {
+                var_real += (dft_mem_array[i * 2][j] - mean_real) * (dft_mem_array[i * 2][j] - mean_real);
+                var_imag += (dft_mem_array[i * 2 + 1][j] - mean_imag) * (dft_mem_array[i * 2 + 1][j] - mean_imag);
+            }
+            var_real = var_real / (double) sample_size;
+            var_imag = var_imag / (double) sample_size;
+
+            double total_var = var_real + var_imag;
+
+            var_coeff_index[i].variance = total_var;
+            var_coeff_index[i].coeff_index = i;
         }
-        var_real = var_real / (double) sample_size;
-        var_imag = var_imag / (double) sample_size;
-
-        double total_var = var_real + var_imag;
-
-        var_coeff_index[i].variance = total_var;
-        var_coeff_index[i].coeff_index = i;
     }
 
     /*
@@ -261,22 +285,22 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     fprintf(stderr, "\n");
     */
 
-    qsort(var_coeff_index, n_coefficients / 2, sizeof(var_coeff_index[0]), compare_var);
+    qsort(var_coeff_index, candidate_count, sizeof(var_coeff_index[0]), compare_var);
 
     fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
-    for (int i = 0; i < n_coefficients / 2; ++i) {
+    for (int i = 0; i < candidate_count; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index, var_coeff_index[i].variance);
     }
     fprintf(stderr, "\n");
 
-    for (int i = 0; i < n_segments / 2; ++i) {
+    for (int i = 0; i < n_segments; ++i) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
     // sorting needed?
-    qsort(index->coefficients, n_segments / 2, sizeof(int), compare_int);
-    fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
-    for (int i = 0; i < n_segments / 2; ++i) {
+    qsort(index->coefficients, n_segments, sizeof(int), compare_int);
+    fprintf(stderr, ">>> SFA: Highest Variance Coeff's Sorted: ");
+    for (int i = 0; i < n_segments; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
@@ -286,15 +310,23 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         dft_mem_array_coeff[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
     }
 
-    for (int i = 0; i < n_segments / 2; ++i) {
-        int coeff = index->coefficients[i];
-
-        memcpy(dft_mem_array_coeff[i * 2],
-               dft_mem_array[coeff * 2],
-               sizeof(ts_type) * sample_size);
-        memcpy(dft_mem_array_coeff[i * 2 + 1],
-               dft_mem_array[coeff * 2 + 1],
-               sizeof(ts_type) * sample_size);
+    if (separate) {
+        for (int i = 0; i < n_segments; ++i) {
+            int coeff = index->coefficients[i];
+            memcpy(dft_mem_array_coeff[i],
+                   dft_mem_array[coeff],
+                   sizeof(ts_type) * sample_size);
+        }
+    } else {
+        for (int i = 0; i < n_segments / 2; ++i) {
+            int coeff = index->coefficients[i];
+            memcpy(dft_mem_array_coeff[i * 2],
+                   dft_mem_array[coeff * 2],
+                   sizeof(ts_type) * sample_size);
+            memcpy(dft_mem_array_coeff[i * 2 + 1],
+                   dft_mem_array[coeff * 2 + 1],
+                   sizeof(ts_type) * sample_size);
+        }
     }
 
     return dft_mem_array_coeff;

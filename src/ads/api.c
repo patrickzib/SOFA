@@ -86,7 +86,8 @@ messi_index *messi_index_create(const messi_index_params *params) {
         params->is_norm,
         params->histogram_type,
         params->sample_type,
-        params->n_coefficients);
+        params->n_coefficients,
+        params->sfa_separate_variance);
 
     if (settings == NULL) {
         free(wrapper);

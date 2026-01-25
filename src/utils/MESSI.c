@@ -132,6 +132,7 @@ int main(int argc, char **argv) {
     static int histogram_type = 1;
     static int sample_type = 1;
     static int n_coefficients = 0;
+    static int sfa_separate_variance = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
     static int node_split_criterion = 1;
@@ -194,6 +195,7 @@ int main(int argc, char **argv) {
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion", required_argument, 0,   'G'},
+                {"sfa-separate-variance", no_argument,      0,   'H'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -217,6 +219,9 @@ int main(int argc, char **argv) {
 
             case 'n':
                 tight_bound = 1;
+                break;
+            case 'H':
+                sfa_separate_variance = 1;
                 break;
 
             case 'e':
@@ -890,7 +895,8 @@ int main(int argc, char **argv) {
                                                                        is_norm,            //input normalized for fft
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
-                                                                       n_coefficients       //coeff number
+                                                                       n_coefficients,      //coeff number
+                                                                       sfa_separate_variance //variance per component
         );
 
         if (index_settings == NULL) {

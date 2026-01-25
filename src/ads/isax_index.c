@@ -76,7 +76,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                                 int max_total_buffer_size, int initial_fbl_buffer_size,
                                                 int total_loaded_leaves, int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag, int sample_size,
-                                                char is_norm, int histogram_type, int sample_type, int n_coefficients)
+                                                char is_norm, int histogram_type, int sample_type, int n_coefficients,
+                                                int sfa_separate_variance)
 {
     int i;
     isax_index_settings *settings = malloc(sizeof(isax_index_settings));
@@ -216,6 +217,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->sfa_separate_variance = sfa_separate_variance ? 1 : 0;
     settings->node_split_criterion = 1;
 
     return settings;
@@ -2492,7 +2494,7 @@ isax_index * index_read(const char* root_directory) {
 																total_loaded_leaves,
 																tight_bound,
 																aggressive_check,
-																0,0,false,false,1,false,1,1,0);
+																0,0,false,false,1,false,1,1,0,0);
 	idx_settings->raw_filename = malloc(sizeof(char) * 256);
 	strcpy(idx_settings->raw_filename, raw_filename);
 	free(raw_filename);
@@ -2789,6 +2791,7 @@ void print_settings(isax_index_settings *settings) {
         fprintf(stderr,"## \n## [SFA SETTINGS]\n");
         fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
         fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->n_coefficients > 0);
+        fprintf(stderr,"## Separate variance per component?:     \t%d\n",    settings->sfa_separate_variance);
         if (settings->histogram_type==1) {
             fprintf(stderr, "## \t Equi-Depth Binning. \n");
         } else if (settings->histogram_type==2) {

@@ -36,10 +36,22 @@ void fft_from_ts(
     int start_offset = index->settings->is_norm ? 1 : 0;
 
     if (best_only) {
-        for (int k = 0; k < n_coefficients / 2; ++k, j+= 2) {
-            int coeff = index->coefficients[k] + start_offset;
-            fftw->transform[j] = fftw->ts_out[coeff][0];
-            fftw->transform[j + 1] = fftw->ts_out[coeff][1] * -1;
+        if (index->settings->sfa_separate_variance) {
+            for (int k = 0; k < n_coefficients; ++k) {
+                int component = index->coefficients[k];
+                int coeff = component / 2 + start_offset;
+                if (component % 2 == 0) {
+                    fftw->transform[k] = fftw->ts_out[coeff][0];
+                } else {
+                    fftw->transform[k] = fftw->ts_out[coeff][1] * -1;
+                }
+            }
+        } else {
+            for (int k = 0; k < n_coefficients / 2; ++k, j+= 2) {
+                int coeff = index->coefficients[k] + start_offset;
+                fftw->transform[j] = fftw->ts_out[coeff][0];
+                fftw->transform[j + 1] = fftw->ts_out[coeff][1] * -1;
+            }
         }
     } else {
         for (int k = start_offset; k < n_coefficients / 2 + start_offset; ++k, j+= 2) {
