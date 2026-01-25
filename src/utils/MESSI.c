@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
             case 'B':
                 n_segments = atoi(optarg);
                 break;
-                
+
             case 'l':
                 leaf_size = atoi(optarg);
                 break;

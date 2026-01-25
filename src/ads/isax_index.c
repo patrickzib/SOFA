@@ -116,7 +116,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     }
     if(n_segments>timeseries_size)
     {
-        fprintf(stderr,"error: Too many paa-segments. Using timeseries-size as paa-segments instead.\n");
+        fprintf(stderr,"error: Too many n-segments. Using timeseries-size as n-segments instead.\n");
         n_segments = timeseries_size;
     }
         
