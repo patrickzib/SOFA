@@ -295,7 +295,7 @@ void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_ou
                 break;
             }
         }
-        sax_out[k] = (unsigned char) (c);
+        sax_out[k] = (sax_type) c;
     }
 }
 

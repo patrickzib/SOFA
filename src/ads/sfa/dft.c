@@ -59,7 +59,7 @@ void fft_from_ts(
     This function discretized FFT coefficients with the intervals from MCB
     The current transform is pointed to by dft_mem_array
 */
-void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_sfa_word) {
+void sfa_from_fft(isax_index *index, ts_type *cur_transform, sax_type *cur_sfa_word) {
     int n_segments = index->settings->n_segments;
     for (int k = 0; k < n_segments; ++k) {
         unsigned int c;
@@ -68,7 +68,7 @@ void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_
                 break;
             }
         }
-        cur_sfa_word[k] = (unsigned char) (c);
+        cur_sfa_word[k] = (sax_type) c;
     }
 }
 

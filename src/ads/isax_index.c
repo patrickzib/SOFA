@@ -109,6 +109,11 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
         //settings->initial_fbl_buffer_size = 0;
     }
 
+    if (sax_bit_cardinality > (int)(8 * (int)sizeof(sax_type))) {
+        fprintf(stderr, "error: sax_bit_cardinality too large for sax_type (%zu bits).\n",
+                8 * sizeof(sax_type));
+        return NULL;
+    }
     if(n_segments > (int)(8 * (int)sizeof(root_mask_type))){
         fprintf(stderr,"error: Too many paa segments. The maximum value is %zu.\n", 
                 8 * sizeof(root_mask_type));

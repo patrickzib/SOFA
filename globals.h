@@ -7,6 +7,7 @@
 #include "config.h"
 #include <math.h>
 #include <pthread.h>
+#include <stdint.h>
 #include "include/ads/pthread_barrier.h"
 
 #ifndef isax_globals_h
