@@ -180,7 +180,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
 void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf) {
     COUNT_CHECKED_NODE()
     // If node has buffered data
-    if (node->mbb_valid) {
+    if (0 && node->mbb_valid) {
         ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);
@@ -224,7 +224,7 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
                                    pthread_rwlock_t *lock_queue) {
     COUNT_CHECKED_NODE()
     // If node has buffered data
-    if (node->mbb_valid) {
+    if (0 && node->mbb_valid) {
         ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);

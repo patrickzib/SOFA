@@ -76,7 +76,7 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
 
 float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_valid) {
+    if (0 && node->mbb_valid) {
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);
         if (mbb >= bsf) {
