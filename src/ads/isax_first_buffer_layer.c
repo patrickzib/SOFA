@@ -224,7 +224,7 @@ enum response flush_fbl(first_buffer_layer *fbl, isax_index *index)
 
     int c = 1;
     int j;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     for (j=0; j<fbl->number_of_buffers; j++)
     {
 

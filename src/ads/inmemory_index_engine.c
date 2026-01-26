@@ -1000,7 +1000,7 @@ void *index_creation_worker_inmemory(void *transferdata) {
     pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier1);
 
     int j, c = 1, k;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while (1) {
 
@@ -1099,7 +1099,7 @@ void *index_creation_worker_inmemory_new(void *transferdata) {
     pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier1);
 
     int j, c = 1, k;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while (1) {
 
@@ -1162,7 +1162,7 @@ void *index_creation_worker2_inmemory(void *transferdata) {
 
 
     int j, c = 1, k;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while (1) {
 
@@ -1218,7 +1218,7 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
     int n_segments = ((buffer_data_inmemory *) transferdata)->index->settings->n_segments;
     root_mask_type first_bit_mask = 0x00;
     fbl_soft_buffer *current_buffer;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     unsigned long i = 0;
     float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
     for (i = start_number; i < stop_number; i++) {
@@ -1551,7 +1551,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
     bool have_record = false;
     int j;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
 
     gettimeofday(&indexing_time_start, NULL);
 
@@ -1672,7 +1672,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
     pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier2);
     bool have_record = false;
     int j;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //int preworkernumber=((buffer_data_inmemory*)transferdata)->total_workernumber;
 
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
@@ -1894,7 +1894,7 @@ void *flush_fbl_inmemory_worker(void *input) {
     isax_index *index = ((transferfblinmemory *) input)->index;
 
     int j, c = 1;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while (1) {
 
@@ -1953,7 +1953,7 @@ void *flush_pRecBuf_inmemory_worker(void *input) {
     isax_index *index = ((transferfblinmemory *) input)->index;
     bool have_record = false;
     int j, c = 1;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     int preworkernumber = ((transferfblinmemory *) input)->preworkernumber;
 
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
@@ -2030,7 +2030,7 @@ enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index) {
 
     int c = 1;
     int j;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     for (j = 0; j < fbl->number_of_buffers; j++) {
 
         fbl_soft_buffer *current_fbl_node = &index->fbl->soft_buffers[j];

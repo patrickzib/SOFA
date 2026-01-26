@@ -1635,7 +1635,7 @@ void* indexbulkloadingworker_new(void *transferdata)
     pthread_barrier_t *lock_barrier1=((index_buffer_data*)transferdata)->lock_barrier1;
     pthread_barrier_t *lock_barrier2=((index_buffer_data*)transferdata)->lock_barrier2;
     pthread_barrier_t *lock_barrier3=((index_buffer_data*)transferdata)->lock_barrier3;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     while(!((index_buffer_data*)transferdata)->finished)
     {   
         saxv=(((index_buffer_data*)transferdata)->saxv);
@@ -2053,7 +2053,7 @@ isax_node * insert_to_fbl_m_new(first_buffer_layer *fbl, sax_type *sax,
     
     current_buffer->pos_records[current_buffer->buffer_size] = (file_position_type*) cd_p;    
     memcpy((void *) cd_p, (void *) pos, index->settings->position_byte_size);
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     r->sax = (sax_type*) cd_s;
     r->position = (file_position_type*) cd_p; 
     r->insertion_mode = NO_TMP | PARTIAL;
@@ -2527,7 +2527,7 @@ enum response indexconstruction_pRecBuf(first_buffer_layer *fbl, isax_index *ind
     pthread_mutex_t *lock_index=((trans_fbl_input*)input)->lock_index;
     pthread_mutex_t *lock_write=((trans_fbl_input*)input)->lock_write;
     int j,c=1;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     {
         
@@ -2594,7 +2594,7 @@ void* indexconstructionworker(void *input)
     pthread_mutex_t *lock_index=((trans_fbl_input*)input)->lock_index;
     pthread_mutex_t *lock_write=((trans_fbl_input*)input)->lock_write;
     int j,c=1;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while(1)
     {
@@ -2671,7 +2671,7 @@ void* indexflushworker(void *input)
     pthread_mutex_t *lock_index=((trans_fbl_input*)input)->lock_index;
     pthread_mutex_t *lock_write=((trans_fbl_input*)input)->lock_write;
     int j,c=1;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while(1)
     {
@@ -2814,7 +2814,7 @@ void* indexconstructionworker_pRecBuf(void *input)
     int j=0,k=0,c=1;
     bool have_record=false;
     int preworkernumber=((trans_fbl_input*)input)->preworkernumber;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     while(1)
     {
 
@@ -2899,7 +2899,7 @@ void* indexconstructionworker_pRecBuf_new(void *input)
     int j=0,c=1;
     bool have_record=false;
     int preworkernumber=((trans_fbl_input*)input)->preworkernumber;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     while(1)
     {
         //printf("this is the construction worker");
@@ -2990,7 +2990,7 @@ void* indexconstructionworker_2RecBuf(void *input)
     bool have_record=false;
 
     int preworkernumber=((trans_fbl_input*)input)->preworkernumber;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     while(!((trans_fbl_input*)input)->finished)
     { 
         pthread_barrier_wait(((trans_fbl_input*)input)->lock_barrier1);
@@ -3041,7 +3041,7 @@ void* indexconstructionworker_2nRecBuf(void *input)
     bool have_record=false;
     
     int preworkernumber=((trans_fbl_input*)input)->preworkernumber;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     while(!((trans_fbl_input*)input)->finished)
     {   
         fbloffset=preworkernumber-fbloffset;
