@@ -1022,7 +1022,7 @@ void *index_creation_worker_inmemory(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1121,7 +1121,7 @@ void *index_creation_worker_inmemory_new(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1186,7 +1186,7 @@ void *index_creation_worker2_inmemory(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1273,7 +1273,7 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
             }
 
 
-            add_record_to_node(index, current_buffer->node, r, 1);
+            add_record_to_node_inmemory(index, current_buffer->node, r, 1);
             pthread_mutex_unlock(&((buffer_data_inmemory *) transferdata)->lock_cbl[first_bit_mask]);
 
             //isax_fbl_index_insert_inmemory_para(index, sax, pos, ((buffer_data_inmemory*)transferdata)->lock_fbl,
@@ -1312,7 +1312,7 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
             // Add record to index
             //printf("the position 1 is %d\n",*(r->position));
             //sleep(1);
-            //   add_record_to_node(index, current_fbl_node->node, r, 1);
+            //   add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             // }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1581,7 +1581,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
         }
         if (have_record) {
@@ -1701,7 +1701,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
         }
         if (have_record) {
@@ -1923,7 +1923,7 @@ void *flush_fbl_inmemory_worker(void *input) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1990,7 +1990,7 @@ void *flush_pRecBuf_inmemory_worker(void *input) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
         }
         if (have_record) {
@@ -2049,7 +2049,7 @@ enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index) {
                 r->position = (file_position_type *) current_fbl_node->pos_records[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
             free(current_fbl_node->sax_records);
@@ -2094,7 +2094,7 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
         split_node_inmemory(index, node);
-        add_record_to_node(index, node, record, leaf_size_check);
+        add_record_to_node_inmemory(index, node, record, leaf_size_check);
     } else {
         if (node->filename == NULL) {
             create_node_filename(index, node, record);
