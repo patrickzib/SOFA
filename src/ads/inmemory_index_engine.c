@@ -2102,12 +2102,8 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
         add_to_node_buffer(node->buffer, record, index->settings->n_segments,
                            index->settings->timeseries_size);
         node->leaf_size++;
-        ts_type *mbb_ts = record->ts;
-        if (mbb_ts == NULL && record->position != NULL && rawfile != NULL) {
-            mbb_ts = &rawfile[*record->position];
-        }
-        if (mbb_ts != NULL) {
-            isax_node_mbb_update_upwards(node, mbb_ts, index->settings->timeseries_size);
+        if (record->ts != NULL) {
+            isax_node_mbb_update_upwards(node, record->ts, index->settings->timeseries_size);
         }
 
     }

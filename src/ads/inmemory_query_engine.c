@@ -192,7 +192,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
 float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (0 && node->mbb_valid) {
+    if (node->mbb_valid) {
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);
         if (mbb >= bsf) {
@@ -256,7 +256,7 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 //debugging only!!!
 ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, float bsf) {
     ts_type *result = NULL;
-    if (0 && node->mbb_valid) {
+    if (node->mbb_valid) {
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);
         if (mbb >= bsf) {
@@ -304,7 +304,7 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
 
 float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (0 && node->mbb_valid) {
+    if (node->mbb_valid) {
         ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
                                          index->settings->timeseries_size, bsf);
         if (mbb >= bsf) {
