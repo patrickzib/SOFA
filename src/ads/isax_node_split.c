@@ -19,6 +19,7 @@
 #include "ads/isax_node.h"
 #include "ads/isax_index.h"
 #include "ads/isax_node_split.h"
+#include "ads/calc_utils.h"
 
 static int select_split_point(isax_node_split_data *split_data,
                               isax_index_settings *settings,
@@ -221,6 +222,9 @@ void split_node(isax_index *index, isax_node *node) {
 
     node->is_leaf = 0;
     node->leaf_size = 0;
+    isax_node_mbb_reset(node, index->settings->timeseries_size);
+    isax_node_mbb_reset(node, index->settings->timeseries_size);
+    isax_node_mbb_reset(node, index->settings->timeseries_size);
 
     // Create split_data for this node.
     isax_node_split_data *split_data = malloc(sizeof(isax_node_split_data));

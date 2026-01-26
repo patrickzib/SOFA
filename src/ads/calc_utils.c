@@ -2,6 +2,8 @@
 #include "../../globals.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <float.h>
 #include "math.h"
 
 #include "ads/calc_utils.h"
@@ -43,4 +45,82 @@ void znorm(ts_type *data, int n) {
     for (int i = 0; i < n; i++) {
         data[i] = (data[i] - mean) / stdDev;
     }
+}
+
+void isax_node_mbb_reset(isax_node *node, int size) {
+    if (node == NULL || size <= 0) {
+        return;
+    }
+    if (node->mbb_min == NULL) {
+        node->mbb_min = malloc(sizeof(ts_type) * (size_t) size);
+    }
+    if (node->mbb_max == NULL) {
+        node->mbb_max = malloc(sizeof(ts_type) * (size_t) size);
+    }
+    if (node->mbb_min == NULL || node->mbb_max == NULL) {
+        fprintf(stderr, "error: could not allocate MBB arrays.\n");
+        return;
+    }
+    for (int i = 0; i < size; ++i) {
+        node->mbb_min[i] = FLT_MAX;
+        node->mbb_max[i] = -FLT_MAX;
+    }
+    node->mbb_valid = 0;
+}
+
+void isax_node_mbb_update(isax_node *node, const ts_type *ts, int size) {
+    if (node == NULL || ts == NULL || size <= 0) {
+        return;
+    }
+    if (node->mbb_min == NULL || node->mbb_max == NULL) {
+        isax_node_mbb_reset(node, size);
+    }
+    if (node->mbb_min == NULL || node->mbb_max == NULL) {
+        return;
+    }
+    if (!node->mbb_valid) {
+        for (int i = 0; i < size; ++i) {
+            node->mbb_min[i] = ts[i];
+            node->mbb_max[i] = ts[i];
+        }
+        node->mbb_valid = 1;
+        return;
+    }
+    for (int i = 0; i < size; ++i) {
+        ts_type value = ts[i];
+        if (value < node->mbb_min[i]) {
+            node->mbb_min[i] = value;
+        }
+        if (value > node->mbb_max[i]) {
+            node->mbb_max[i] = value;
+        }
+    }
+}
+
+void isax_node_mbb_update_upwards(isax_node *node, const ts_type *ts, int size) {
+    for (isax_node *current = node; current != NULL; current = current->parent) {
+        isax_node_mbb_update(current, ts, size);
+    }
+}
+
+ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_type *mbb_max,
+                           int size, ts_type bound) {
+    ts_type distance = 0.0f;
+    if (ts == NULL || mbb_min == NULL || mbb_max == NULL || size <= 0) {
+        return distance;
+    }
+    for (int i = 0; i < size; ++i) {
+        ts_type value = ts[i];
+        if (value < mbb_min[i]) {
+            ts_type diff = mbb_min[i] - value;
+            distance += diff * diff;
+        } else if (value > mbb_max[i]) {
+            ts_type diff = value - mbb_max[i];
+            distance += diff * diff;
+        }
+        if (distance >= bound) {
+            return distance;
+        }
+    }
+    return distance;
 }

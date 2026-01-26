@@ -46,6 +46,9 @@ typedef struct isax_node {
     
     // Wedges
     ts_type *wedges;
+    ts_type *mbb_min;
+    ts_type *mbb_max;
+    char mbb_valid;
 
 } isax_node;
 
