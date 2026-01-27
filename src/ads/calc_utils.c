@@ -106,13 +106,8 @@ void isax_node_mbb_update_upwards(isax_node *node, const ts_type *ts, int size) 
 ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_type *mbb_max,
                            int size, ts_type bound, ts_type ratio_sqrt) {
     ts_type distance = 0.0f;
-    ts_type scaled_bound = bound;
-    if (ratio_sqrt > 0.0f) {
-        scaled_bound = bound / ratio_sqrt;
-    }
-    if (ts == NULL || mbb_min == NULL || mbb_max == NULL || size <= 0) {
-        return distance * ratio_sqrt;
-    }
+    ts_type scaled_bound = bound / ratio_sqrt;
+
     for (int i = 0; i < size; ++i) {
         ts_type value = ts[i];
         if (value < mbb_min[i]) {
@@ -126,5 +121,6 @@ ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_t
             return distance * ratio_sqrt;
         }
     }
+
     return distance * ratio_sqrt;
 }
