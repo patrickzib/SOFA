@@ -21,7 +21,8 @@ void znorm(ts_type *data, int n);
 void isax_node_mbb_reset(isax_node *node, int size);
 void isax_node_mbb_update(isax_node *node, const ts_type *ts, int size);
 void isax_node_mbb_update_upwards(isax_node *node, const ts_type *ts, int size);
-ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_type *mbb_max, int size, ts_type bound);
+ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_type *mbb_max,
+                           int size, ts_type bound, ts_type ratio_sqrt);
 
 // Shared minidist dispatch for SAX/SFA.
 static inline ts_type messi_minidist_raw(isax_index *index,

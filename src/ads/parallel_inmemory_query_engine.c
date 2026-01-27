@@ -34,7 +34,7 @@
 #define NTHREADS 4
 
 
-query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -62,7 +62,7 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
 
             // Adaptive splitting
         }
-        result.distance = calculate_node_distance_inmemory_m(index, node, ts, paa, FLT_MAX);
+        result.distance = calculate_node_distance_inmemory_m(index, node, ts, paa, paa_mbb, FLT_MAX);
         result.node = node;
     } else {
         result.node = NULL;
@@ -74,13 +74,19 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
     return result;
 }
 
-float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
+float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa,
+                                         ts_type *paa_mbb, float bsf) {
     float distmin;
     if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
-        if (mbb >= bsf) {
-            return bsf;
+        if (paa_mbb != NULL) {
+            ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                             index->settings->n_segments, bsf,
+                                             index->settings->mindist_sqrt);
+            printf("Here");
+            if (mbb >= bsf) {
+                printf("Pruning");
+                return bsf;
+            }
         }
     }
 
@@ -139,7 +145,7 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
 }
 
 
-query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *index,
+query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                                       query_result approximate_bsf_result,
                                       float minimum_distance, int limit) {
     query_result bsf_result = approximate_bsf_result;
@@ -193,7 +199,8 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsf_result.distance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, paa_mbb,
+                                                                    bsf_result.distance);
                 if (distance < bsf_result.distance) {
                     bsf_result.distance = distance;
                     bsf_result.node = n->node;
@@ -208,7 +215,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -228,7 +235,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -261,15 +268,13 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
 }
 
 
-query_result exact_search_serial_ParIS_nb_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                                   int min_checked_leaves) {
+query_result exact_search_serial_ParIS_nb_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                                   float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
-
-
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
     int sum_of_lab = 0;
@@ -283,7 +288,7 @@ query_result exact_search_serial_ParIS_nb_inmemory(ts_type *ts, ts_type *paa, is
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
     }
     COUNT_INPUT_TIME_END
@@ -338,14 +343,13 @@ query_result exact_search_serial_ParIS_nb_inmemory(ts_type *ts, ts_type *paa, is
     return approximate_result;
 }
 
-void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                                 int min_checked_leaves, int batch_number) {
+void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                                 float minimum_distance, int min_checked_leaves, int batch_number) {
 
     RESET_BYTES_ACCESSED
 
     query_result approximate_result[batch_number];
     omp_lock_t bsflock[batch_number];
-
 
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     //query_result bsf_result = approximate_result;
@@ -357,12 +361,18 @@ void exact_search_serial_ParIS_nb_batch_inmemory(ts_type *ts, ts_type *paa, isax
     // Early termination...
 #pragma omp parallel for num_threads(maxquerythread)
     for (int i = 0; i < batch_number; i++) {
+        ts_type *paa_mbb_local = NULL;
+        if (paa_mbb != NULL) {
+            paa_mbb_local = &paa_mbb[i * index->settings->n_segments];
+        }
         omp_init_lock(&(bsflock[i]));
         approximate_result[i] = approximate_search_inmemory(&(ts[i * index->settings->timeseries_size]),
-                                                            &(paa[i * index->settings->n_segments]), index);
+                                                            &(paa[i * index->settings->n_segments]), paa_mbb_local,
+                                                            index);
         if (approximate_result[i].distance == FLT_MAX || min_checked_leaves > 1) {
             approximate_result[i] = refine_answer_inmemory(&(ts[i * index->settings->timeseries_size]),
-                                                           &(paa[i * index->settings->n_segments]), index,
+                                                           &(paa[i * index->settings->n_segments]), paa_mbb_local,
+                                                           index,
                                                            approximate_result[i], minimum_distance, min_checked_leaves);
         }
 
@@ -440,9 +450,9 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
 }
 
 
-query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
+query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                                           float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -452,7 +462,7 @@ query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index 
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory_m(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
 
@@ -485,6 +495,7 @@ query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index 
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, 1);
     rfdata.paa = paa;
+    rfdata.paa_mbb = paa_mbb;
     rfdata.ts = ts;
 
     rfdata.lock_queue = &lock_queue;
@@ -533,6 +544,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
     query_result *n;
     isax_index *index = ((refind_answer_fonction_data *) rfdata)->index;
     ts_type *paa = ((refind_answer_fonction_data *) rfdata)->paa;
+    ts_type *paa_mbb = ((refind_answer_fonction_data *) rfdata)->paa_mbb;
     ts_type *ts = ((refind_answer_fonction_data *) rfdata)->ts;
     pqueue_t *pq = ((refind_answer_fonction_data *) rfdata)->pq;
     query_result *do_not_remove = ((refind_answer_fonction_data *) rfdata)->bsf_result;
@@ -610,7 +622,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -632,7 +644,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {
@@ -653,7 +665,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {
@@ -680,15 +692,13 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
     }
 }
 
-query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                                int min_checked_leaves) {
+query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                                float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
-
-
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -704,7 +714,7 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
         //approximate_result = refine_answer_m(ts, paa, index, approximate_result2, minimum_distance, min_checked_leaves);
     }
@@ -800,15 +810,15 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
     return approximate_result;
 }
 
-pqueue_bsf exact_topk_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                            int min_checked_leaves, int k) {
+pqueue_bsf exact_topk_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                            float minimum_distance, int min_checked_leaves, int k) {
 
     RESET_BYTES_ACCESSED
 
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    approximate_topk_inmemory(ts, paa, index, pq_bsf);
+    approximate_topk_inmemory(ts, paa, paa_mbb, index, pq_bsf);
 
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
 
@@ -822,7 +832,7 @@ pqueue_bsf exact_topk_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_inde
 
 
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
-        refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
+        refine_topk_answer_inmemory(ts, paa, paa_mbb, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
 
     COUNT_INPUT_TIME_END
@@ -914,14 +924,14 @@ pqueue_bsf exact_topk_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_inde
 }
 
 
-query_result exact_search_serial_ParIS2_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                                 int min_checked_leaves) {
+query_result exact_search_serial_ParIS2_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                                 float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
 
 
     pthread_t threadid[maxquerythread];
-    query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -937,7 +947,7 @@ query_result exact_search_serial_ParIS2_inmemory(ts_type *ts, ts_type *paa, isax
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
         //approximate_result = refine_answer_m(ts, paa, index, approximate_result2, minimum_distance, min_checked_leaves);
     }
@@ -1193,8 +1203,8 @@ void *readworker2_inmemory(void *read_pointer) {
 
 
 query_result
-exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                          int min_checked_leaves) {
+exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                          float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
     //LBDcalculationnumber=0;
@@ -1202,7 +1212,7 @@ exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index 
 
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_messi(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_messi(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -1219,7 +1229,7 @@ exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index 
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
         //approximate_result = refine_answer_m(ts, paa, index, approximate_result2, minimum_distance, min_checked_leaves);
     }
@@ -1261,8 +1271,8 @@ exact_search_serial_ParIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index 
 }
 
 query_result
-exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                            int min_checked_leaves) {
+exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                            float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
     //LBDcalculationnumber=0;
@@ -1270,7 +1280,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
 
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_messi(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_messi(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -1286,7 +1296,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
         //approximate_result = refine_answer_m(ts, paa, index, approximate_result2, minimum_distance, min_checked_leaves);
     }
@@ -1349,8 +1359,8 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
 }
 
 query_result
-exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                           int min_checked_leaves) {
+exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                           float minimum_distance, int min_checked_leaves) {
 
     RESET_BYTES_ACCESSED
     //LBDcalculationnumber=0;
@@ -1362,7 +1372,7 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
     bool *rdcbitmap = malloc(sizeof(bool) * index->sax_cache_size);
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
     int sum_of_lab = 0;
@@ -1378,7 +1388,7 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
         //approximate_result = refine_answer_m(ts, paa, index, approximate_result2, minimum_distance, min_checked_leaves);
     }
@@ -1431,11 +1441,12 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
 }
 
 
-query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                            node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
     //RDcalculationnumber=0;
     //LBDcalculationnumber=0;
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1445,7 +1456,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory_m(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
 
@@ -1477,6 +1488,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
     rfdata.paa = paa;
+    rfdata.paa_mbb = paa_mbb;
     rfdata.ts = ts;
     rfdata.lockvalueq = false;
     rfdata.lock_queue = &lock_queue;
@@ -1523,10 +1535,11 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
 }
 
 query_result
-exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                            node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
-    //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
+    //query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1536,7 +1549,7 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory_m(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * maxquerythread);
@@ -1570,6 +1583,7 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
+        workerdata[i].paa_mbb = paa_mbb;
         workerdata[i].ts = ts;
         allpq[i] = pqueue_init(index->settings->root_nodes_size / maxquerythread,
                                cmp_pri, get_pri, set_pri, get_pos, set_pos);
@@ -1630,9 +1644,10 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
 }
 
-query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+query_result exact_search_MESSI(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
 
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1644,7 +1659,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
         approximate_result = refine_answer_inmemory_m(
-                ts, paa, index, approximate_result, minimum_distance,min_checked_leaves);
+                ts, paa, paa_mbb, index, approximate_result, minimum_distance,min_checked_leaves);
     }
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
 
@@ -1678,6 +1693,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
+        workerdata[i].paa_mbb = paa_mbb;
         workerdata[i].ts = ts;
         workerdata[i].lock_queue = &lock_queue;
         workerdata[i].lock_current_root_node = &lock_current_root_node;
@@ -1719,10 +1735,11 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 
 
 query_result
-exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                                   node_list *nodelist,
                                                    float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
-    //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
+    //query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1732,7 +1749,7 @@ exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, is
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory_m(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory_m(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                       min_checked_leaves);
     }
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
@@ -1775,6 +1792,7 @@ exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, is
 
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
+        workerdata[i].paa_mbb = paa_mbb;
         workerdata[i].ts = ts;
         localstk[i].val = malloc(sizeof(isax_node *) * 100);
         localstk[i].top = 0;
@@ -1837,6 +1855,7 @@ void *exact_search_worker_inmemory(void *rfdata) {
     query_result *n;
     isax_index *index = ((refind_answer_fonction_data *) rfdata)->index;
     ts_type *paa = ((refind_answer_fonction_data *) rfdata)->paa;
+    ts_type *paa_mbb = ((refind_answer_fonction_data *) rfdata)->paa_mbb;
     ts_type *ts = ((refind_answer_fonction_data *) rfdata)->ts;
     pqueue_t *pq = ((refind_answer_fonction_data *) rfdata)->pq;
     query_result *do_not_remove = ((refind_answer_fonction_data *) rfdata)->bsf_result;
@@ -1890,7 +1909,7 @@ void *exact_search_worker_inmemory(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                 if (distance < bsfdisntance) {
                     //while( !__sync_bool_compare_and_swap((bsf_result->distance), bsfdisntance, distance))
                     //{
@@ -1923,6 +1942,7 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
     query_result *n;
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
     ts_type *paa = ((MESSI_workerdata *) rfdata)->paa;
+    ts_type *paa_mbb = ((MESSI_workerdata *) rfdata)->paa_mbb;
     ts_type *ts = ((MESSI_workerdata *) rfdata)->ts;
     pqueue_t *pq = ((MESSI_workerdata *) rfdata)->pq;
     query_result *do_not_remove = ((MESSI_workerdata *) rfdata)->bsf_result;
@@ -1999,7 +2019,7 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -2034,7 +2054,7 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
                         // If it is a leaf, check its real distance.
                         if (n->node->is_leaf) {
                             checks++;
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                                 if (distance < bsf_result->distance) {
@@ -2074,6 +2094,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     query_result *n;
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
     ts_type *paa = ((MESSI_workerdata *) rfdata)->paa;
+    ts_type *paa_mbb = ((MESSI_workerdata *) rfdata)->paa_mbb;
     ts_type *ts = ((MESSI_workerdata *) rfdata)->ts;
     pqueue_t *pq = ((MESSI_workerdata *) rfdata)->pq;
     query_result *do_not_remove = ((MESSI_workerdata *) rfdata)->bsf_result;
@@ -2149,7 +2170,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
 
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2210,7 +2231,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
 
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
 
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2244,6 +2265,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
     query_result *n;
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
     ts_type *paa = ((MESSI_workerdata *) rfdata)->paa;
+    ts_type *paa_mbb = ((MESSI_workerdata *) rfdata)->paa_mbb;
     ts_type *ts = ((MESSI_workerdata *) rfdata)->ts;
     pqueue_t *pq = ((MESSI_workerdata *) rfdata)->pq;
     query_result *do_not_remove = ((MESSI_workerdata *) rfdata)->bsf_result;
@@ -2325,7 +2347,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -2360,7 +2382,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
                         // If it is a leaf, check its real distance.
                         if (n->node->is_leaf) {
                             checks++;
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsfdisntance);
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                                 if (distance < bsf_result->distance) {

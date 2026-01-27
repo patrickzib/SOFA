@@ -47,7 +47,7 @@ void *compute_mindists_in(void *ptr) {
     return NULL;
 }
 
-query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -75,7 +75,7 @@ query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *
 
             // Adaptive splitting
         }
-        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, FLT_MAX);
+        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, paa_mbb, FLT_MAX);
         result.node = node;
     } else {
         result.node = NULL;
@@ -87,7 +87,7 @@ query_result approximate_search_inmemory(ts_type *ts, ts_type *paa, isax_index *
     return result;
 }
 
-query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -123,7 +123,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
 
             // Adaptive splitting
         }
-        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, FLT_MAX);
+        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, paa_mbb, FLT_MAX);
         result.node = node;
     } else {
         result.node = NULL;
@@ -135,7 +135,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
     return result;
 }
 
-query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -177,7 +177,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
             // Adaptive splitting
         }
 
-        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, FLT_MAX);
+        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, paa_mbb, FLT_MAX);
         result.node = node;
     } else {
         result.node = NULL;
@@ -190,13 +190,18 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
     return result;
 }
 
-float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
+float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa,
+                                       ts_type *paa_mbb, float bsf) {
     float distmin;
     if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
-        if (mbb >= bsf) {
-            return bsf;
+        if (paa_mbb != NULL) {
+            printf("Here");
+            ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                             index->settings->n_segments, bsf,
+                                             index->settings->mindist_sqrt);
+            if (mbb >= bsf) {
+                return bsf;
+            }
         }
     }
 
@@ -254,13 +259,18 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 }
 
 //debugging only!!!
-ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, float bsf) {
+ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node, ts_type *query,
+                                             ts_type *paa_mbb, float bsf) {
     ts_type *result = NULL;
     if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
-        if (mbb >= bsf) {
-            return result;
+        if (paa_mbb != NULL) {
+            printf("Here");
+            ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                             index->settings->n_segments, bsf,
+                                             index->settings->mindist_sqrt);
+            if (mbb >= bsf) {
+                return result;
+            }
         }
     }
 
@@ -302,13 +312,18 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
     return result;
 }
 
-float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
+float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa,
+                                        ts_type *paa_mbb, float bsf) {
     float distmin;
     if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
-        if (mbb >= bsf) {
-            return bsf;
+        if (paa_mbb != NULL) {
+            ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                             index->settings->n_segments, bsf,
+                                             index->settings->mindist_sqrt);
+            // printf("Pruning %f %f \n", mbb, bsf);
+            if (mbb >= bsf) {
+                return bsf;
+            }
         }
     }
 
@@ -336,8 +351,8 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
     return bsf;
 }
 
-query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                          int min_checked_leaves) {
+query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                          float minimum_distance, int min_checked_leaves) {
     checkts = 0;
     RESET_BYTES_ACCESSED
 
@@ -348,7 +363,7 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
         MINDISTS[j] = FLT_MAX;
     // END
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
 
     int tight_bound = index->settings->tight_bound;
@@ -360,7 +375,7 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
     }
 
@@ -428,8 +443,8 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     return approximate_result;
 }
 
-query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                               int min_checked_leaves, float bsf) {
+query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                               float minimum_distance, int min_checked_leaves, float bsf) {
 
     RESET_BYTES_ACCESSED
 
@@ -444,12 +459,12 @@ query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_i
     COUNT_INPUT_TIME_START
     query_result approximate_result;
     if (bsf == FLT_MAX) {
-        approximate_result = approximate_search_inmemory(ts, paa, index);
+        approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
         if (approximate_result.distance == 0) {
             return approximate_result;
         }
         if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-            approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+            approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                         min_checked_leaves);
         }
     } else {
@@ -523,7 +538,7 @@ query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_i
 }
 
 
-query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
+query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                                     query_result approximate_bsf_result,
                                     float minimum_distance, int limit) {
     query_result bsf_result = approximate_bsf_result;
@@ -578,7 +593,8 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsf_result.distance);
+                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, paa_mbb,
+                                                                  bsf_result.distance);
                 if (distance < bsf_result.distance) {
                     bsf_result.distance = distance;
                     bsf_result.node = n->node;
@@ -593,7 +609,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -611,7 +627,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -705,9 +721,9 @@ float calculate_minimum_distance_inmemory(isax_index *index, isax_node *node, ts
 }
 
 
-query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
+query_result exact_search_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                                    float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -718,7 +734,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
     }
     COUNT_QUEUE_TIME_START
@@ -795,7 +811,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                 checks++;
 
                 COUNT_CAL_TIME_START
-                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsf_result.distance);
+                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, paa_mbb, bsf_result.distance);
                 COUNT_CAL_TIME_END
                 if (distance < bsf_result.distance) {
                     bsf_result.distance = distance;
@@ -809,7 +825,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
                         COUNT_CAL_TIME_START
-                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         COUNT_CAL_TIME_END
                         if (distance < bsf_result.distance) {
@@ -831,7 +847,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
                         COUNT_CAL_TIME_START
-                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa, paa_mbb,
                                                                           bsf_result.distance);
                         COUNT_CAL_TIME_END
                         if (distance < bsf_result.distance) {
@@ -870,9 +886,9 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
     return bsf_result;
 }
 
-query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index,
+query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                                     float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -882,7 +898,7 @@ query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
+        approximate_result = refine_answer_inmemory(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
                                                     min_checked_leaves);
     }
     COUNT_QUEUE_TIME_START
@@ -955,7 +971,7 @@ query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index
 
                 //COUNT_CAL_TIME_START
                 //float distance = calculate_node_distance_inmemory(index, n->node, ts, bsf_result.distance);
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsf_result.distance);
+                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, paa_mbb, bsf_result.distance);
                 //COUNT_CAL_TIME_END
                 if (distance < bsf_result.distance) {
                     //printf("node distance is %f\n",n->distance );

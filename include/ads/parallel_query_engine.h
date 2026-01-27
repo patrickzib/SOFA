@@ -8,27 +8,27 @@
 void isax_query_binary_file_para(const char *ifilename, int q_num,
                                  isax_index *index, float minimum_distance,
                                  int min_checked_leaves,
-                                 query_result (*search_function)(ts_type *, ts_type *, isax_index *, float, int));
+                                 query_result (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *, float, int));
 
-query_result exact_search_serial_para(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                      int min_checked_leaves, pthread_mutex_t *lock_index);
+query_result exact_search_serial_para(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                      float minimum_distance, int min_checked_leaves, pthread_mutex_t *lock_index);
 
-query_result exact_search_serial_ParIS(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                       int min_checked_leaves);
+query_result exact_search_serial_ParIS(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                       float minimum_distance, int min_checked_leaves);
 
-query_result exact_search_serial_ParISnonsort(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                              int min_checked_leaves);
+query_result exact_search_serial_ParISnonsort(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                              float minimum_distance, int min_checked_leaves);
 
-query_result exact_search_serial_ParIS_nb(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                          int min_checked_leaves);
+query_result exact_search_serial_ParIS_nb(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                          float minimum_distance, int min_checked_leaves);
 
-pqueue_bsf exact_topk_serial_ParIS(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
+pqueue_bsf exact_topk_serial_ParIS(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, float minimum_distance,
                                    int min_checked_leaves, int k);
 
-query_result exact_search_m(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
+query_result exact_search_m(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, float minimum_distance,
                             int min_checked_leaves);
 
-query_result refine_answer_m(ts_type *ts, ts_type *paa, isax_index *index,
+query_result refine_answer_m(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                              query_result *approximate_bsf_result,
                              float minimum_distance, int limit);
 
@@ -50,7 +50,7 @@ void *para_queries_worker(void *transvector);
 
 typedef struct refind_answer_fonction_data {
     isax_node *current_root_node;
-    ts_type *paa, *ts;
+    ts_type *paa, *paa_mbb, *ts;
     pqueue_t *pq;
     isax_index *index;
     float minimum_distance;
@@ -105,6 +105,7 @@ typedef struct ParIS_LDCW_data {
 typedef struct paraquery {
     ts_type *ts;
     ts_type *paa;
+    ts_type *paa_mbb;
     isax_index *index;
     float minimum_distance;
     int min_checked_leaves;

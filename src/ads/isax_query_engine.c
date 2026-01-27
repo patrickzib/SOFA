@@ -54,7 +54,8 @@ void *compute_mindists(void *ptr) {
 
 
 
-query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves) 
+query_result exact_search_serial(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                 float minimum_distance, int min_checked_leaves) 
 {
     
     RESET_BYTES_ACCESSED
@@ -66,7 +67,7 @@ query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, f
     // END
     
     
-    query_result approximate_result = approximate_search(ts, paa, index);
+    query_result approximate_result = approximate_search(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     
     
@@ -79,7 +80,8 @@ query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, f
     }
     
     if(approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer(ts, paa, index, approximate_result, minimum_distance, min_checked_leaves);
+        approximate_result = refine_answer(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
+                                           min_checked_leaves);
     }
     
     
@@ -155,7 +157,8 @@ query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, f
     
     return approximate_result;
 }
-pqueue_bsf exact_topk_serial(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves, int k) 
+pqueue_bsf exact_topk_serial(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                             float minimum_distance, int min_checked_leaves, int k) 
 {
     
     RESET_BYTES_ACCESSED
@@ -168,7 +171,7 @@ pqueue_bsf exact_topk_serial(ts_type *ts, ts_type *paa, isax_index *index, float
     // END
     
     
-    approximate_topk(ts, paa, index,pq_bsf);
+    approximate_topk(ts, paa, paa_mbb, index, pq_bsf);
     
     
     int tight_bound = index->settings->tight_bound;
@@ -180,7 +183,7 @@ pqueue_bsf exact_topk_serial(ts_type *ts, ts_type *paa, isax_index *index, float
     }
     //  
     if(pq_bsf->knn[k-1] == FLT_MAX  || min_checked_leaves > 1) {
-        refine_topk_answer(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
+        refine_topk_answer(ts, paa, paa_mbb, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
     //printf("the bsf is %f\n",pq_bsf->knn[k-1] );
       
@@ -266,7 +269,7 @@ ts_type * get_ads_record(unsigned long tid, isax_index *index) {
 }
 
 
-query_result  approximate_search (ts_type *ts, ts_type *paa, isax_index *index) 
+query_result  approximate_search (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) 
 {
     query_result result;
 
@@ -325,7 +328,7 @@ query_result  approximate_search (ts_type *ts, ts_type *paa, isax_index *index)
     return result;
 }
 
-query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index *index) 
+query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) 
 {
     query_result result;
 
@@ -393,7 +396,7 @@ query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index
 }
 
 
-void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf) 
+void  approximate_topk (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, pqueue_bsf *pq_bsf) 
 {
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -447,9 +450,9 @@ void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf
     }
     free(sax);
 }
-query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index, 
-              query_result approximate_bsf_result, 
-                            float minimum_distance, int limit)  
+query_result refine_answer (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, 
+							query_result approximate_bsf_result,
+							float minimum_distance, int limit) 
 { 
   query_result bsf_result = approximate_bsf_result; 
  
@@ -561,9 +564,9 @@ query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index,
     pqueue_free(pq); 
    return bsf_result; 
 } 
-void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index, 
+void refine_topk_answer (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, 
               pqueue_bsf *pq_bsf, 
-                            float minimum_distance, int limit)  
+                            float minimum_distance, int limit) 
 {  
    int tight_bound = index->settings->tight_bound; 
   int aggressive_check = index->settings->aggressive_check; 
@@ -672,7 +675,7 @@ void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index,
     }
     pqueue_free(pq); 
 } 
-query_result  approximate_search_SIMD (ts_type *ts, ts_type *paa, isax_index *index) 
+query_result  approximate_search_SIMD (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index) 
 {
     query_result result;
 
@@ -809,10 +812,10 @@ query_result exact_search_serial(ts_type *ts, ts_type *paa, isax_index *index, f
 */
 
 
-query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
+query_result exact_search (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
                            float minimum_distance, int min_checked_leaves) 
 {
-    query_result approximate_result = approximate_search(ts, paa, index);
+    query_result approximate_result = approximate_search(ts, paa, paa_mbb, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -822,7 +825,8 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
         return approximate_result;
     }
     if(approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer(ts, paa, index, approximate_result, minimum_distance, min_checked_leaves);
+        approximate_result = refine_answer(ts, paa, paa_mbb, index, approximate_result, minimum_distance,
+                                           min_checked_leaves);
     }
     COUNT_QUEUE_TIME_START
     pqueue_t *pq = pqueue_init(index->settings->root_nodes_size,
@@ -973,10 +977,11 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
    return bsf_result;
 }
 
-pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves, int k)
+pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                       float minimum_distance, int min_checked_leaves, int k)
 {
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
-    approximate_topk(ts, paa, index, pq_bsf);
+    approximate_topk(ts, paa, paa_mbb, index, pq_bsf);
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
 
@@ -985,7 +990,7 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
         return *pq_bsf;
     }
     if(pq_bsf->knn[k-1] == FLT_MAX || min_checked_leaves > 1) {
-        refine_topk_answer(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
+        refine_topk_answer(ts, paa, paa_mbb, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
 
     COUNT_QUEUE_TIME_START
@@ -1117,7 +1122,8 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
 
 
 
-query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves) {
+query_result sanity_check_query (ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                 float minimum_distance, int min_checked_leaves) {
 	float isax_tightness = 0;
 	float tight_tightness = 0;
 	long checks = 0;
@@ -1262,8 +1268,8 @@ query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, f
     pqueue_free(pq);
 
 
-    query_result answer = exact_search(ts, paa, index, minimum_distance, min_checked_leaves);
-    query_result serial_answer = exact_search_serial(ts, paa, index, minimum_distance, min_checked_leaves);
+    query_result answer = exact_search(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves);
+    query_result serial_answer = exact_search_serial(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves);
 
     if(answer.distance != bsf_result.distance) {
     	fprintf(stderr,"ERROR: answer %2.2lf is not the same as exhaustive search %2.2lf.\n", answer.distance, bsf_result.distance);

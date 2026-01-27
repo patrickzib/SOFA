@@ -223,9 +223,9 @@ void split_node(isax_index *index, isax_node *node) {
 
     node->is_leaf = 0;
     node->leaf_size = 0;
-    isax_node_mbb_reset(node, index->settings->timeseries_size);
-    isax_node_mbb_reset(node, index->settings->timeseries_size);
-    isax_node_mbb_reset(node, index->settings->timeseries_size);
+    isax_node_mbb_reset(node, index->settings->n_segments);
+    isax_node_mbb_reset(node, index->settings->n_segments);
+    isax_node_mbb_reset(node, index->settings->n_segments);
 
     // Create split_data for this node.
     isax_node_split_data *split_data = malloc(sizeof(isax_node_split_data));

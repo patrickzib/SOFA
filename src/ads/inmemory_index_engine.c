@@ -2107,7 +2107,13 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
             mbb_ts = &rawfile[*record->position];
         }
         if (mbb_ts != NULL) {
-            isax_node_mbb_update_upwards(node, mbb_ts, index->settings->timeseries_size);
+            ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+            if (paa != NULL) {
+                if (paa_from_ts(mbb_ts, paa, index->settings) == SUCCESS) {
+                    isax_node_mbb_update_upwards(node, paa, index->settings->n_segments);
+                }
+                free(paa);
+            }
         }
 
     }

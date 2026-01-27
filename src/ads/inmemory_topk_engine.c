@@ -26,10 +26,8 @@
 float *MINDISTS;
 #define NTHREADS 4
 
-void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf) {
+void approximate_topk_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, pqueue_bsf *pq_bsf) {
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
-
-
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         sfa_from_fft(index, paa, sax);
     } else if (index->settings->function_type == 5) {
@@ -58,7 +56,7 @@ void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqu
             }
             // Adaptive splitting
         }
-        calculate_node_topk_inmemory(index, node, ts, pq_bsf);
+        calculate_node_topk_inmemory(index, node, ts, paa_mbb, pq_bsf);
     } else {
 
     }
@@ -68,7 +66,7 @@ void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqu
     free(sax);
 }
 
-void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf,
+void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index, pqueue_bsf *pq_bsf,
                                  float minimum_distance, int limit) {
 
     int tight_bound = index->settings->tight_bound;
@@ -121,7 +119,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                calculate_node_topk_inmemory(index, n->node, ts, pq_bsf);
+                calculate_node_topk_inmemory(index, n->node, ts, paa_mbb, pq_bsf);
 
                 if (pq_bsf->knn[pq_bsf->k - 1] < FLT_MAX) {
                     pqueue_insert(pq, n);
@@ -133,7 +131,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        calculate_node_topk_inmemory(index, n->node->left_child, ts, pq_bsf);
+                        calculate_node_topk_inmemory(index, n->node->left_child, ts, paa_mbb, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = messi_minidist(index, paa,
@@ -147,7 +145,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        calculate_node_topk_inmemory(index, n->node->right_child, ts, pq_bsf);
+                        calculate_node_topk_inmemory(index, n->node->right_child, ts, paa_mbb, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = messi_minidist(index, paa,
@@ -177,13 +175,15 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
 }
 
 
-void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf) {
+void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa_mbb,
+                                  pqueue_bsf *pq_bsf) {
     COUNT_CHECKED_NODE()
     // If node has buffered data
-    if (node->mbb_valid) {
+    if (node->mbb_valid && paa_mbb != NULL) {
         ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
+        ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                         index->settings->n_segments, bsf,
+                                         index->settings->mindist_sqrt);
         if (mbb >= bsf) {
             return;
         }
@@ -220,14 +220,15 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
     }
 }
 
-void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, pqueue_bsf *pq_bsf,
-                                   pthread_rwlock_t *lock_queue) {
+void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa,
+                                   ts_type *paa_mbb, pqueue_bsf *pq_bsf, pthread_rwlock_t *lock_queue) {
     COUNT_CHECKED_NODE()
     // If node has buffered data
-    if (node->mbb_valid) {
+    if (node->mbb_valid && paa_mbb != NULL) {
         ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
+        ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
+                                         index->settings->n_segments, bsf,
+                                         index->settings->mindist_sqrt);
         if (mbb >= bsf) {
             return;
         }
@@ -276,11 +277,10 @@ void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *
 }
 
 
-pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance,
-                                             int min_checked_leaves, int k) {
+pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                             float minimum_distance, int min_checked_leaves, int k) {
 
     RESET_BYTES_ACCESSED
-
     // FOR THREAD USE
     COUNT_INPUT_TIME_START
     MINDISTS = malloc(sizeof(float) * index->sax_cache_size);
@@ -290,7 +290,7 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
         MINDISTS[j] = FLT_MAX;
     // END
 
-    approximate_topk_inmemory(ts, paa, index, pq_bsf);
+    approximate_topk_inmemory(ts, paa, paa_mbb, index, pq_bsf);
 
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -298,7 +298,7 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
     // Early termination...
 
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
-        refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
+        refine_topk_answer_inmemory(ts, paa, paa_mbb, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
     printf("the bsf is %f\n", pq_bsf->knn[k - 1]);
     COUNT_INPUT_TIME_END
@@ -354,12 +354,12 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
 }
 
 
-pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, ts_type *paa_mbb, isax_index *index,
+                                       node_list *nodelist,
                                        float minimum_distance, int min_checked_leaves, int k) {
     RDcalculationnumber = 0;
-
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
-    approximate_topk_inmemory(ts, paa, index, pq_bsf);
+    approximate_topk_inmemory(ts, paa, paa_mbb, index, pq_bsf);
 
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -367,7 +367,7 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     // Early termination...
 
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
-        refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
+        refine_topk_answer_inmemory(ts, paa, paa_mbb, index, pq_bsf, minimum_distance, min_checked_leaves);
     }
     pqueue_t **allpq = malloc(sizeof(pqueue_t *) * N_PQUEUE);
 
@@ -397,6 +397,7 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
 
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
+        workerdata[i].paa_mbb = paa_mbb;
         workerdata[i].ts = ts;
         workerdata[i].lock_queue = &lock_queue;
         workerdata[i].lock_current_root_node = &lock_current_root_node;
@@ -448,6 +449,7 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
     query_result *n;
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
     ts_type *paa = ((MESSI_workerdata *) rfdata)->paa;
+    ts_type *paa_mbb = ((MESSI_workerdata *) rfdata)->paa_mbb;
     ts_type *ts = ((MESSI_workerdata *) rfdata)->ts;
     pqueue_t *pq = ((MESSI_workerdata *) rfdata)->pq;
     query_result *do_not_remove = ((MESSI_workerdata *) rfdata)->bsf_result;
@@ -509,7 +511,7 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
 
                 checks++;
                 //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
-                calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
+                calculate_node2_topk_inmemory(index, n->node, ts, paa, paa_mbb, pq_bsf,
                                               ((MESSI_workerdata *) rfdata)->lock_bsf);
 
 
@@ -547,7 +549,7 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
                             //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
-                            calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
+                            calculate_node2_topk_inmemory(index, n->node, ts, paa, paa_mbb, pq_bsf,
                                                           ((MESSI_workerdata *) rfdata)->lock_bsf);
 
                         }

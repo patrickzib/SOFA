@@ -738,7 +738,13 @@ isax_node * add_record_to_node(isax_index *index,
                            index->settings->timeseries_size);
         node->leaf_size++;
         if (record->ts != NULL) {
-            isax_node_mbb_update_upwards(node, record->ts, index->settings->timeseries_size);
+            ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+            if (paa != NULL) {
+                if (paa_from_ts(record->ts, paa, index->settings) == SUCCESS) {
+                    isax_node_mbb_update_upwards(node, paa, index->settings->n_segments);
+                }
+                free(paa);
+            }
         }
 
     }

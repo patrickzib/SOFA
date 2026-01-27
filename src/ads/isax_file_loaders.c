@@ -37,7 +37,8 @@
 
 void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
                             float minimum_distance, int min_checked_leaves,
-                            query_result (*search_function)(ts_type *, ts_type *, isax_index *, float, int)) {
+                            query_result (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                            float, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
     FILE *ifile;
     ifile = fopen(ifilename, "rb");
@@ -58,7 +59,9 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+
     fftw_workspace fftw = {0};
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, index->settings->timeseries_size);
@@ -85,10 +88,12 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         } else {
             paa_from_ts(ts, paa, index->settings);
         }
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
 
         COUNT_TOTAL_TIME_START
         //COUNT_OUTPUT2_TIME_START
-        query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves);
+        query_result result = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves);
         //COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
         PRINT_STATS(result.distance)
@@ -105,6 +110,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         q_loaded++;
     }
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
@@ -118,7 +124,7 @@ void isax_query_binary_file_traditional(
         const char *ifilename, int q_num, isax_index *index,
         float minimum_distance, int min_checked_leaves, int filetype_int,
         int apply_znorm,
-        query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *, float, int)) {
+        query_result (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *, node_list *, float, int)) {
 
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
     FILE *ifile;
@@ -164,6 +170,7 @@ void isax_query_binary_file_traditional(
         ts_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size);
     }
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     unsigned long ts_length = index->settings->timeseries_size;
 
@@ -219,8 +226,11 @@ void isax_query_binary_file_traditional(
             paa_from_ts(ts, paa, index->settings);
         }
 
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
+
         COUNT_TOTAL_TIME_START
-        query_result result = search_function(ts, paa, index, &nodelist, minimum_distance, min_checked_leaves);
+        query_result result = search_function(ts, paa, paa_mbb, index, &nodelist, minimum_distance, min_checked_leaves);
         COUNT_TOTAL_TIME_END
         COUNT_QUERYING_TIME_END
 
@@ -240,6 +250,7 @@ void isax_query_binary_file_traditional(
 
     free(nodelist.nlist);
     free(paa);
+    free(paa_mbb);
     free(ts);
 
     if (filetype_int) {
@@ -253,7 +264,8 @@ void isax_query_binary_file_traditional(
 
 void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index *index,
                                    float minimum_distance, int min_checked_leaves,
-                                   query_result (*search_function)(ts_type *, ts_type *, isax_index *, float, int,
+                                   query_result (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                                   float, int,
                                                                    float)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
@@ -276,6 +288,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fftw_workspace fftw = {0};
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
@@ -300,9 +313,12 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
         }
-        query_result bsf = search_function(ts, paa, index, minimum_distance, min_checked_leaves, FLT_MAX);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
+        query_result bsf = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves, FLT_MAX);
         COUNT_TOTAL_TIME_START
-        query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, bsf.distance);
+        query_result result = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves,
+                                              bsf.distance);
         COUNT_TOTAL_TIME_END
         PRINT_STATS(result.distance)
 
@@ -318,6 +334,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
         q_loaded++;
     }
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
@@ -329,7 +346,8 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
 
 void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *index,
                                  float minimum_distance, int min_checked_leaves, int k,
-                                 pqueue_bsf (*search_function)(ts_type *, ts_type *, isax_index *, float, int, int)) {
+                                 pqueue_bsf (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                               float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
     FILE *ifile;
@@ -350,6 +368,7 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
@@ -359,9 +378,11 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
-        pqueue_bsf result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, k);
+        pqueue_bsf result = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves, k);
         COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
         for (int i = 0; i < result.k; i++) {
@@ -377,6 +398,7 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
         q_loaded++;
     }
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
@@ -385,7 +407,8 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
 
 void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename, int q_num, isax_index *index,
                                 float minimum_distance, int min_checked_leaves, int k, long int classlength,
-                                pqueue_bsf (*search_function)(ts_type *, ts_type *, isax_index *, float, int, int)) {
+                                pqueue_bsf (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                              float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s and label in file %s\n", ifilename, labelfilename);
 
     FILE *ifile, *lfile;
@@ -417,6 +440,7 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
@@ -426,9 +450,11 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
-        pqueue_bsf result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, k);
+        pqueue_bsf result = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves, k);
         COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
         long int *classcounter = malloc(sizeof(long int) * classlength);
@@ -460,6 +486,7 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
         free(classcounter);
     }
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
@@ -469,7 +496,8 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
 void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
                                              float minimum_distance, int min_checked_leaves, int k, int filetype_int,
                                              int apply_znorm,
-                                             pqueue_bsf (*search_function)(ts_type *, ts_type *, isax_index *,
+                                             pqueue_bsf (*search_function)(ts_type *, ts_type *, ts_type *,
+                                                                           isax_index *,
                                                                            node_list *, float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
     FILE *ifile;
@@ -564,8 +592,11 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
             paa_from_ts(ts, paa, index->settings);
         }
 
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
+
         COUNT_TOTAL_TIME_START
-        pqueue_bsf result = search_function(ts, paa, index, &nodelist, minimum_distance, min_checked_leaves, k);
+        pqueue_bsf result = search_function(ts, paa, paa_mbb, index, &nodelist, minimum_distance, min_checked_leaves, k);
         COUNT_TOTAL_TIME_END
         COUNT_QUERYING_TIME_END
 
@@ -577,6 +608,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
         SAVE_STATS(result.knn[result.k - 1])
 
         fflush(stdout);
+        free(paa_mbb);
         q_loaded++;
     }
     free(paa);
@@ -598,7 +630,8 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
 void
 isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelfilename, int q_num, isax_index *index,
                                        float minimum_distance, int min_checked_leaves, int k, long int classlength,
-                                       pqueue_bsf (*search_function)(ts_type *, ts_type *, isax_index *, node_list *,
+                                       pqueue_bsf (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                                     node_list *,
                                                                      float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s and label in file %s\n", ifilename, labelfilename);
 
@@ -631,6 +664,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     node_list nodelist;
     nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
@@ -658,9 +692,12 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
 
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         //COUNT_OUTPUT2_TIME_START
-        pqueue_bsf result = search_function(ts, paa, index, &nodelist, minimum_distance, min_checked_leaves, k);
+        pqueue_bsf result = search_function(ts, paa, paa_mbb, index, &nodelist, minimum_distance, min_checked_leaves,
+                                            k);
         //COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
         long int *classcounter = malloc(sizeof(long int) * classlength);
@@ -692,6 +729,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
         free(classcounter);
     }
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
@@ -701,7 +739,8 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
 
 void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *index,
                                   float minimum_distance, int min_checked_leaves,
-                                  void (*search_function)(ts_type *, ts_type *, isax_index *, float, int, int)) {
+                                  void (*search_function)(ts_type *, ts_type *, ts_type *, isax_index *,
+                                                          float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
     FILE *ifile;
@@ -723,6 +762,7 @@ void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size * q_num);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments * q_num);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments * q_num);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fread(ts, sizeof(ts_type), index->settings->timeseries_size * q_num, ifile);
     while (q_loaded < q_num) {
@@ -730,6 +770,8 @@ void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *
         // Parse ts and make PAA representation
         paa_from_ts(&(ts[index->settings->timeseries_size * q_loaded]),
                     &(paa[index->settings->n_segments * q_loaded]), index->settings);
+        paa_from_ts(&(ts[index->settings->timeseries_size * q_loaded]),
+                    &(paa_mbb[index->settings->n_segments * q_loaded]), index->settings);
 
 
         fflush(stdout);
@@ -746,10 +788,11 @@ void isax_query_binary_file_batch(const char *ifilename, int q_num, isax_index *
 
     COUNT_TOTAL_TIME_START
     COUNT_OUTPUT2_TIME_START
-    search_function(ts, paa, index, minimum_distance, min_checked_leaves, q_num);
+    search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves, q_num);
     COUNT_OUTPUT2_TIME_END
     COUNT_TOTAL_TIME_END
     free(paa);
+    free(paa_mbb);
     free(ts);
     fclose(ifile);
     fprintf(stderr, ">>> Finished querying.\n");
