@@ -43,12 +43,10 @@ int compare(const void *a, const void *b) {
  Calculate paa.
  */
 enum response paa_from_ts(ts_type *ts_in, ts_type *paa_out, isax_index_settings *settings) {
-    //fprintf(stderr, "paa from ts\n");
-
     int segments = settings->n_segments;
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
     int timeseries_size = settings->timeseries_size;
-    int left_values = timeseries_size; // if timeseries size is not divisible by segments
+    int left_values = timeseries_size;      // if timeseries size is not divisible by segments
     for (int s = 0; s < segments; s++) {
         paa_out[s] = 0;
         for (int i = 0; i < min(ts_values_per_segment, left_values); i++) {

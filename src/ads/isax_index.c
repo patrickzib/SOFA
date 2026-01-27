@@ -164,10 +164,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 	for(i=0; i<settings->n_segments;i++)
 		settings->max_sax_cardinalities[i] = settings->sax_bit_cardinality;
 	
-    //settings->mindist_sqrt = sqrtf((float) settings->timeseries_size /
-    //                               (float) settings->n_segments);
-    settings->mindist_sqrt = ((float) settings->timeseries_size /
-                                   (float) settings->n_segments);
+    settings->mindist_sqrt = ((float) settings->timeseries_size / (float) settings->n_segments);
     settings->root_nodes_size = pow(2, settings->n_segments);
     
     // SEGMENTS * (CARDINALITY)

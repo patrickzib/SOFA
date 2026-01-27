@@ -59,7 +59,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     fftw_workspace fftw = {0};
@@ -88,7 +88,7 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         } else {
             paa_from_ts(ts, paa, index->settings);
         }
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
 
         COUNT_TOTAL_TIME_START
@@ -170,7 +170,7 @@ void isax_query_binary_file_traditional(
         ts_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size);
     }
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     unsigned long ts_length = index->settings->timeseries_size;
 
@@ -226,7 +226,7 @@ void isax_query_binary_file_traditional(
             paa_from_ts(ts, paa, index->settings);
         }
 
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
 
         COUNT_TOTAL_TIME_START
@@ -288,7 +288,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     fftw_workspace fftw = {0};
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
@@ -313,7 +313,7 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
         }
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
         query_result bsf = search_function(ts, paa, paa_mbb, index, minimum_distance, min_checked_leaves, FLT_MAX);
         COUNT_TOTAL_TIME_START
@@ -368,7 +368,7 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
@@ -378,7 +378,7 @@ void isax_topk_query_binary_file(const char *ifilename, int q_num, isax_index *i
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
@@ -440,7 +440,7 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
     while (q_loaded < q_num) {
@@ -450,7 +450,7 @@ void isax_knn_query_binary_file(const char *ifilename, const char *labelfilename
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         COUNT_OUTPUT2_TIME_START
@@ -592,7 +592,7 @@ void isax_topk_query_binary_file_traditional(const char *ifilename, int q_num, i
             paa_from_ts(ts, paa, index->settings);
         }
 
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
 
         COUNT_TOTAL_TIME_START
@@ -664,7 +664,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
     int q_loaded = 0;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
-    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+    ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     node_list nodelist;
     nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
@@ -692,7 +692,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
 
         // Parse ts and make PAA representation
         paa_from_ts(ts, paa, index->settings);
-        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments);
+        ts_type *paa_mbb = malloc(sizeof(ts_type) * index->settings->n_segments*2);
         paa_from_ts(ts, paa_mbb, index->settings);
         COUNT_TOTAL_TIME_START
         //COUNT_OUTPUT2_TIME_START

@@ -1272,7 +1272,6 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
                 }
             }
 
-
             add_record_to_node_inmemory(index, current_buffer->node, r, 1);
             pthread_mutex_unlock(&((buffer_data_inmemory *) transferdata)->lock_cbl[first_bit_mask]);
 

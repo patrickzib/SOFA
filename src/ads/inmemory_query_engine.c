@@ -195,7 +195,6 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
     float distmin;
     if (node->mbb_valid) {
         if (paa_mbb != NULL) {
-            printf("Here");
             ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
                                              index->settings->n_segments, bsf,
                                              index->settings->mindist_sqrt);
@@ -264,7 +263,6 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
     ts_type *result = NULL;
     if (node->mbb_valid) {
         if (paa_mbb != NULL) {
-            printf("Here");
             ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
                                              index->settings->n_segments, bsf,
                                              index->settings->mindist_sqrt);
@@ -320,8 +318,8 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
             ts_type mbb = ts_mbb_distance_sq(paa_mbb, node->mbb_min, node->mbb_max,
                                              index->settings->n_segments, bsf,
                                              index->settings->mindist_sqrt);
-            // printf("Pruning %f %f \n", mbb, bsf);
             if (mbb >= bsf) {
+                // printf("Pruning %f %f \n", mbb, bsf);
                 return bsf;
             }
         }

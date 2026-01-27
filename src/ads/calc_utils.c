@@ -48,9 +48,6 @@ void znorm(ts_type *data, int n) {
 }
 
 void isax_node_mbb_reset(isax_node *node, int size) {
-    if (node == NULL || size <= 0) {
-        return;
-    }
     if (node->mbb_min == NULL) {
         node->mbb_min = malloc(sizeof(ts_type) * (size_t) size);
     }
@@ -69,23 +66,10 @@ void isax_node_mbb_reset(isax_node *node, int size) {
 }
 
 void isax_node_mbb_update(isax_node *node, const ts_type *ts, int size) {
-    if (node == NULL || ts == NULL || size <= 0) {
-        return;
-    }
     if (node->mbb_min == NULL || node->mbb_max == NULL) {
         isax_node_mbb_reset(node, size);
     }
-    if (node->mbb_min == NULL || node->mbb_max == NULL) {
-        return;
-    }
-    if (!node->mbb_valid) {
-        for (int i = 0; i < size; ++i) {
-            node->mbb_min[i] = ts[i];
-            node->mbb_max[i] = ts[i];
-        }
-        node->mbb_valid = 1;
-        return;
-    }
+    node->mbb_valid = 1;
     for (int i = 0; i < size; ++i) {
         ts_type value = ts[i];
         if (value < node->mbb_min[i]) {

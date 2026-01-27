@@ -30,7 +30,7 @@ static inline ts_type messi_minidist_raw(isax_index *index,
                                          sax_type *sax,
                                          sax_type *sax_cardinalities,
                                          float bsf) {
-    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
+    if (index->settings->n_segments == 16) {
         if (index->settings->function_type == 4 || index->settings->function_type == 6) {
             return minidist_fft_to_sfa_rawe_SIMD(index, paa_or_fft, sax, sax_cardinalities, bsf);
         }
