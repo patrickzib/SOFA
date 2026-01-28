@@ -49,7 +49,6 @@ int simple_split_decision(isax_node_split_data *split_data,
     while (split_data->splitpoint < settings->n_segments) {
         if (split_data->split_mask[split_data->splitpoint] <
             split_data->split_mask[split_data->splitpoint - 1]) {
-
             return split_data->splitpoint;
         }
         split_data->splitpoint++;
@@ -65,7 +64,6 @@ int informed_split_decision(isax_node_split_data *split_data,
     double *segment_mean = malloc(sizeof(double) * settings->n_segments);
     double *segment_stdev = malloc(sizeof(double) * settings->n_segments);
 
-
     int i, j;
     for (i = 0; i < settings->n_segments; i++) {
         segment_mean[i] = 0;
@@ -74,12 +72,10 @@ int informed_split_decision(isax_node_split_data *split_data,
     for (i = 0; i < records_buffer_size; i++) {
         for (j = 0; j < settings->n_segments; j++) {
             segment_mean[j] += (int) records_buffer[i].sax[j];
-
         }
     }
     for (i = 0; i < settings->n_segments; i++) {
         segment_mean[i] /= (records_buffer_size);
-        //printf("mean: %lf\n", segment_mean[i]);
     }
     for (i = 0; i < records_buffer_size; i++) {
         for (j = 0; j < settings->n_segments; j++) {
@@ -88,9 +84,7 @@ int informed_split_decision(isax_node_split_data *split_data,
     }
     for (i = 0; i < settings->n_segments; i++) {
         segment_stdev[i] = sqrt(segment_stdev[i] / (records_buffer_size));
-        //printf("stdev: %lf\n", segment_stdev[i]);
     }
-
 
 
     // Decide split point based on the above calculations
@@ -103,12 +97,25 @@ int informed_split_decision(isax_node_split_data *split_data,
         // TODO: Optimize this.
         // Calculate break point for new cardinality, a bit complex.
         int new_bit_cardinality = split_data->split_mask[i] + 1;
+        root_mask_type mask = settings->bit_masks[settings->sax_bit_cardinality - new_bit_cardinality - 1];
+        int left_count = 0;
+        int right_count = 0;
+        for (j = 0; j < records_buffer_size; ++j) {
+            if (records_buffer[j].sax[i] & mask) {
+                right_count++;
+            } else {
+                left_count++;
+            }
+        }
+        if (left_count == 0 || right_count == 0) {
+            continue;
+        }
+
         int break_point_id = records_buffer[0].sax[i];
-        break_point_id = (break_point_id >> ((settings->sax_bit_cardinality) -
-                                             (new_bit_cardinality))) << 1;
+        break_point_id = (break_point_id >> ((settings->sax_bit_cardinality) - (new_bit_cardinality))) << 1;
+
         int new_cardinality = pow(2, new_bit_cardinality + 1);
-        int right_offset = ((new_cardinality - 1) * (new_cardinality - 2)) / 2
-                           + new_cardinality - 2;
+        int right_offset = ((new_cardinality - 1) * (new_cardinality - 2)) / 2 + new_cardinality - 2;
         float b = sax_breakpoints[right_offset - break_point_id];
 
         if (segment_to_split == -1) {
@@ -119,7 +126,6 @@ int informed_split_decision(isax_node_split_data *split_data,
 
         float left_range = segment_mean[i] - (3 * segment_stdev[i]);
         float right_range = segment_mean[i] + (3 * segment_stdev[i]);
-        //printf("%d, %lf -- %lf \n", i, left_range, right_range);
 
         if (left_range <= b && b <= right_range) {
             if (abs(segment_mean[i] - b) <= abs(segment_mean[i] - segment_to_split_b)) {
@@ -216,7 +222,7 @@ void split_node(isax_index *index, isax_node *node) {
 
 #ifdef DEBUG
     if (!node->is_leaf) {
-        fprintf(stderr,"sanity error: You are trying to split something weird...\
+        fprintf(stderr, "sanity error: You are trying to split something weird...\
                 ARE YOU TRYING TO KILL ME?\n");
     }
 #endif
@@ -261,7 +267,6 @@ void split_node(isax_index *index, isax_node *node) {
     node->right_child = right_child;
 
 
-
     // ############ S P L I T   D A T A #############
     // Allocating 1 more position to cover any off-sized allocations happening due to
     // trying to load one more record from a fetched file page which does not exist.
@@ -270,7 +275,6 @@ void split_node(isax_index *index, isax_node *node) {
                                             (index->settings->max_leaf_size + 1));
 
     int split_buffer_index = 0;
-
 
 
     // ********************************************************
@@ -315,7 +319,6 @@ void split_node(isax_index *index, isax_node *node) {
             split_buffer[split_buffer_index].position = node->buffer->tmp_partial_position_buffer[i];
             split_buffer[split_buffer_index].insertion_mode = TMP | PARTIAL;
             split_buffer_index++;
-
         }
     node->buffer->tmp_partial_buffer_size = 0;
 
@@ -339,7 +342,6 @@ void split_node(isax_index *index, isax_node *node) {
 
         // If it can't open exit;
         if (full_file != NULL) {
-
 #ifdef DEBUG
             printf("*** Splitting: %s\n\n", full_fname);
 #endif
@@ -405,7 +407,6 @@ void split_node(isax_index *index, isax_node *node) {
 
         // If it can't open exit;
         if (partial_file != NULL) {
-
 #ifdef DEBUG
             printf("*** Splitting: %s\n\n", partial_fname);
 #endif
@@ -462,9 +463,8 @@ void split_node(isax_index *index, isax_node *node) {
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        //fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
-        //        index->settings->sax_bit_cardinality);
-        // exit(-1);
+        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
+                index->settings->sax_bit_cardinality);
         return;
     }
 
@@ -503,7 +503,7 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
 
 #ifdef DEBUG
     if (!node->is_leaf) {
-        fprintf(stderr,"sanity error: You are trying to split something weird...\
+        fprintf(stderr, "sanity error: You are trying to split something weird...\
                 ARE YOU TRYING TO KILL ME?\n");
     }
 #endif
@@ -545,7 +545,6 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
     node->right_child = right_child;
 
 
-
     // ############ S P L I T   D A T A #############
     // Allocating 1 more position to cover any off-sized allocations happening due to
     // trying to load one more record from a fetched file page which does not exist.
@@ -554,7 +553,6 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
                                             (index->settings->max_leaf_size + 1));
 
     int split_buffer_index = 0;
-
 
 
     // ********************************************************
@@ -599,7 +597,6 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
             split_buffer[split_buffer_index].position = node->buffer->tmp_partial_position_buffer[i];
             split_buffer[split_buffer_index].insertion_mode = TMP | PARTIAL;
             split_buffer_index++;
-
         }
     node->buffer->tmp_partial_buffer_size = 0;
 
@@ -625,13 +622,13 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        fprintf(stderr, "error: cannot split in depth more than %d.\n",
+        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
-        exit(-1);
+        return;
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
-        fprintf(stderr, "error: cannot split in depth more than %d.\n",
+        fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
         exit(-1);
     }
@@ -651,7 +648,6 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
 
     free(split_buffer);
     //printf("Splitted\n");
-
 }
 
 
@@ -667,7 +663,7 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
 #ifdef DEBUG
     if (!node->is_leaf) {
-        fprintf(stderr,"sanity error: You are trying to split something weird...\
+        fprintf(stderr, "sanity error: You are trying to split something weird...\
                 ARE YOU TRYING TO KILL ME?\n");
     }
 #endif
@@ -710,7 +706,6 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
     node->right_child = right_child;
 
 
-
     // ############ S P L I T   D A T A #############
     // Allocating 1 more position to cover any off-sized allocations happening due to
     // trying to load one more record from a fetched file page which does not exist.
@@ -719,7 +714,6 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
                                             (index->settings->max_leaf_size + 1));
 
     int split_buffer_index = 0;
-
 
 
     // ********************************************************
@@ -764,7 +758,6 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
             split_buffer[split_buffer_index].position = node->buffer->tmp_partial_position_buffer[i];
             split_buffer[split_buffer_index].insertion_mode = TMP | PARTIAL;
             split_buffer_index++;
-
         }
     node->buffer->tmp_partial_buffer_size = 0;
 
@@ -788,7 +781,6 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
         // If it can't open exit;
         if (full_file != NULL) {
-
 #ifdef DEBUG
             printf("*** Splitting: %s\n\n", full_fname);
 #endif
@@ -856,7 +848,6 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
         // If it can't open exit;
         if (partial_file != NULL) {
-
 #ifdef DEBUG
             printf("*** Splitting: %s\n\n", partial_fname);
 #endif
@@ -913,13 +904,13 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        fprintf(stderr, "error: cannot split in depth more than %d.\n",
+        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
-        exit(-1);
+        return;
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
-        fprintf(stderr, "error: cannot split in depth more than %d.\n",
+        fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
         exit(-1);
     }
@@ -939,5 +930,4 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
     free(split_buffer);
     //printf("Splitted\n");
-
 }
