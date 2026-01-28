@@ -726,7 +726,7 @@ isax_node * add_record_to_node(isax_index *index,
     #ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
     #endif
-        split_node(index, node);
+        split_node(index, node, 0);
         add_record_to_node(index, node, record, leaf_size_check);
     }
     else

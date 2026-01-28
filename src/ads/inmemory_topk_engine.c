@@ -105,7 +105,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     //Split and push again in the queue
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     pqueue_insert(pq, n);
                     continue;
                 }

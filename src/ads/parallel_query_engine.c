@@ -1060,7 +1060,7 @@ void* refind_answer_fonction(void *rfdata)
                     (n->node->leaf_size > index->settings->min_leaf_size))
                 {
                     // Split and push again in the queue
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1320,7 +1320,7 @@ void* exact_search_fonction(void *rfdata)
                     (n->node->leaf_size > index->settings->min_leaf_size))
                 {
                     // Split and push again in the queue
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data*)rfdata)->lock_queue);

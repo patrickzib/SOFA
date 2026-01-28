@@ -562,7 +562,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
-                    //split_node(index, n->node);
+                    //split_node(index, n->node, 0);
                     //pqueue_insert(pq, n);
                     continue;
                 }
@@ -773,7 +773,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
 
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
@@ -933,7 +933,7 @@ query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue                    
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END

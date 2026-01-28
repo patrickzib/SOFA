@@ -285,7 +285,7 @@ query_result  approximate_search (ts_type *ts, ts_type *paa, isax_index *index)
         if (node->is_leaf && !node->has_full_data_file &&
             (node->leaf_size > index->settings->min_leaf_size))
         {
-            split_node(index, node);
+            split_node(index, node, 0);
         }
 
         while (!node->is_leaf) {
@@ -306,7 +306,7 @@ query_result  approximate_search (ts_type *ts, ts_type *paa, isax_index *index)
             if (node->is_leaf && !node->has_full_data_file &&
                 (node->leaf_size > index->settings->min_leaf_size))
             {
-                split_node(index, node);
+                split_node(index, node, 0);
             }
         }
 
@@ -344,7 +344,7 @@ query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index
         if (node->is_leaf && !node->has_full_data_file &&
             (node->leaf_size > index->settings->min_leaf_size))
         {
-            split_node(index, node);
+            split_node(index, node, 0);
         }
 
         while (!node->is_leaf) {
@@ -367,7 +367,7 @@ query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index
             if (node->is_leaf && !node->has_full_data_file &&
                 (node->leaf_size > index->settings->min_leaf_size))
             {
-                split_node(index, node);
+                split_node(index, node, 0);
             }
         }
 
@@ -411,7 +411,7 @@ void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf
         if (node->is_leaf && !node->has_full_data_file &&
             (node->leaf_size > index->settings->min_leaf_size))
         {
-            split_node(index, node);
+            split_node(index, node, 0);
         }
 
         while (!node->is_leaf) {
@@ -432,7 +432,7 @@ void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf
             if (node->is_leaf && !node->has_full_data_file &&
                 (node->leaf_size > index->settings->min_leaf_size))
             {
-                split_node(index, node);
+                split_node(index, node, 0);
             }
         }
 
@@ -485,7 +485,7 @@ query_result refine_answer (ts_type *ts, ts_type *paa, isax_index *index,
           (n->node->leaf_size > index->settings->min_leaf_size)) 
             { 
           // Split and push again in the queue 
-                split_node(index, n->node); 
+                split_node(index, n->node, 0); 
           pqueue_insert(pq, n); 
                 continue; 
             } 
@@ -600,7 +600,7 @@ void refine_topk_answer (ts_type *ts, ts_type *paa, isax_index *index,
           (n->node->leaf_size > index->settings->min_leaf_size)) 
             { 
           // Split and push again in the queue 
-                split_node(index, n->node); 
+                split_node(index, n->node, 0); 
           pqueue_insert(pq, n); 
                 continue; 
             } 
@@ -691,7 +691,7 @@ query_result  approximate_search_SIMD (ts_type *ts, ts_type *paa, isax_index *in
         if (node->is_leaf && !node->has_full_data_file &&
             (node->leaf_size > index->settings->min_leaf_size))
         {
-            split_node(index, node);
+            split_node(index, node, 0);
         }
 
         while (!node->is_leaf) {
@@ -712,7 +712,7 @@ query_result  approximate_search_SIMD (ts_type *ts, ts_type *paa, isax_index *in
             if (node->is_leaf && !node->has_full_data_file &&
                 (node->leaf_size > index->settings->min_leaf_size))
             {
-                split_node(index, node);
+                split_node(index, node, 0);
             }
         }
 
@@ -877,7 +877,7 @@ query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index,
                 {
                     // Split and push again in the queue
                     
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
@@ -1041,7 +1041,7 @@ pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minim
                 {
                     // Split and push again in the queue
                     
-                    split_node(index, n->node);
+                    split_node(index, n->node, 0);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
