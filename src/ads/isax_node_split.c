@@ -643,9 +643,9 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
     while (split_buffer_index > 0) {
         split_buffer_index--;
         if (mask & split_buffer[split_buffer_index].sax[split_data->splitpoint]) {
-            add_record_to_node_inmemory(index, right_child, &split_buffer[split_buffer_index], 1);
+            add_record_to_node(index, right_child, &split_buffer[split_buffer_index], 1);
         } else {
-            add_record_to_node_inmemory(index, left_child, &split_buffer[split_buffer_index], 1);
+            add_record_to_node(index, left_child, &split_buffer[split_buffer_index], 1);
         }
     }
 
