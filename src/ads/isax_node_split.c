@@ -97,19 +97,19 @@ int informed_split_decision(isax_node_split_data *split_data,
         // TODO: Optimize this.
         // Calculate break point for new cardinality, a bit complex.
         int new_bit_cardinality = split_data->split_mask[i] + 1;
-        root_mask_type mask = settings->bit_masks[settings->sax_bit_cardinality - new_bit_cardinality - 1];
-        int left_count = 0;
-        int right_count = 0;
-        for (j = 0; j < records_buffer_size; ++j) {
-            if (records_buffer[j].sax[i] & mask) {
-                right_count++;
-            } else {
-                left_count++;
-            }
-        }
-        if (left_count == 0 || right_count == 0) {
-            continue;
-        }
+        // root_mask_type mask = settings->bit_masks[settings->sax_bit_cardinality - new_bit_cardinality - 1];
+        // int left_count = 0;
+        // int right_count = 0;
+        // for (j = 0; j < records_buffer_size; ++j) {
+        //     if (records_buffer[j].sax[i] & mask) {
+        //         right_count++;
+        //     } else {
+        //         left_count++;
+        //     }
+        // }
+        // if (left_count == 0 || right_count == 0) {
+        //     continue;
+        // }
 
         int break_point_id = records_buffer[0].sax[i];
         break_point_id = (break_point_id >> ((settings->sax_bit_cardinality) - (new_bit_cardinality))) << 1;
@@ -463,15 +463,16 @@ void split_node(isax_index *index, isax_node *node) {
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
-                index->settings->sax_bit_cardinality);
+        // fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
+        //        index->settings->sax_bit_cardinality);
         return;
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
-        exit(-1);
+        return;
+        // exit(-1);
     }
 
     root_mask_type mask = index->settings->bit_masks[index->settings->sax_bit_cardinality -
@@ -622,15 +623,16 @@ void split_node_inmemory(isax_index *index, isax_node *node) {
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
-                index->settings->sax_bit_cardinality);
+        //fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
+        //        index->settings->sax_bit_cardinality);
         return;
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
-        exit(-1);
+        return;
+        // exit(-1);
     }
 
     root_mask_type mask = index->settings->bit_masks[index->settings->sax_bit_cardinality -
@@ -904,15 +906,16 @@ void split_node_m(isax_index *index, isax_node *node, pthread_mutex_t *lock_inde
 
     //printf("not informed decision: %d\n", split_data->splitpoint);
     if (split_data->splitpoint < 0) {
-        fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
-                index->settings->sax_bit_cardinality);
+        // fprintf(stderr, "error 1: cannot split in depth more than %d.\n",
+        //        index->settings->sax_bit_cardinality);
         return;
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
                 index->settings->sax_bit_cardinality);
-        exit(-1);
+        return;
+        // exit(-1);
     }
 
     root_mask_type mask = index->settings->bit_masks[index->settings->sax_bit_cardinality -
