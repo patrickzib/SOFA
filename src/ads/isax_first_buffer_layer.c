@@ -133,7 +133,6 @@ isax_node * insert_to_fbl(first_buffer_layer *fbl, sax_type *sax,
         current_buffer->node = isax_root_node_init(mask,
                                                    index->settings->initial_leaf_buffer_size);
         index->root_nodes++;
-        current_buffer->node->is_leaf = 1;
 
         if(index->first_node == NULL)
         {

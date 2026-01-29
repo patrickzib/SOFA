@@ -586,9 +586,7 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
         isax_node *new_node = isax_root_node_init(first_bit_mask, 
                                                   index->settings->initial_leaf_buffer_size);
         index->root_nodes++;
-    
-        new_node->is_leaf = 1;
-        
+
         if(index->first_node == NULL)
         {
             index->first_node = new_node;
@@ -2107,8 +2105,7 @@ void complete_index(isax_index *index, int ts_num)
                 index->fbl->soft_buffers[first_bit_mask].node = isax_root_node_init(first_bit_mask, 
                                                                                     index->settings->initial_leaf_buffer_size);
                 index->root_nodes++;
-                index->fbl->soft_buffers[first_bit_mask].node->is_leaf = 1;
-                
+
                 if(index->first_node == NULL)
                 {
                     index->first_node = index->fbl->soft_buffers[first_bit_mask].node;

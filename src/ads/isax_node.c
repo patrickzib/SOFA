@@ -16,7 +16,7 @@
  */
 isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size) 
 {
-    isax_node *node = isax_leaf_node_init(initial_buffer_size);
+    isax_node *node = isax_leaf_node_init(initial_buffer_size, NULL);
     node->mask = mask;
     return node;
 }
@@ -24,7 +24,7 @@ isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size)
 /**
  This function initalizes an isax leaf node.
  */
-isax_node * isax_leaf_node_init(int initial_buffer_size) 
+isax_node * isax_leaf_node_init(int initial_buffer_size, isax_node *parent) 
 {
     COUNT_NEW_NODE()
     isax_node *node = malloc(sizeof(isax_node));
@@ -36,7 +36,7 @@ isax_node * isax_leaf_node_init(int initial_buffer_size)
     node->has_full_data_file = 0;
     node->right_child = NULL;
     node->left_child = NULL;
-    node->parent = NULL;
+    node->parent = parent;
     node->next = NULL;
     node->leaf_size = 0;
     node->filename = NULL;
@@ -50,7 +50,8 @@ isax_node * isax_leaf_node_init(int initial_buffer_size)
     node->mbb_min = NULL;
     node->mbb_max = NULL;
     node->mbb_valid = 0;
+    node->is_leaf = 1;
+
     return node;
 }
-
 

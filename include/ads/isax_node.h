@@ -54,6 +54,6 @@ typedef struct isax_node {
 
 
 isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size);
-isax_node * isax_leaf_node_init(int initial_buffer_size);
+isax_node * isax_leaf_node_init(int initial_buffer_size, struct isax_node *parent);
 
 #endif

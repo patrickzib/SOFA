@@ -1870,7 +1870,6 @@ isax_node * insert_to_fbl_m(first_buffer_layer *fbl, sax_type *sax,
         current_buffer->node = isax_root_node_init(mask, 
                                                    index->settings->initial_leaf_buffer_size);
 
-        current_buffer->node->is_leaf = 1;
         pthread_mutex_lock(lock_firstnode);
 
         index->root_nodes++;//counter
@@ -1981,7 +1980,6 @@ isax_node * insert_to_fbl_m_new(first_buffer_layer *fbl, sax_type *sax,
         current_buffer->node = isax_root_node_init(mask, 
                                                    index->settings->initial_leaf_buffer_size);
 
-        current_buffer->node->is_leaf = 1;
         pthread_mutex_lock(lock_firstnode);
 
         index->root_nodes++;//counter
@@ -2111,7 +2109,6 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
                 current_buffer->sax_records[i]=NULL;
             }
             current_buffer->node = isax_root_node_init(mask,index->settings->initial_leaf_buffer_size);
-            current_buffer->node->is_leaf = 1;
             //current_buffer->finished=1;
             current_buffer->initialized = 1;
             //__sync_synchronize();
@@ -2232,7 +2229,6 @@ isax_node * insert_to_2pRecBuf(parallel_dfirst_buffer_layer *fbl, sax_type *sax,
                 current_buffer->sax_records[i]=NULL;
             }
             current_buffer->node = isax_root_node_init(mask,index->settings->initial_leaf_buffer_size);
-            current_buffer->node->is_leaf = 1;
             //current_buffer->finished=1;
             current_buffer->initialized = 1;
             //__sync_synchronize();

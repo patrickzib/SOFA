@@ -417,7 +417,6 @@ void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index
                                                  current_buffer->max_buffer_size);
             current_buffer->node = isax_root_node_init((root_mask_type) i,
                                                        index->settings->initial_leaf_buffer_size);
-            current_buffer->node->is_leaf = 1;
         }
 
     }
@@ -557,7 +556,6 @@ void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *inde
                                                  current_buffer->max_buffer_size);
             current_buffer->node = isax_root_node_init((root_mask_type) i,
                                                        index->settings->initial_leaf_buffer_size);
-            current_buffer->node->is_leaf = 1;
         }
     }
 
@@ -1251,9 +1249,6 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
 
                 current_buffer->node = isax_root_node_init(first_bit_mask,
                                                            index->settings->initial_leaf_buffer_size);
-
-                current_buffer->node->is_leaf = 1;
-
 
                 index->root_nodes++;//counter
 
@@ -2093,7 +2088,7 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
 #ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
-        split_node_inmemory(index, node);
+        split_node(index, node, 1);
         add_record_to_node_inmemory(index, node, record, leaf_size_check);
     } else {
         if (node->filename == NULL) {
