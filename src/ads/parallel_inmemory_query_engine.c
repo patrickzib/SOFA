@@ -91,37 +91,37 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
     if (node->buffer != NULL) {
         int i;
 
-        if (node->buffer->full_buffer_size > 0) {
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-            for (i = 0; i < node->buffer->full_buffer_size; i++) {
-                distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
-                                             index->settings->max_sax_cardinalities, bsf);
-
-                if (distmin < bsf) {
-                    float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                                   index->settings->timeseries_size, bsf);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-                }
-            }
-        }
-
-        if (node->buffer->tmp_full_buffer_size > 0) {
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-            for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-                distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
-                                             index->settings->max_sax_cardinalities, bsf);
-
-                if (distmin < bsf) {
-                    float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                                   index->settings->timeseries_size, bsf);
-                    if (dist < bsf) {
-                        bsf = dist;
-                    }
-                }
-            }
-        }
+//         if (node->buffer->full_buffer_size > 0) {
+// #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+//             for (i = 0; i < node->buffer->full_buffer_size; i++) {
+//                 distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
+//                                              index->settings->max_sax_cardinalities, bsf);
+//
+//                 if (distmin < bsf) {
+//                     float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
+//                                    index->settings->timeseries_size, bsf);
+//                     if (dist < bsf) {
+//                         bsf = dist;
+//                     }
+//                 }
+//             }
+//         }
+//
+//         if (node->buffer->tmp_full_buffer_size > 0) {
+// #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+//             for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
+//                 distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
+//                                              index->settings->max_sax_cardinalities, bsf);
+//
+//                 if (distmin < bsf) {
+//                     float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+//                                    index->settings->timeseries_size, bsf);
+//                     if (dist < bsf) {
+//                         bsf = dist;
+//                     }
+//                 }
+//             }
+//         }
 
         if (node->buffer->partial_buffer_size > 0) {
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
