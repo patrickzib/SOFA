@@ -91,66 +91,52 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
     if (node->buffer != NULL) {
         int i;
 
-//         if (node->buffer->full_buffer_size > 0) {
-// #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-//             for (i = 0; i < node->buffer->full_buffer_size; i++) {
-//                 distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
-//                                              index->settings->max_sax_cardinalities, bsf);
-//
-//                 if (distmin < bsf) {
-//                     float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-//                                    index->settings->timeseries_size, bsf);
-//                     if (dist < bsf) {
-//                         bsf = dist;
-//                     }
-//                 }
-//             }
-//         }
-//
-//         if (node->buffer->tmp_full_buffer_size > 0) {
-// #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-//             for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-//                 distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
-//                                              index->settings->max_sax_cardinalities, bsf);
-//
-//                 if (distmin < bsf) {
-//                     float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-//                                    index->settings->timeseries_size, bsf);
-//                     if (dist < bsf) {
-//                         bsf = dist;
-//                     }
-//                 }
-//             }
-//         }
+        if (node->buffer->full_buffer_size > 0) {
+#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+            for (i = 0; i < node->buffer->full_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
 
-        if (node->buffer->partial_buffer_size > 0) {
-            float global_bsf = bsf;
-#pragma omp parallel num_threads(maxquerythread)
-            {
-                float local_bsf = global_bsf;
-#pragma omp for schedule(static)
-                for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-                    float local_distmin = messi_minidist_raw(
-                        index, paa, node->buffer->partial_sax_buffer[i],
-                        index->settings->max_sax_cardinalities, local_bsf);
-
-                    if (local_distmin < local_bsf) {
-                        float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                           index->settings->timeseries_size, local_bsf);
-                        if (dist < local_bsf) {
-                            local_bsf = dist;
-                        }
-                    }
-                }
-
-#pragma omp critical
-                {
-                    if (local_bsf < global_bsf) {
-                        global_bsf = local_bsf;
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
+                                   index->settings->timeseries_size, bsf);
+                    if (dist < bsf) {
+                        bsf = dist;
                     }
                 }
             }
-            bsf = global_bsf;
+        }
+
+        if (node->buffer->tmp_full_buffer_size > 0) {
+#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+            for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
+
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+                                   index->settings->timeseries_size, bsf);
+                    if (dist < bsf) {
+                        bsf = dist;
+                    }
+                }
+            }
+        }
+
+        if (node->buffer->partial_buffer_size > 0) {
+#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+            for (i = 0; i < node->buffer->partial_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
+
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                       index->settings->timeseries_size, bsf);
+                    if (dist < bsf) {
+                        bsf = dist;
+                    }
+                }
+            }
         }
     }
 
@@ -2228,8 +2214,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
 
-                            // float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
-                            float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            // float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
