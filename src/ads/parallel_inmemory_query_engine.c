@@ -2167,9 +2167,6 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                     bsf_result->node = n->node;
                     bsfdisntance = distance;
                 }
-                if (bsf_result->distance < bsfdisntance) {
-                    bsfdisntance = bsf_result->distance;
-                }
                 pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
             }
         }
@@ -2209,18 +2206,19 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                     gettimeofday(&current_time, NULL);
                     total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
 
-                    if (n == NULL)
+                    if (n == NULL) {
                         break;
+                    }
                     if (n->distance > bsfdisntance || n->distance > minimum_distance) {
                         break;
                     }
 
-
                     // If it is a leaf, check its real distance.
                     if (n->node->is_leaf) {
                         checks++;
+                        float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsf_result->distance);
 
-                        float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                        // the method itself runs in parallel, thus this would add a second level of parallelizm
                         // float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
                         if (distance < bsfdisntance) {
@@ -2229,8 +2227,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                                 bsf_result->distance = distance;
                                 bsf_result->node = n->node;
                                 bsfdisntance = distance;
-                            }
-                            if (bsf_result->distance < bsfdisntance) {
+                            } else if (bsf_result->distance < bsfdisntance) {
                                 bsfdisntance = bsf_result->distance;
                             }
                             pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
