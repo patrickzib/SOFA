@@ -2214,7 +2214,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
 
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            // float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
