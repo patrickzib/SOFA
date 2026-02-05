@@ -427,7 +427,6 @@ float minidist_paa_to_isax_raw(float *paa, sax_type *sax,
         }
     }
 
-    //distance = ratio_sqrt * sqrtf(distance);
     distance = ratio_sqrt * distance;
     return distance;
 }

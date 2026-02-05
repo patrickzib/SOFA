@@ -18,10 +18,13 @@ float calculateStdDev(ts_type *data, int n, ts_type mean);
 // Function to perform zero mean normalization
 void znorm(ts_type *data, int n);
 
-void isax_node_mbb_reset(isax_node *node, int size);
-void isax_node_mbb_update(isax_node *node, const ts_type *ts, int size);
-void isax_node_mbb_update_upwards(isax_node *node, const ts_type *ts, int size);
-ts_type ts_mbb_distance_sq(const ts_type *ts, const ts_type *mbb_min, const ts_type *mbb_max, int size, ts_type bound);
+void isax_node_mbb_sax_update(isax_node *node, const sax_type *sax, int size);
+ts_type messi_minidist_range_raw(isax_index *index,
+                                 float *paa_or_fft,
+                                 sax_type *sax_min,
+                                 sax_type *sax_max,
+                                 sax_type *sax_cardinalities,
+                                 float bsf);
 
 // Shared minidist dispatch for SAX/SFA.
 static inline ts_type messi_minidist_raw(isax_index *index,

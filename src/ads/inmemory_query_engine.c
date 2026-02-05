@@ -192,14 +192,15 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
 float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
+    if (node->mbb_sax_valid) {
+        ts_type mbb = messi_minidist_range_raw(
+            index, paa,
+            node->mbb_sax_min, node->mbb_sax_max,
+            index->settings->max_sax_cardinalities, bsf);
         if (mbb >= bsf) {
             return bsf;
         }
     }
-
     COUNT_CHECKED_NODE()
 
     // If node has buffered data
@@ -256,14 +257,6 @@ float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_ty
 //debugging only!!!
 ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, float bsf) {
     ts_type *result = NULL;
-    if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
-        if (mbb >= bsf) {
-            return result;
-        }
-    }
-
     COUNT_CHECKED_NODE()
     // If node has buffered data
 
@@ -304,15 +297,17 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
 
 float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
+    if (node->mbb_sax_valid) {
+        ts_type mbb = messi_minidist_range_raw(
+            index, paa,
+            node->mbb_sax_min, node->mbb_sax_max,
+            index->settings->max_sax_cardinalities, bsf);
         if (mbb >= bsf) {
             return bsf;
         }
     }
-
     COUNT_CHECKED_NODE()
+
     // If node has buffered data
     if (node->buffer != NULL) {
         int i;

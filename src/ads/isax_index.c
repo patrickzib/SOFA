@@ -356,11 +356,11 @@ void isax_index_destroy(isax_index *index, isax_node *node)
         {
             destroy_node_buffer(node->buffer);
         }
-        if (node->mbb_min != NULL) {
-            free(node->mbb_min);
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
         }
-        if (node->mbb_max != NULL) {
-            free(node->mbb_max);
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
         }
         free(node);
     }
@@ -432,11 +432,11 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
         {
             destroy_node_buffer(node->buffer);
         }
-        if (node->mbb_min != NULL) {
-            free(node->mbb_min);
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
         }
-        if (node->mbb_max != NULL) {
-            free(node->mbb_max);
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
         }
         free(node);
     }
@@ -502,11 +502,11 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
         {
             destroy_node_buffer(node->buffer);
         }
-        if (node->mbb_min != NULL) {
-            free(node->mbb_min);
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
         }
-        if (node->mbb_max != NULL) {
-            free(node->mbb_max);
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
         }
     
         free(node);
@@ -706,6 +706,11 @@ isax_node * add_record_to_node(isax_index *index,
 
     // Traverse tree
     while (!node->is_leaf) {
+        if (record->sax != NULL) {
+            isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+        } else {
+            fprintf(stderr, "debug: missing sax for MBR update.\n");
+        }
         int location = index->settings->sax_bit_cardinality - 1 -
         node->split_data->split_mask[node->split_data->splitpoint];
         
@@ -735,8 +740,11 @@ isax_node * add_record_to_node(isax_index *index,
         add_to_node_buffer(node->buffer, record, index->settings->n_segments, 
                            index->settings->timeseries_size);
         node->leaf_size++;
-        if (record->ts != NULL) {
-            isax_node_mbb_update_upwards(node, record->ts, index->settings->timeseries_size);
+        if (record->sax != NULL) {
+            isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+        }
+        else {
+            fprintf(stderr, "debug: missing sax for MBR update.\n");
         }
 
     }

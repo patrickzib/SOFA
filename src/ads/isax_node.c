@@ -47,11 +47,10 @@ isax_node * isax_leaf_node_init(int initial_buffer_size, isax_node *parent)
     node->buffer = init_node_buffer(initial_buffer_size);
     node->mask = 0;
     node->wedges = NULL;
-    node->mbb_min = NULL;
-    node->mbb_max = NULL;
-    node->mbb_valid = 0;
+    node->mbb_sax_min = NULL;
+    node->mbb_sax_max = NULL;
+    node->mbb_sax_valid = 0;
     node->is_leaf = 1;
 
     return node;
 }
-

@@ -76,15 +76,17 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
 
 float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_valid) {
-        ts_type mbb = ts_mbb_distance_sq(query, node->mbb_min, node->mbb_max,
-                                         index->settings->timeseries_size, bsf);
+    if (node->mbb_sax_valid) {
+        ts_type mbb = messi_minidist_range_raw(
+            index, paa,
+            node->mbb_sax_min, node->mbb_sax_max,
+            index->settings->max_sax_cardinalities, bsf);
         if (mbb >= bsf) {
             return bsf;
         }
     }
-
     COUNT_CHECKED_NODE()
+
     // If node has buffered data
     if (node->buffer != NULL) {
         int i;
@@ -119,7 +121,6 @@ float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_
 
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
             distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
                                          index->settings->max_sax_cardinalities, bsf);
 
@@ -173,6 +174,18 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
         } else {
             // If it is a leaf, check its real distance.
             if (n->node->is_leaf) {
+                if (n->node->mbb_sax_valid) {
+                    ts_type mbb = messi_minidist_range_raw(
+                        index, paa,
+                        n->node->mbb_sax_min, n->node->mbb_sax_max,
+                        index->settings->max_sax_cardinalities,
+                        bsf_result.distance);
+                    if (mbb >= bsf_result.distance) {
+                        fflush(stderr);
+                        free(n);
+                        continue;
+                    }
+                }
                 // *** ADAPTIVE SPLITTING ***
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
@@ -203,12 +216,25 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                     break;
                 }
             } else {
+                if (n->node->mbb_sax_valid) {
+                    ts_type mbb = messi_minidist_range_raw(
+                        index, paa,
+                        n->node->mbb_sax_min, n->node->mbb_sax_max,
+                        index->settings->max_sax_cardinalities,
+                        bsf_result.distance);
+                    fflush(stderr);
+                    if (mbb >= bsf_result.distance) {
+                        fflush(stderr);
+                        free(n);
+                        continue;
+                    }
+                }
                 // If it is an intermediate node calculate mindist for children
                 // and push them in the queue
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->left_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory_m(index, n->node->left_child, ts, paa,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -228,7 +254,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node->right_child, ts, paa,
+                        float distance = calculate_node_distance_inmemory_m(index, n->node->right_child, ts, paa,
                                                                           bsf_result.distance);
                         if (distance < bsf_result.distance) {
                             bsf_result.distance = distance;
@@ -610,7 +636,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -632,7 +658,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {
@@ -653,7 +679,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (n->node->right_child->isax_cardinalities != NULL) {
                     if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        float distance = calculate_node_distance_inmemory(index, n->node, ts, paa, bsfdisntance);
+                        float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                         if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((refind_answer_fonction_data *) rfdata)->lock_bsf);
                             if (distance < bsf_result->distance) {
@@ -1356,9 +1382,6 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     //LBDcalculationnumber=0;
     //RDcalculationnumber=0;
 
-
-
-
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
     bool *rdcbitmap = malloc(sizeof(bool) * index->sax_cache_size);
@@ -1890,7 +1913,7 @@ void *exact_search_worker_inmemory(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                 if (distance < bsfdisntance) {
                     //while( !__sync_bool_compare_and_swap((bsf_result->distance), bsfdisntance, distance))
                     //{
@@ -1999,7 +2022,7 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -2034,7 +2057,7 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
                         // If it is a leaf, check its real distance.
                         if (n->node->is_leaf) {
                             checks++;
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                                 if (distance < bsf_result->distance) {
@@ -2149,7 +2172,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2210,7 +2233,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         if (n->node->is_leaf) {
                             checks++;
 
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2325,7 +2348,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                 if (distance < bsfdisntance) {
                     pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                     if (distance < bsf_result->distance) {
@@ -2360,7 +2383,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
                         // If it is a leaf, check its real distance.
                         if (n->node->is_leaf) {
                             checks++;
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                            float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
                             if (distance < bsfdisntance) {
                                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                                 if (distance < bsf_result->distance) {
