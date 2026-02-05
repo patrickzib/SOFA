@@ -445,215 +445,15 @@ int main(int argc, char **argv) {
     cpu_set_t mask, get;
     CPU_ZERO(&mask);
     CPU_ZERO(&get);
-    if (cpu_control_type == 21) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        calculate_thread = 2;
-        maxquerythread = 2;
-    } else if (cpu_control_type == 22) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        calculate_thread = 2;
-        maxquerythread = 2;
-    } else if (cpu_control_type == 41) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        calculate_thread = 4;
-        maxquerythread = 4;
-    } else if (cpu_control_type == 42) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        calculate_thread = 4;
-        maxquerythread = 4;
-    } else if (cpu_control_type == 61) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        calculate_thread = 6;
-        maxquerythread = 6;
-    } else if (cpu_control_type == 62) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        calculate_thread = 6;
-        maxquerythread = 6;
-    } else if (cpu_control_type == 81) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        calculate_thread = 8;
-        maxquerythread = 8;
-    } else if (cpu_control_type == 82) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        calculate_thread = 8;
-        maxquerythread = 8;
-    } else if (cpu_control_type == 101) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(18, &mask);
-        calculate_thread = 10;
-        maxquerythread = 10;
-    } else if (cpu_control_type == 102) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        calculate_thread = 10;
-        maxquerythread = 10;
-    } else if (cpu_control_type == 121) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(22, &mask);
-        calculate_thread = 12;
-        maxquerythread = 12;
-    } else if (cpu_control_type == 122) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        calculate_thread = 12;
-        maxquerythread = 12;
-    } else if (cpu_control_type == 182) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        calculate_thread = 18;
-        maxquerythread = 18;
-    } else if (cpu_control_type == 242) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(19, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(21, &mask);
-        CPU_SET(22, &mask);
-        CPU_SET(23, &mask);
-        calculate_thread = 24;
-        maxquerythread = 24;
-    }
-        //new control type for gruenau1-server with 36 cores on 2 CPUs
-    else if (cpu_control_type == 362) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(19, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(21, &mask);
-        CPU_SET(22, &mask);
-        CPU_SET(23, &mask);
-        CPU_SET(24, &mask);
-        CPU_SET(25, &mask);
-        CPU_SET(26, &mask);
-        CPU_SET(27, &mask);
-        CPU_SET(28, &mask);
-        CPU_SET(29, &mask);
-        CPU_SET(30, &mask);
-        CPU_SET(31, &mask);
-        CPU_SET(32, &mask);
-        CPU_SET(33, &mask);
-        CPU_SET(34, &mask);
-        CPU_SET(35, &mask);
-        calculate_thread = 36;
-        maxquerythread = 36;
+    if (cpu_control_type >= 20 && (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
+        int thread_count = cpu_control_type / 10;
+        int step = (cpu_control_type % 10 == 1) ? 2 : 1;
+
+        for (int i = 0; i < thread_count; i++) {
+            CPU_SET(i * step, &mask);
+        }
+        calculate_thread = thread_count;
+        maxquerythread = thread_count;
     } else if (cpu_control_type == 1) {
         calculate_thread = 1;
         maxquerythread = 1;
@@ -662,7 +462,7 @@ int main(int argc, char **argv) {
         maxquerythread = cpu_control_type;
 
         for (int i = 0; i < cpu_control_type; i++) {
-            //CPU_SET(i, &mask);
+            CPU_SET(i, &mask);
         }
     }
 
@@ -684,68 +484,61 @@ int main(int argc, char **argv) {
         //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
         //create_wedges(idx, NULL);
 
-        char sanity_test = 0;
-        if (sanity_test) {
+        if (serial_scan) {
             cache_sax_file(idx);
-            isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                   &sanity_check_query);
-        } else {
-            if (serial_scan) {
-                cache_sax_file(idx);
-                if (knnlabel) {
-                    if (function_type == 0) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize,
-                                                   &exact_topk_serial); //ADS+ knn
-                    } else if (function_type == 1) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize,
-                                                   &exact_topk_serial_ParIS); //ParIS knn
-                    }
-
-                } else if (topk) {
-                    if (function_type == 0) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk_serial);//ADS+ topk
-                    } else if (function_type == 1) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk_serial_ParIS);//ParIS topk
-                    }
-                } else {
-                    if (function_type == 0) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial);//ADS+ similarity search
-                    } else if (function_type == 1) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial_ParIS);//ParIS similarity search
-                    } else if (function_type == 2) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
-                    } else if (function_type == 3) {
-                        //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
-                    }
+            if (knnlabel) {
+                if (function_type == 0) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize,
+                                               &exact_topk_serial); //ADS+ knn
+                } else if (function_type == 1) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize,
+                                               &exact_topk_serial_ParIS); //ParIS knn
                 }
 
+            } else if (topk) {
+                if (function_type == 0) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk_serial);//ADS+ topk
+                } else if (function_type == 1) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk_serial_ParIS);//ParIS topk
+                }
             } else {
-                if (knnlabel) {
-                    if (function_type == 0) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize, &exact_topk);
-                    }
+                if (function_type == 0) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial);//ADS+ similarity search
+                } else if (function_type == 1) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial_ParIS);//ParIS similarity search
+                } else if (function_type == 2) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
+                } else if (function_type == 3) {
+                    //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
+                }
+            }
 
-                } else if (topk) {
-                    if (function_type == 0) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk);
-                    }
+        } else {
+            if (knnlabel) {
+                if (function_type == 0) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize, &exact_topk);
+                }
+
+            } else if (topk) {
+                if (function_type == 0) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk);
+                }
+            } else {
+                if (function_type == 0) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search);
                 } else {
-                    if (function_type == 0) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search);
-                    } else {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_m);
-                    }
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_m);
                 }
             }
         }

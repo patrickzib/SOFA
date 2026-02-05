@@ -311,22 +311,28 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
     // If node has buffered data
     if (node->buffer != NULL) {
         int i;
+        int real_dist_counter = 0;
 
-        //__sync_fetch_and_add(&LBDcalculationnumber,node->buffer->partial_buffer_size);
         for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
-                                         index->settings->max_sax_cardinalities, bsf);
+            distmin = messi_minidist_raw(
+                index, paa, node->buffer->partial_sax_buffer[i],
+                index->settings->max_sax_cardinalities, bsf);
 
             if (distmin < bsf) {
-                float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
-                                   index->settings->timeseries_size, bsf);
+                float dist = ts_ed(
+                    query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                    index->settings->timeseries_size, bsf);
 
-                //__sync_fetch_and_add(&RDcalculationnumber,1);
+                real_dist_counter++;
+
                 if (dist < bsf) {
                     bsf = dist;
                 }
             }
         }
+
+        __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
+        __sync_fetch_and_add(&RDcalculationnumber, real_dist_counter);
     }
     return bsf;
 }
