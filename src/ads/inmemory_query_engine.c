@@ -192,15 +192,6 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
 float calculate_node_distance_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_sax_valid) {
-        ts_type mbb = messi_minidist_range_raw(
-            index, paa,
-            node->mbb_sax_min, node->mbb_sax_max,
-            index->settings->max_sax_cardinalities, bsf);
-        if (mbb >= bsf) {
-            return bsf;
-        }
-    }
     COUNT_CHECKED_NODE()
 
     // If node has buffered data
@@ -297,15 +288,6 @@ ts_type *calculate_node_ts_distance_inmemory(isax_index *index, isax_node *node,
 
 float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
     float distmin;
-    if (node->mbb_sax_valid) {
-        ts_type mbb = messi_minidist_range_raw(
-            index, paa,
-            node->mbb_sax_min, node->mbb_sax_max,
-            index->settings->max_sax_cardinalities, bsf);
-        if (mbb >= bsf) {
-            return bsf;
-        }
-    }
     COUNT_CHECKED_NODE()
 
     // If node has buffered data
@@ -331,8 +313,8 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
             }
         }
 
-        //__sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
-        //__sync_fetch_and_add(&RDcalculationnumber, real_dist_counter);
+        __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
+        __sync_fetch_and_add(&RDcalculationnumber, real_dist_counter);
     }
     return bsf;
 }
