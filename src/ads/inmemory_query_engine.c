@@ -331,8 +331,8 @@ float calculate_node_distance2_inmemory(isax_index *index, isax_node *node, ts_t
             }
         }
 
-        __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
-        __sync_fetch_and_add(&RDcalculationnumber, real_dist_counter);
+        //__sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
+        //__sync_fetch_and_add(&RDcalculationnumber, real_dist_counter);
     }
     return bsf;
 }
