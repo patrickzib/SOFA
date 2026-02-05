@@ -2186,14 +2186,14 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         int offset = rand() % N_PQUEUE;
         finished = true;
         for (int i = 0; i < N_PQUEUE; i++) {
-            if ((((MESSI_workerdata *) rfdata)->allqueuelabel[i+offset]) == 1) {
+            if ((((MESSI_workerdata *) rfdata)->allqueuelabel[i]) == 1) {
                 finished = false;
                 while (1) {
                     gettimeofday(&pq_remove_time_start, NULL);
 
-                    pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[i+offset]));
-                    n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[i+offset]);
-                    pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[i+offset]));
+                    pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[i]));
+                    n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[i]);
+                    pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[i]));
 
                     //calculate time for pq remove
                     gettimeofday(&current_time, NULL);
