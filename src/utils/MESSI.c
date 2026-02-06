@@ -454,15 +454,17 @@ int main(int argc, char **argv) {
         }
         calculate_thread = thread_count;
         maxquerythread = thread_count;
+
     } else if (cpu_control_type == 1) {
         calculate_thread = 1;
         maxquerythread = 1;
+
     } else {
         calculate_thread = cpu_control_type;
         maxquerythread = cpu_control_type;
 
         for (int i = 0; i < cpu_control_type; i++) {
-            CPU_SET(i, &mask);
+            // CPU_SET(i, &mask);
         }
     }
 
