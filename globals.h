@@ -193,12 +193,12 @@ void* LOGFILE;
                             stats_header_printed = 0;
         #define PRINT_STATS(result_distance) do { \
             if (!stats_header_printed) { \
-                printf("%4s %10s %10s %6s %13s %12s %12s %12s %14s %12s %12s\n", \
+                printf("%4s %10s %10s %6s %13s %14s %12s %12s %20s %12s %12s\n", \
                        "idx:", "input", "output", "nodes", "checked_nodes", "bytes_accessed", \
                        "loaded_nodes", "loaded_records", "approximate_distance", "distance", "total"); \
                 stats_header_printed = 1; \
             } \
-            printf("%10.3f %10.3f %6d %13d %12ld %12d %12lld %14.6f %12.6f %12.3f\n", \
+            printf("%10.0f %10.0f %6d %13d %14ld %12d %12lld %20.3f %12.3f %12.0f\n", \
                    total_input_time, total_output_time, \
                    total_tree_nodes, checked_nodes, \
                    BYTES_ACCESSED, loaded_nodes, \
@@ -214,10 +214,10 @@ void* LOGFILE;
             } \
         } while (0);
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
-        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%lf,%lf,%ld,%ld,%lf,", total_binning_time, total_indexing_time,\
+        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%.0f,%.0f,%ld,%ld,%.0f,", total_binning_time, total_indexing_time,\
         TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));
         #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, init time, tree pass time, pq insert time, pq remove time, lb dist time, real dist time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
-        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%lf, %lf, %lf, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %lf\n", \
+        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%.0f, %.0f, %.0f, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %.0f\n", \
         total_querying_time, total_init_time, \
         total_tree_pass_time, TOTAL_PQ_INSERT_TIME, TOTAL_PQ_REMOVE_TIME,\
         TOTAL_LB_DIST_CALC_TIME, TOTAL_REAL_DIST_CALC_TIME,\
@@ -227,7 +227,7 @@ void* LOGFILE;
         LBDcalculationnumber, APPROXIMATE, \
         result_distance, total_time);\
         total_querying_time_all += total_querying_time;\
-        total_time_all += total_time;\
+        total_time_all = total_time;\
         bytes_accessed_all += BYTES_ACCESSED;\
         approximate_all += APPROXIMATE;\
         result_distance_all += result_distance;\
@@ -259,7 +259,7 @@ void* LOGFILE;
         ((double)bytes_accessed_all / queries_size), ((double)loaded_nodes_all / queries_size), \
         ((double)loaded_records / queries_size), ((double)RDcalculationnumber_all / queries_size), \
         ((double)LBDcalculationnumber_all / queries_size), (approximate_all / queries_size),\
-        (result_distance_all / queries_size), (total_time_all / queries_size));
+        (result_distance_all / queries_size), total_time_all);
         #define min(x,y)  ( x<y?x:y )
         #define COUNT_NEW_NODE() __sync_fetch_and_add(&total_tree_nodes,1);
         #define COUNT_LOADED_NODE() loaded_nodes++;
