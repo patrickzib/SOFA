@@ -2094,22 +2094,23 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
         split_node(index, node, 1);
-        add_record_to_node_inmemory(index, node, record, leaf_size_check);
-    } else {
-        if (node->filename == NULL) {
-            create_node_filename(index, node, record);
+        if (!node->is_leaf) {
+            return add_record_to_node_inmemory(index, node, record, leaf_size_check);
         }
-        add_to_node_buffer(node->buffer, record, index->settings->n_segments,
-                           index->settings->timeseries_size);
-        node->leaf_size++;
-        if (record->sax != NULL) {
-            isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
-        }
-        else {
-            fprintf(stderr, "debug: missing sax for MBR update.\n");
-        }
-
     }
+    if (node->filename == NULL) {
+        create_node_filename(index, node, record);
+    }
+    add_to_node_buffer(node->buffer, record, index->settings->n_segments,
+                       index->settings->timeseries_size);
+    node->leaf_size++;
+    if (record->sax != NULL) {
+        isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+    }
+    else {
+        fprintf(stderr, "debug: missing sax for MBR update.\n");
+    }
+
     return node;
 }
 

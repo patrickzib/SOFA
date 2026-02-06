@@ -325,7 +325,9 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 void split_node(isax_index *index, isax_node *node, int inmemory) {
     int fallback_splitpoint = -1;
 
-    if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL && node->parent != NULL) {
+    if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL &&
+        node->parent != NULL && node->parent->split_data != NULL &&
+        node->parent->split_data->split_mask != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
             int current_cardinality = node->parent->split_data->split_mask[i];
