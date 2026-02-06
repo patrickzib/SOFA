@@ -742,8 +742,7 @@ isax_node * add_record_to_node(isax_index *index,
         node->leaf_size++;
         if (record->sax != NULL) {
             isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
-        }
-        else {
+        } else {
             fprintf(stderr, "debug: missing sax for MBR update.\n");
         }
 
