@@ -337,10 +337,11 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
             }
         }
         if (!can_split) {
-            fprintf(stderr, "Not enough different symbols to split.\n");
+            // fprintf(stderr, "Not enough different symbols to split.\n");
             return;
         }
     }
+
     // ******************************************************* 
     // CREATE TWO NEW NODES AND SET OLD ONE AS AN INTERMEDIATE
     // ******************************************************* 
@@ -425,13 +426,14 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
 
     if (split_data->splitpoint < 0 ||
         split_data->split_mask[split_data->splitpoint] + 1 > index->settings->sax_bit_cardinality - 1) {
-        // fprintf(stderr, "error 2: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
-        for (int s = 0; s < index->settings->n_segments; s++) {
+        fprintf(stderr, "error 2: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
+        return;
+        /*for (int s = 0; s < index->settings->n_segments; s++) {
             if (split_data->split_mask[s] + 1 <= index->settings->sax_bit_cardinality - 1) {
                 split_data->splitpoint = s;
                 break;
             }
-        }
+        }*/
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
