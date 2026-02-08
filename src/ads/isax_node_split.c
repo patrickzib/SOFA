@@ -368,13 +368,11 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 
 
 void split_node(isax_index *index, isax_node *node, int inmemory) {
-    int fallback_splitpoint = -1;
     if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
             if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
                 can_split = 1;
-                fallback_splitpoint = i;
                 break;
             }
         }
@@ -477,10 +475,10 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     if (split_data->splitpoint < 0 ||
         split_data->split_mask[split_data->splitpoint] + 1 > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "fallback: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
-        split_data->splitpoint = fallback_splitpoint; // simple_split_decision(split_data, index->settings);
+        split_data->splitpoint = simple_split_decision(split_data, index->settings);
     }
 
-    if (fallback_splitpoint == -1 ||
+    if (split_data->splitpoint == -1 ||
         ++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "fatal error: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
         exit(-1);
