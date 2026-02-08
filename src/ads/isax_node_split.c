@@ -266,6 +266,7 @@ int informed_split_decision(isax_node_split_data *split_data,
         if (new_bit_cardinality > settings->sax_bit_cardinality - 1) {
             continue;
         }
+
         // TODO: Optimize this.
         // Calculate break point for new cardinality, a bit complex.
         int break_point_id = records_buffer[0].sax[i];
