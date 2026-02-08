@@ -339,9 +339,9 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
         }
     }
 
-    // ******************************************************* 
+    // *******************************************************
     // CREATE TWO NEW NODES AND SET OLD ONE AS AN INTERMEDIATE
-    // ******************************************************* 
+    // *******************************************************
     if (!node->is_leaf) {
         fprintf(stderr, "sanity error: You are trying to split something weird.\n");
     }
@@ -382,7 +382,7 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
 
     // ********************************************************
     // SPLIT SAX BUFFERS CONTAINED IN *RAM* AND PUT IN CHILDREN
-    // ******************************************************** 
+    // ********************************************************
     // Split both sax and ts data and move to the new leafs
 
     append_split_buffer(split_buffer, &split_buffer_index,
@@ -424,7 +424,8 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
         split_data->splitpoint = fallback_splitpoint; // simple_split_decision(split_data, index->settings);
     }
 
-    if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
+    if (fallback_splitpoint == -1 ||
+        ++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "fatal error: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
         exit(-1);
     }

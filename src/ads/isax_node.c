@@ -32,6 +32,7 @@ isax_node * isax_leaf_node_init(int initial_buffer_size, isax_node *parent)
         fprintf(stderr,"error: could not allocate memory for new node.\n");
         return NULL;
     }
+
     node->has_partial_data_file = 0;
     node->has_full_data_file = 0;
     node->right_child = NULL;
