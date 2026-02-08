@@ -369,7 +369,7 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 
 
 int split_node(isax_index *index, isax_node *node, int inmemory) {
-    if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
+    /*if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
             if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
@@ -378,10 +378,10 @@ int split_node(isax_index *index, isax_node *node, int inmemory) {
             }
         }
         if (!can_split) {
-            // fprintf(stderr, "Not enough different symbols to split.\n");
+            fprintf(stderr, "Not enough different symbols to split.\n");
             return 0;
         }
-    }
+    }*/
 
     // *******************************************************
     // CREATE TWO NEW NODES AND SET OLD ONE AS AN INTERMEDIATE
