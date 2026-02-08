@@ -219,9 +219,12 @@ static int append_disk_buffers(isax_index *index, isax_node *node,
 }
 
 int simple_split_decision(isax_node_split_data *split_data, isax_index_settings *settings) {
-    int min_index = 0;
-    for (int i = 1; i < settings->n_segments; i++) {
-        if (split_data->split_mask[i] < split_data->split_mask[min_index]) {
+    int min_index = -1;
+    for (int i = 0; i < settings->n_segments; i++) {
+        if (split_data->split_mask[i] + 1 > settings->sax_bit_cardinality - 1) {
+            continue;
+        }
+        if (min_index == -1 || split_data->split_mask[i] < split_data->split_mask[min_index]) {
             min_index = i;
         }
     }
