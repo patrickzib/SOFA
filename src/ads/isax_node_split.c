@@ -324,26 +324,17 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 
 void split_node(isax_index *index, isax_node *node, int inmemory) {
     int fallback_splitpoint = -1;
-
-    if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL &&
-        node->parent != NULL && node->parent->split_data != NULL &&
-        node->parent->split_data->split_mask != NULL) {
+    if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
-            int current_cardinality = node->parent->split_data->split_mask[i];
-            if (current_cardinality >= index->settings->sax_bit_cardinality) {
-                continue;
-            }
-            int next_bit_index = index->settings->sax_bit_cardinality - current_cardinality - 1;
-            root_mask_type mask = index->settings->bit_masks[next_bit_index];
-            if ((node->mbb_sax_min[i] & mask) != (node->mbb_sax_max[i] & mask)) {
+            if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
                 can_split = 1;
                 fallback_splitpoint = i;
                 break;
             }
         }
         if (!can_split) {
-            // fprintf(stderr, "Not enough different symbols to split.\n");
+            fprintf(stderr, "Not enough different symbols to split.\n");
             return;
         }
     }
@@ -429,26 +420,17 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
 
     if (split_data->splitpoint < 0 ||
         split_data->split_mask[split_data->splitpoint] + 1 > index->settings->sax_bit_cardinality - 1) {
-        fprintf(stderr, "error 2: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
-        split_data->splitpoint = fallback_splitpoint;
-        // return;
-        /*for (int s = 0; s < index->settings->n_segments; s++) {
-            if (split_data->split_mask[s] + 1 <= index->settings->sax_bit_cardinality - 1) {
-                split_data->splitpoint = s;
-                break;
-            }
-        }*/
+        fprintf(stderr, "fallback: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
+        split_data->splitpoint = fallback_splitpoint; // simple_split_decision(split_data, index->settings);
     }
 
     if (++split_data->split_mask[split_data->splitpoint] > index->settings->sax_bit_cardinality - 1) {
-        fprintf(stderr, "error 2: cannot split in depth more than %d.\n",
-                index->settings->sax_bit_cardinality);
-        return;
+        fprintf(stderr, "fatal error: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
+        exit(-1);
     }
 
     root_mask_type mask = index->settings->bit_masks[
         index->settings->sax_bit_cardinality - split_data->split_mask[split_data->splitpoint] - 1];
-
 
     while (split_buffer_index > 0) {
         split_buffer_index--;
