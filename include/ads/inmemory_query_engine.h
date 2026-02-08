@@ -23,10 +23,13 @@ float calculate_node_distance_inmemory (isax_index *index, isax_node *node, ts_t
 ts_type* calculate_node_ts_distance_inmemory (isax_index *index, isax_node *node, ts_type *query , float bsf);
 float calculate_node_distance2_inmemory (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
 float calculate_node_distance2_inmemory_SFA (isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft, float bsf);
-void calculate_node_topk_inmemory_SFA (isax_index *index, isax_node *node, ts_type *query,ts_type *query_fft, pqueue_bsf *pq_bsf, pthread_rwlock_t *lock_queue );
+float calculate_node_distance2_inmemory_gettime (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf, unsigned long int *time_lb, unsigned long int *time_real);
+float calculate_node_distance2_inmemory_SFA_gettime (isax_index *index, isax_node *node, ts_type *query, ts_type *query_fft, float bsf, unsigned long int *time_lb, unsigned long int *time_real);
 query_result  approximate_search_inmemory (ts_type *ts, ts_type *paa, isax_index *index);
 query_result  approximate_search_inmemory_messi (ts_type *ts, ts_type *paa, isax_index *index) ;
 query_result  approximate_search_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_index *index);
+query_result  approximate_search_inmemory_pRecBuf_SFAD (ts_type *ts, ts_type *paa, isax_index *index, int kn);
+
 query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves);
 query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves,float bsf);
 query_result refine_answer_inmemory (ts_type *ts, ts_type *paa, isax_index *index, query_result approximate_bsf_result, float minimum_distance, int limit);

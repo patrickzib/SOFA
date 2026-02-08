@@ -41,8 +41,14 @@
   This functions allocates a two dimensional array
   of num_words rows and (num_symbols-1) columns
   The array will contain the discretization
-  intervals
-*/
+  intervals 
+*/    
+    static __m256 minvalv;
+    static __m256i bit1v;
+    static __m256i offsetvs;
+
+    static __m256i vectorsignbit;
+
 enum response sfa_bins_init(isax_index *index) {
     int num_symbols = index->settings->sax_alphabet_cardinality;
     int paa_segments = index->settings->paa_segments;
@@ -591,11 +597,40 @@ get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sa
     }
     return distance;
 }
+ts_type
+get_lb_distance_SFAD(const ts_type *bins, const float fft, const sax_type v, const sax_type c_c,
+                sax_type c_m, int max_cardinality, float factor) {
+    sax_type region_lower = (v << (c_m - c_c));
+    sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
 
+    ts_type distance = 0.0;
+    float breakpoint_lower = 0.0;
+    float breakpoint_upper = 0.0;
+
+    if (region_lower == 0) {
+        breakpoint_lower = MINVAL;
+    } else {
+        breakpoint_lower = bins[region_lower - 1];
+    }
+    if (region_upper == max_cardinality - 1) {
+        breakpoint_upper = MAXVAL;
+    } else {
+        breakpoint_upper = bins[region_upper];
+    }
+
+    if (breakpoint_lower > fft) {
+        ts_type value = breakpoint_lower - fft;
+        distance += factor * value * value;
+    } else if (breakpoint_upper < fft) {
+        ts_type value = (fft - breakpoint_upper);
+        distance += factor * value * value;
+    }
+    return distance;
+}
 /*
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
-ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
@@ -625,9 +660,12 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
     }
 
     for (; i < number_of_segments; i++) {
-        distance += get_lb_distance(
+        float assgfe=get_lb_distance(
                 index->bins[i], fft[i], sax[i], sax_cardinalities[i],
                 max_bit_cardinality, max_cardinality, 2.0);
+        distance += assgfe;
+
+        //printf("the i =%d the node isax is %d the sax_card is %d distance is %f\n",i,sax[i],sax_cardinalities[i],assgfe);
 
         if (distance > bsf) {
             return distance;
@@ -640,7 +678,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
 /*
     This function calculates a mindist (lower bounding dist.) between a query (FFT coeff.) and a SFA representation
 */
-ts_type minidist_fft_to_sfa_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->paa_segments;
@@ -733,9 +771,88 @@ long random_at_most(long max) {
     return x / bin_size;
 }
 
+ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities,
+                                          float bsf) {
+
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
+    int max_cardinality = index->settings->sax_alphabet_cardinality;
+    int number_of_segments = index->settings->paa_segments;
+
+    ts_type distance = 0.0;
+    int i = 0;
+
+    //special case: for not normalized time series, the first coefficient has to be treated specially
+    //for normalized data, this part is skipped
+    if (!index->settings->is_norm &&
+        (index->settings->coeff_number == 0 || index->coefficients[0] == 0)) {
+        distance += get_lb_distance(
+                index->bins[i], fft[i], sax[i], sax_cardinalities[i],
+                max_bit_cardinality, max_cardinality, 1.0);
+
+        if (distance > bsf) {
+            return distance;
+        }
+
+        //if (index->settings->coeff_number == 0) {
+        // if no variance-based coefficient selection is chosen
+        // skip the imaginary part of the first coefficient
+        i = 2;
+        //} else {
+        //    i += 1;
+        //}
+
+    }
+    sax_type c_cv[number_of_segments];
+    sax_type vv[number_of_segments];
+    sax_type c_m = max_bit_cardinality;
+    for (; i < number_of_segments; i++) {
+        c_cv[i] = sax_cardinalities[i];
+        vv[i] = sax[i];
+    }
+    sax_type region_lowerv[number_of_segments];
+    sax_type region_upperv[number_of_segments];
+    i = 2;
+    for (; i < number_of_segments; i++) {
+        region_lowerv[i] = (vv[i] << (c_m - c_cv[i]));
+        region_upperv[i] = (~((int) MAXFLOAT << (c_m - c_cv[i])) | region_lowerv[i]);
+    }
+
+    float breakpoint_lowerv[number_of_segments];
+    float breakpoint_upperv[number_of_segments];
+
+    for (; i < number_of_segments; i++) {
+        if (region_lowerv[i] == 0) {
+            breakpoint_lowerv[i] = MINVAL;
+        } else {
+            breakpoint_lowerv[i] = index->bins[i][region_lowerv[i] - 1];
+        }
+        if (region_upperv[i] == max_cardinality - 1) {
+            breakpoint_upperv[i] = MAXVAL;
+        } else {
+            breakpoint_upperv[i] = index->bins[i][region_upperv[i]];
+        }
+
+    }
+    ts_type valuev[number_of_segments];
+    for (; i < number_of_segments; i++) {
+        if (breakpoint_lowerv[i] > fft[i]) {
+            valuev[i] = breakpoint_lowerv[i] - fft[i];
+        } else if (breakpoint_upperv[i] < fft[i]) {
+            valuev[i] = (fft[i] - breakpoint_upperv[i]);
+        }
+        distance += 2 * valuev[i] * valuev[i];
+
+        if (distance > bsf) {
+            return distance;
+        }
+    }
+
+
+    return distance;
+}
 
 ts_type
-minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[16];
@@ -904,9 +1021,190 @@ minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_t
     return (distancef[0] + distancef[4]) * 2;
 
 }
+ts_type
+minidist_fft_to_isax_rawav2_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+
+    int region_upper[16], region_lower[16];
+    int offset = 0;
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
+
+    __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
+
+
+
+    //__m256i c_cv_0 = _mm256_set_epi32 ( sax_cardinalities[7] , sax_cardinalities[6] ,sax_cardinalities[5] ,sax_cardinalities[4] , sax_cardinalities[3] ,sax_cardinalities[2] ,sax_cardinalities[1],sax_cardinalities[0]);
+    //__m256i c_cv_1 = _mm256_set_epi32 ( sax_cardinalities[15], sax_cardinalities[14],sax_cardinalities[13],sax_cardinalities[12], sax_cardinalities[11],sax_cardinalities[10],sax_cardinalities[9],sax_cardinalities[8]);
+    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
+    __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
+    __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
+    __m128i sax_cardinalitiesv16_1 = _mm256_extractf128_si256(sax_cardinalitiesv16, 1);
+    __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
+    __m256i c_cv_1 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_1);
+
+    //__m256i v_0    = _mm256_set_epi32 (sax[7],sax[6],sax[5],sax[4],sax[3],sax[2],sax[1],sax[0]);
+    //__m256i v_1    = _mm256_set_epi32 (sax[15],sax[14],sax[13],sax[12],sax[11],sax[10],sax[9],sax[8]);
+    __m128i saxv8 = _mm_lddqu_si128((const void *) sax);
+    __m256i saxv16 = _mm256_cvtepu8_epi16(saxv8);
+    __m128i saxv16_0 = _mm256_extractf128_si256(saxv16, 0);
+    __m128i saxv16_1 = _mm256_extractf128_si256(saxv16, 1);
+    __m256i v_0 = _mm256_cvtepu16_epi32(saxv16_0);
+    __m256i v_1 = _mm256_cvtepu16_epi32(saxv16_1);
+
+
+    __m256i c_m = _mm256_set1_epi32(max_bit_cardinality);
+    __m256i cm_ccv_0 = _mm256_sub_epi32(c_m, c_cv_0);
+    __m256i cm_ccv_1 = _mm256_sub_epi32(c_m, c_cv_1);
+
+    //__m256i _mm256_set_epi32 (int e7, int e6, int e5, int e4, int e3, int e2, int e1, int e0)
+    //  __m256i _mm256_set1_epi32 (int a)
+    __m256i region_lowerv_0 = _mm256_srlv_epi32(v_0, cm_ccv_0);
+    __m256i region_lowerv_1 = _mm256_srlv_epi32(v_1, cm_ccv_1);
+    region_lowerv_0 = _mm256_sllv_epi32(region_lowerv_0, cm_ccv_0);
+    region_lowerv_1 = _mm256_sllv_epi32(region_lowerv_1, cm_ccv_1);
+
+
+    __m256i v1 = _mm256_andnot_si256(_mm256_setzero_si256(), vectorsignbit);
+
+    __m256i region_upperv_0 = _mm256_sllv_epi32(v1, cm_ccv_0);
+    __m256i region_upperv_1 = _mm256_sllv_epi32(v1, cm_ccv_1);
+    region_upperv_0 = _mm256_andnot_si256(region_upperv_0, vectorsignbit);
+    region_upperv_1 = _mm256_andnot_si256(region_upperv_1, vectorsignbit);
+
+    region_upperv_0 = _mm256_or_si256(region_upperv_0, region_lowerv_0);
+    region_upperv_1 = _mm256_or_si256(region_upperv_1, region_lowerv_1);
+
+    //_mm256_storeu_si256 ((void*)&(region_lower[0]),region_lowerv_0);
+    //_mm256_storeu_si256 ((void*)&(region_lower[8]),region_lowerv_1);
+    //_mm256_storeu_si256 ((void*)&(region_upper[0]),region_upperv_0);
+    //_mm256_storeu_si256 ((void*)&(region_upper[8]),region_upperv_1);
+
+
+    //lower
+
+    __m256i lower_juge_zerov_0 = _mm256_cmpeq_epi32(region_lowerv_0, _mm256_setzero_si256());
+    __m256i lower_juge_zerov_1 = _mm256_cmpeq_epi32(region_lowerv_1, _mm256_setzero_si256());
+
+    __m256i lower_juge_nzerov_0 = _mm256_andnot_si256(lower_juge_zerov_0, vectorsignbit);
+    __m256i lower_juge_nzerov_1 = _mm256_andnot_si256(lower_juge_zerov_1, vectorsignbit);
+
+    __m256 minvalv = _mm256_set1_ps(MINVAL);
+    __m256i bitsizev = _mm256_set1_epi16((short) index->settings->sax_alphabet_cardinality - 1);
+    __m256i bit1v = _mm256_set1_epi32(1);
+    //__m256i bit8v = _mm256_set1_epi32(8);
+    __m256i offsetvs = _mm256_set_epi16(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+    //__m256i offsetv1=_mm256_set_epi32();
+    //__m256i offsetv1=_mm256_add_epi32(offsetv0,bit8v);
+
+    __m256i vsssssoffsetvs2 = _mm256_mullo_epi16(bitsizev, offsetvs);
+    __m128i offsetv0s = _mm256_extractf128_si256(vsssssoffsetvs2, 0);
+    __m128i offsetv1s = _mm256_extractf128_si256(vsssssoffsetvs2, 1);
+    __m256i offsetv0 = _mm256_cvtepu16_epi32(offsetv0s);
+    __m256i offsetv1 = _mm256_cvtepu16_epi32(offsetv1s);
+    //__m256i offsetvv0=_mm256_mul_epi32 (offsetv0, bitsizev);
+    //__m256i offsetvv1=_mm256_mul_epi32 (offsetv1, bitsizev);
+
+
+    __m256i region_lowerbinv0 = _mm256_add_epi32(offsetv0, region_lowerv_0);
+    __m256i region_lowerbinv1 = _mm256_add_epi32(offsetv1, region_lowerv_1);
+    region_lowerbinv0 = _mm256_sub_epi32(region_lowerbinv0, bit1v);
+    region_lowerbinv1 = _mm256_sub_epi32(region_lowerbinv1, bit1v);
+    //__m256 lsax_breakpoints_shiftv_0 _mm256_i32gather_ps (sax_breakpoints, __m256i vindex, const int scale)
+    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(index->binsv, region_lowerbinv0, 4);
+
+    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(index->binsv, region_lowerbinv1, 4);
+
+    __m256 breakpoint_lowerv_0 = (__m256) _mm256_or_si256(_mm256_and_si256(lower_juge_zerov_0, (__m256i) minvalv),
+                                                          _mm256_and_si256(lower_juge_nzerov_0,
+                                                                           (__m256i) lsax_breakpoints_shiftv_0));
+    __m256 breakpoint_lowerv_1 = (__m256) _mm256_or_si256(_mm256_and_si256(lower_juge_zerov_1, (__m256i) minvalv),
+                                                          _mm256_and_si256(lower_juge_nzerov_1,
+                                                                           (__m256i) lsax_breakpoints_shiftv_1));
+
+    //uper        
+    __m256i region_upperbinv0 = _mm256_add_epi32(offsetv0, region_upperv_0);
+    __m256i region_upperbinv1 = _mm256_add_epi32(offsetv1, region_upperv_1);
+    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(index->binsv, region_upperbinv0, 4);
+    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(index->binsv, region_upperbinv1, 4);
+
+    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+    __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
+    __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
+
+    __m256 breakpoint_upperv_0 = (__m256) _mm256_or_si256(
+            _mm256_and_si256(upper_juge_maxv_0, (__m256i) _mm256_set1_ps(MAXVAL)),
+            _mm256_and_si256(upper_juge_nmaxv_0, (__m256i) usax_breakpoints_shiftv_0));
+    __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
+            _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
+            _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
+
+    //dis
+    __m256 paav_0, paav_1;
+
+
+    paav_0 = _mm256_loadu_ps(fft);
+    paav_1 = _mm256_loadu_ps(&(fft[8]));
+
+
+    __m256 dis_juge_upv_0 = _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_GT_OS);
+    __m256 dis_juge_upv_1 = _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_GT_OS);
+
+
+    __m256 dis_juge_lov_0 = (__m256) _mm256_and_si256((__m256i) _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_NGT_US),
+                                                      (__m256i) _mm256_cmp_ps(breakpoint_upperv_0, paav_0, _CMP_LT_OS));
+    __m256 dis_juge_lov_1 = (__m256) _mm256_and_si256((__m256i) _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_NGT_US),
+                                                      (__m256i) _mm256_cmp_ps(breakpoint_upperv_1, paav_1, _CMP_LT_OS));
+
+    __m256 dis_juge_elv_0 = (__m256) _mm256_andnot_si256(
+            _mm256_or_si256((__m256i) dis_juge_upv_0, (__m256i) dis_juge_lov_0), vectorsignbit);
+    __m256 dis_juge_elv_1 = (__m256) _mm256_andnot_si256(
+            _mm256_or_si256((__m256i) dis_juge_upv_1, (__m256i) dis_juge_lov_1), vectorsignbit);
+
+    __m256 dis_lowv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_0, paav_0),
+                                      _mm256_sub_ps(breakpoint_lowerv_0, paav_0));
+    __m256 dis_lowv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_1, paav_1),
+                                      _mm256_sub_ps(breakpoint_lowerv_1, paav_1));
+    __m256 dis_uppv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_0, paav_0),
+                                      _mm256_sub_ps(breakpoint_upperv_0, paav_0));
+    __m256 dis_uppv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_1, paav_1),
+                                      _mm256_sub_ps(breakpoint_upperv_1, paav_1));
+
+
+    __m256 distancev_0 = (__m256) _mm256_or_si256(
+            _mm256_or_si256(_mm256_and_si256((__m256i) dis_juge_upv_0, (__m256i) dis_lowv_0),
+                            _mm256_and_si256((__m256i) dis_juge_lov_0, (__m256i) dis_uppv_0)),
+            _mm256_and_si256((__m256i) dis_juge_elv_0, (__m256i) _mm256_set1_ps(0.0)));
+    __m256 distancev_1 = (__m256) _mm256_or_si256(
+            _mm256_or_si256(_mm256_and_si256((__m256i) dis_juge_upv_1, (__m256i) dis_lowv_1),
+                            _mm256_and_si256((__m256i) dis_juge_lov_1, (__m256i) dis_uppv_1)),
+            _mm256_and_si256((__m256i) dis_juge_elv_1, (__m256i) _mm256_set1_ps(0.0)));
+
+    //__m256 distancev = _mm256_add_ps(distancev_0, distancev_1);
+    //__m256 distancev2 = _mm256_hadd_ps(distancev, distancev);
+    //__m256 distancevf = _mm256_hadd_ps(distancev2, distancev2);
+
+
+    //_mm256_storeu_ps(distancef, distancevf);
+    //_mm256_storeu_ps (&checkvalue[8] ,distancev_1);
+    //_mm256_storeu_si256 ((void*)&(offsetvvvv[0]),offsetv0);
+    // _mm256_storeu_si256 ((void*)&(offsetvvvv[8]),offsetv1);
+    //for (int i = 0; i < 16; i++)
+    //{
+    //  printf("the number is victor [%d] %d\n",i,offsetvvvv[i]);
+    // printf("the number is [%d] %d\n",i,i*(index->settings->sax_alphabet_cardinality-1));
+
+    // }
+    //printf("distance is %f!!!!!!!\n",(distancef[0]+distancef[4])*2);
+    //sleep(5);
+    __m512 distance16 = _mm512_castps256_ps512(distancev_0);
+
+    distance16 = _mm512_insertf32x8(distance16, distancev_1, 1); 
+    return  _mm512_reduce_add_ps(distance16) * 2;
+
+}
 
 ts_type
-minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[8];
@@ -1088,7 +1386,7 @@ minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
 
 
 ts_type
-minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
 
     int region_upper[16], region_lower[16];
     float distancef[8], distancef2[8];
@@ -1252,5 +1550,191 @@ minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_
     _mm256_storeu_ps(distancef2, distancevf);
 
     return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
+
+}
+
+ts_type
+minidist_fft_to_isax_rawev2_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
+
+    int region_upper[16], region_lower[16];
+    int offset = 0;
+    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
+    __m256i bitsizev = _mm256_set1_epi16((short) index->settings->sax_alphabet_cardinality - 1);
+
+
+    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
+    __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
+    __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
+    __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
+
+    __m128i saxv8 = _mm_lddqu_si128((const void *) sax);
+    __m256i saxv16 = _mm256_cvtepu8_epi16(saxv8);
+    __m128i saxv16_0 = _mm256_extractf128_si256(saxv16, 0);
+
+    __m256i v_0 = _mm256_cvtepu16_epi32(saxv16_0);
+
+
+    __m256i c_m = _mm256_set1_epi32(max_bit_cardinality);
+    __m256i cm_ccv_0 = _mm256_sub_epi32(c_m, c_cv_0);
+
+    __m256i region_lowerv_0 = _mm256_srlv_epi32(v_0, cm_ccv_0);
+
+    region_lowerv_0 = _mm256_sllv_epi32(region_lowerv_0, cm_ccv_0);
+
+
+    __m256i v1 = _mm256_andnot_si256(_mm256_setzero_si256(), vectorsignbit);
+
+    __m256i region_upperv_0 = _mm256_sllv_epi32(v1, cm_ccv_0);
+
+    region_upperv_0 = _mm256_andnot_si256(region_upperv_0, vectorsignbit);
+    region_upperv_0 = _mm256_or_si256(region_upperv_0, region_lowerv_0);
+
+    //lower
+    __m256i lower_juge_zerov_0 = _mm256_cmpeq_epi32(region_lowerv_0, _mm256_setzero_si256());
+
+
+    __m256i lower_juge_nzerov_0 = _mm256_andnot_si256(lower_juge_zerov_0, vectorsignbit);
+
+
+    __m256i vsssssoffsetvs2 = _mm256_mullo_epi16(bitsizev, offsetvs);
+    __m128i offsetv0s = _mm256_extractf128_si256(vsssssoffsetvs2, 0);
+
+    __m128i offsetv1s = _mm256_extractf128_si256(vsssssoffsetvs2, 1);
+    __m256i offsetv0 = _mm256_cvtepu16_epi32(offsetv0s);
+
+    __m256i region_lowerbinv0 = _mm256_add_epi32(offsetv0, region_lowerv_0);
+
+    region_lowerbinv0 = _mm256_sub_epi32(region_lowerbinv0, bit1v);
+
+    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(index->binsv, region_lowerbinv0, 4);
+
+    __m256 breakpoint_lowerv_0 = (__m256) _mm256_or_si256(_mm256_and_si256(lower_juge_zerov_0, (__m256i) minvalv),
+                                                          _mm256_and_si256(lower_juge_nzerov_0,
+                                                                           (__m256i) lsax_breakpoints_shiftv_0));
+
+
+    //upper
+    __m256i region_upperbinv0 = _mm256_add_epi32(offsetv0, region_upperv_0);
+
+    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(index->binsv, region_upperbinv0, 4);
+
+    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+
+    __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
+
+    __m256 breakpoint_upperv_0 = (__m256) _mm256_or_si256(
+            _mm256_and_si256(upper_juge_maxv_0, (__m256i) _mm256_set1_ps(MAXVAL)),
+            _mm256_and_si256(upper_juge_nmaxv_0, (__m256i) usax_breakpoints_shiftv_0));
+
+
+    //dis
+    __m256 paav_0, paav_1;
+
+    paav_0 = _mm256_loadu_ps(fft);
+
+    __m256 dis_juge_upv_0 = _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_GT_OS);
+
+    __m256 dis_juge_lov_0 = (__m256) _mm256_and_si256((__m256i) _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_NGT_US),
+                                                      (__m256i) _mm256_cmp_ps(breakpoint_upperv_0, paav_0, _CMP_LT_OS));
+
+    __m256 dis_juge_elv_0 = (__m256) _mm256_andnot_si256(
+            _mm256_or_si256((__m256i) dis_juge_upv_0, (__m256i) dis_juge_lov_0), vectorsignbit);
+
+    __m256 dis_lowv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_0, paav_0),
+                                      _mm256_sub_ps(breakpoint_lowerv_0, paav_0));
+    __m256 dis_uppv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_0, paav_0),
+                                      _mm256_sub_ps(breakpoint_upperv_0, paav_0));
+
+
+    __m256 distancev_0 = (__m256) _mm256_or_si256(
+            _mm256_or_si256(_mm256_and_si256((__m256i) dis_juge_upv_0, (__m256i) dis_lowv_0),
+                            _mm256_and_si256((__m256i) dis_juge_lov_0, (__m256i) dis_uppv_0)),
+            _mm256_and_si256((__m256i) dis_juge_elv_0, (__m256i) _mm256_set1_ps(0.0)));
+
+    //__m256 distancev2 = _mm256_hadd_ps(distancev_0, distancev_0);
+    //__m256 distancevf = _mm256_hadd_ps(distancev2, distancev2);
+
+    //_mm256_storeu_ps(distancef, distancevf);
+    //if ((distancef[0] + distancef[4]) * 2 > bsf) {
+     //   return (distancef[0] + distancef[4]) * 2;
+    //}
+    __m512 distance161 = _mm512_castps256_ps512(distancev_0);
+
+    //distance16 = _mm512_insertf32x8(distance16, distancev_1, 1); 
+    float tempbsf=_mm512_reduce_add_ps(distance161) * 2;
+    if(tempbsf>bsf)
+    {
+        return tempbsf;
+    }
+
+
+
+    __m128i sax_cardinalitiesv16_1 = _mm256_extractf128_si256(sax_cardinalitiesv16, 1);
+    __m256i c_cv_1 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_1);
+    __m128i saxv16_1 = _mm256_extractf128_si256(saxv16, 1);
+    __m256i v_1 = _mm256_cvtepu16_epi32(saxv16_1);
+    __m256i cm_ccv_1 = _mm256_sub_epi32(c_m, c_cv_1);
+    __m256i region_lowerv_1 = _mm256_srlv_epi32(v_1, cm_ccv_1);
+    region_lowerv_1 = _mm256_sllv_epi32(region_lowerv_1, cm_ccv_1);
+    __m256i region_upperv_1 = _mm256_sllv_epi32(v1, cm_ccv_1);
+    region_upperv_1 = _mm256_andnot_si256(region_upperv_1, vectorsignbit);
+    region_upperv_1 = _mm256_or_si256(region_upperv_1, region_lowerv_1);
+    __m256i lower_juge_zerov_1 = _mm256_cmpeq_epi32(region_lowerv_1, _mm256_setzero_si256());
+    __m256i lower_juge_nzerov_1 = _mm256_andnot_si256(lower_juge_zerov_1, vectorsignbit);
+    __m256i offsetv1 = _mm256_cvtepu16_epi32(offsetv1s);
+    __m256i region_lowerbinv1 = _mm256_add_epi32(offsetv1, region_lowerv_1);
+    region_lowerbinv1 = _mm256_sub_epi32(region_lowerbinv1, bit1v);
+    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(index->binsv, region_lowerbinv1, 4);
+    __m256 breakpoint_lowerv_1 = (__m256) _mm256_or_si256(_mm256_and_si256(lower_juge_zerov_1, (__m256i) minvalv),
+                                                          _mm256_and_si256(lower_juge_nzerov_1,
+                                                                           (__m256i) lsax_breakpoints_shiftv_1));
+
+    __m256i region_upperbinv1 = _mm256_add_epi32(offsetv1, region_upperv_1);
+    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(index->binsv, region_upperbinv1, 4);
+    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1, _mm256_set1_epi32(index->settings->sax_alphabet_cardinality - 1));
+    __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
+    __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
+            _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
+            _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
+    paav_1 = _mm256_loadu_ps(&(fft[8]));
+    __m256 dis_juge_upv_1 = _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_GT_OS);
+
+
+    __m256 dis_juge_lov_1 = (__m256) _mm256_and_si256((__m256i) _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_NGT_US),
+                                                      (__m256i) _mm256_cmp_ps(breakpoint_upperv_1, paav_1, _CMP_LT_OS));
+
+    __m256 dis_juge_elv_1 = (__m256) _mm256_andnot_si256(
+            _mm256_or_si256((__m256i) dis_juge_upv_1, (__m256i) dis_juge_lov_1), vectorsignbit);
+
+    __m256 dis_lowv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_1, paav_1),
+                                      _mm256_sub_ps(breakpoint_lowerv_1, paav_1));
+
+    __m256 dis_uppv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_1, paav_1),
+                                      _mm256_sub_ps(breakpoint_upperv_1, paav_1));
+
+    __m256 distancev_1 = (__m256) _mm256_or_si256(
+            _mm256_or_si256(_mm256_and_si256((__m256i) dis_juge_upv_1, (__m256i) dis_lowv_1),
+                            _mm256_and_si256((__m256i) dis_juge_lov_1, (__m256i) dis_uppv_1)),
+            _mm256_and_si256((__m256i) dis_juge_elv_1, (__m256i) _mm256_set1_ps(0.0)));
+
+
+    //distancev2 = _mm256_hadd_ps(distancev_1, distancev_1);
+    //distancevf = _mm256_hadd_ps(distancev2, distancev2);
+    //_mm256_storeu_ps(distancef2, distancevf);
+
+    //return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
+    distance161 = _mm512_castps256_ps512(distancev_1);
+
+    //distance16 = _mm512_insertf32x8(distance16, distancev_1, 1); 
+     return tempbsf+_mm512_reduce_add_ps(distance161) * 2;
+}
+    
+void parameterinitial()
+{
+        minvalv  = _mm256_set1_ps(MINVAL);
+            vectorsignbit = _mm256_set1_epi32(0xffffffff);
+        bit1v = _mm256_set1_epi32(1);
+
+    offsetvs  = _mm256_set_epi16(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
 
 }

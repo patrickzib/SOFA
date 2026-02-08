@@ -785,6 +785,8 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     FILE *ifile;
     COUNT_INPUT_TIME_START
+    COUNT_INDEXING_TIME_START
+
     ifile = fopen(ifilename, "rb");
     COUNT_INPUT_TIME_END
     if (ifile == NULL) {
@@ -822,6 +824,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     strcpy(index->settings->raw_filename, ifilename);
 
     COUNT_INPUT_TIME_START
+
     if (filetype_int) {
 
         fprintf(stderr, ">>> Reading file as int8\n");
@@ -844,9 +847,8 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
             znorm(&rawfile[i], index->settings->timeseries_size);
         }
     }
-    COUNT_INPUT_TIME_END
 
-    COUNT_INDEXING_TIME_START
+    COUNT_INPUT_TIME_END
     pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
             lock_firstnode = PTHREAD_MUTEX_INITIALIZER, lock_disk = PTHREAD_MUTEX_INITIALIZER, lock_fft_plan = PTHREAD_MUTEX_INITIALIZER;
 
@@ -857,6 +859,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
     // set the thread on decided cpu
+
     COUNT_OUTPUT_TIME_START
 
     for (i = 0; i < maxquerythread; i++) {
@@ -899,6 +902,262 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     fprintf(stderr, ">>> Finished indexing\n");
     COUNT_OUTPUT_TIME_END
 }
+
+
+void index_creation_pRecBuf_SFAD(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm, isax_index *index, int kn) {
+    fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+
+    FILE *ifile;
+    COUNT_INPUT_TIME_START
+    COUNT_INDEXING_TIME_START
+
+    ifile = fopen(ifilename, "rb");
+    COUNT_INPUT_TIME_END
+    if (ifile == NULL) {
+        fprintf(stderr, "File %s not found!\n", ifilename);
+        exit(-1);
+    }
+    fseek(ifile, 0L, SEEK_END);
+    file_position_type sz = (file_position_type) ftell(ifile);
+    file_position_type total_records = sz / index->settings->ts_byte_size;
+    fseek(ifile, 0L, SEEK_SET);
+
+    if (total_records < ts_num) {
+        fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);
+        exit(-1);
+    }
+    index->sax_file = NULL;
+
+    // long int ts_loaded = 0;
+    int i;
+    int node_counter = 0;
+    pthread_t threadid[maxquerythread];
+    buffer_data_inmemory *input_data = malloc(sizeof(buffer_data_inmemory) * (maxquerythread));
+
+    file_type *rawfile_int32;
+    if (filetype_int) {
+        rawfile_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size * ts_num);
+    }
+    rawfile = malloc(sizeof(ts_type) * index->settings->timeseries_size * ts_num);
+
+    index->sax_cache = malloc(sizeof(sax_type) * index->settings->paa_segments * ts_num);
+    pthread_barrier_t lock_barrier1;
+    pthread_barrier_init(&lock_barrier1, NULL, maxquerythread);
+
+    index->settings->raw_filename = malloc(256);
+    strcpy(index->settings->raw_filename, ifilename);
+
+    COUNT_INPUT_TIME_START
+
+    if (filetype_int) {
+
+        fprintf(stderr, ">>> Reading file as int8\n");
+        fread(rawfile_int32, sizeof(file_type), index->settings->timeseries_size * ts_num, ifile);
+
+        fprintf(stderr, ">>> Converting int8 to float\n");
+        for (long int i = 0; i < index->settings->timeseries_size * ts_num; i++) {
+            // Convert int to float type
+            rawfile[i] = (ts_type) rawfile_int32[i];
+        }
+        fprintf(stderr, ">>> Conversions done.\n");
+    } else {
+        fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
+    }
+
+    // apply z-normalization
+    if (apply_znorm) {
+        fprintf(stderr, ">>> Applying z-norm\n");
+        for (long int i = 0; i < index->settings->timeseries_size * ts_num; i += index->settings->timeseries_size) {
+            znorm(&rawfile[i], index->settings->timeseries_size);
+        }
+    }
+
+    COUNT_INPUT_TIME_END
+    pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
+            lock_firstnode = PTHREAD_MUTEX_INITIALIZER, lock_disk = PTHREAD_MUTEX_INITIALIZER, lock_fft_plan = PTHREAD_MUTEX_INITIALIZER;
+
+    destroy_fbl(index->fbl);
+    index->fbl = (first_buffer_layer *) initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
+                                                           pow(2, index->settings->paa_segments),
+                                                           index->settings->max_total_buffer_size +
+                                                           DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
+                                                           index);
+    // set the thread on decided cpu
+
+    COUNT_OUTPUT_TIME_START
+
+    for (i = 0; i < maxquerythread; i++) {
+        input_data[i].index = index;
+        input_data[i].lock_fbl = &lockfbl;
+        input_data[i].lock_record = &lock_record;
+        input_data[i].lock_firstnode = &lock_firstnode;
+        input_data[i].lock_index = &lock_index;
+        input_data[i].lock_fft_plan = &lock_fft_plan;
+        input_data[i].ts = rawfile;
+        input_data[i].lock_disk = &lock_disk;
+        input_data[i].workernumber = i;
+        input_data[i].total_workernumber = maxquerythread;
+        input_data[i].start_number = i * (ts_num / maxquerythread);
+        input_data[i].stop_number = (i + 1) * (ts_num / maxquerythread);
+        input_data[i].node_counter = &node_counter;
+        input_data[i].lock_barrier1 = &lock_barrier1;
+        input_data[i].kn=kn;
+
+    }
+    //printf("this is check point 1\n");
+    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (ts_num / maxquerythread);
+    input_data[maxquerythread - 1].stop_number = ts_num;
+    for (i = 0; i < maxquerythread; i++) {
+        pthread_create(&(threadid[i]), NULL, index_creation_pRecBuf_SFAD_worker, (void *) &(input_data[i]));
+    }
+    // wait for the finish of other threads
+    for (i = 0; i < maxquerythread; i++) {
+        pthread_join(threadid[i], NULL);
+    }
+    //printf("this is check point 2\n");
+    __sync_fetch_and_add(&(index->total_records), ts_num);
+    index->sax_cache_size = index->total_records;
+    fclose(ifile);
+    free(input_data);
+
+    if (filetype_int) {
+        free(rawfile_int32);
+    }
+
+    COUNT_INDEXING_TIME_END
+
+    fprintf(stderr, ">>> Finished indexing\n");
+    COUNT_OUTPUT_TIME_END
+}
+
+
+//void index_creation_pRecBuf_new(const char *ifilename, long int ts_num, isax_index *index) {
+//    fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+//    FILE *ifile;
+//    COUNT_INPUT_TIME_START
+//    ifile = fopen(ifilename, "rb");
+//    COUNT_INPUT_TIME_END
+//    if (ifile == NULL) {
+//        fprintf(stderr, "File %s not found!\n", ifilename);
+//        exit(-1);
+//    }
+//    fseek(ifile, 0L, SEEK_END);
+//    file_position_type sz = (file_position_type) ftell(ifile);
+//    file_position_type total_records = sz / index->settings->ts_byte_size;
+//    fseek(ifile, 0L, SEEK_SET);
+//
+//    if (total_records < ts_num) {
+//        fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);
+//        exit(-1);
+//    }
+//    index->sax_file = NULL;
+//
+//    long int ts_loaded = 0;
+//    unsigned long shared_start_number = 0;
+//    int i;
+//    int node_counter = 0;
+//    pthread_t threadid[maxquerythread];
+//    buffer_data_inmemory *input_data = malloc(sizeof(buffer_data_inmemory) * (maxquerythread));
+//    rawfile = malloc(sizeof(ts_type) * index->settings->timeseries_size * ts_num);
+//    index->sax_cache = malloc(sizeof(sax_type) * index->settings->paa_segments * ts_num);
+//    pthread_barrier_t lock_barrier1, lock_barrier2;
+//    pthread_barrier_init(&lock_barrier1, NULL, maxquerythread + 1);
+//    pthread_barrier_init(&lock_barrier2, NULL, maxquerythread + 1);
+//    index->settings->raw_filename = malloc(256);
+//    strcpy(index->settings->raw_filename, ifilename);
+//    COUNT_INPUT_TIME_START
+//    int read_number = fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
+//    COUNT_INPUT_TIME_END
+//    pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
+//            lock_firstnode = PTHREAD_MUTEX_INITIALIZER, lock_disk = PTHREAD_MUTEX_INITIALIZER;
+//
+//    destroy_fbl(index->fbl);
+//    index->fbl = (first_buffer_layer *) initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
+//                                                           pow(2, index->settings->paa_segments),
+//                                                           index->settings->max_total_buffer_size +
+//                                                           DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
+//                                                           index);
+//    // set the thread on decided cpu
+//
+//
+//
+//    COUNT_OUTPUT_TIME_START
+//    int nodeid[index->fbl->number_of_buffers];
+//    int nodesize[index->fbl->number_of_buffers];
+//
+//    for (i = 0; i < maxquerythread; i++) {
+//        input_data[i].index = index;
+//        input_data[i].lock_fbl = &lockfbl;
+//        input_data[i].lock_record = &lock_record;
+//        input_data[i].lock_firstnode = &lock_firstnode;
+//        input_data[i].lock_index = &lock_index;
+//        input_data[i].ts = rawfile;
+//        input_data[i].lock_disk = &lock_disk;
+//        input_data[i].workernumber = i;
+//        input_data[i].total_workernumber = maxquerythread;
+//        input_data[i].start_number = i * (ts_num / maxquerythread);
+//        input_data[i].shared_start_number = &shared_start_number;
+//        input_data[i].stop_number = ts_num;
+//        input_data[i].node_counter = &node_counter;
+//        input_data[i].lock_barrier1 = &lock_barrier1;
+//        input_data[i].lock_barrier2 = &lock_barrier2;
+//        input_data[i].nodeid = nodeid;
+//    }
+//    for (i = 0; i < maxquerythread; i++) {
+//        pthread_create(&(threadid[i]), NULL, index_creation_pRecBuf_worker_new, (void *) &(input_data[i]));
+//    }
+//
+//    pthread_barrier_wait(&lock_barrier1);
+//    /*  #pragma omp parallel for num_threads(maxquerythread)
+//     for (int i = 0; i < index->fbl->number_of_buffers; i++)
+//     {
+//         if(index->fbl->soft_buffers[i].initialized)
+//         {
+//             nodeid[i]=i;
+//             nodesize[i]=index->fbl->soft_buffers[i].buffer_size;
+//         }
+//         else
+//         {
+//             nodeid[i]=i;
+//             nodesize[i]=0;
+//         }
+//     }
+//
+//            for (int i = 0; i < index->fbl->number_of_buffers; i++)
+//             {
+//                 int maxval=nodesize[i];
+//                 int maxindex=i;
+//                 #pragma omp parallel for reduction(max : maxval)
+//                 for (int j = i+1; j < index->fbl->number_of_buffers; j++)
+//                 {
+//                     if(nodesize[j] > maxval)
+//                     {
+//                         maxval = nodesize[j];
+//                         maxindex = j;
+//                     }
+//                 }
+//                 int tmp = nodesize[i];
+//                 nodesize[i] = maxval;
+//                 nodesize[maxindex] = tmp;
+//                 tmp = nodeid[i];
+//                 nodeid[i] = maxval;
+//                 nodeid[maxindex] = tmp;
+//             }*/
+//    pthread_barrier_wait(&lock_barrier2);
+//
+//
+//    //wait for the finish of other threads
+//    for (i = 0; i < maxquerythread; i++) {
+//        pthread_join(threadid[i], NULL);
+//    }
+//    __sync_fetch_and_add(&(index->total_records), ts_num);
+//    index->sax_cache_size = index->total_records;
+//    fclose(ifile);
+//    fprintf(stderr, ">>> Finished indexing\n");
+//    free(input_data);
+//    //printf(" the sax point is %d\n",index->first_node->isax_cardinalities[0]);
+//    COUNT_OUTPUT_TIME_END
+//}
 
 
 void *indexbulkloadingworker_inmemory(void *transferdata) {
@@ -1453,6 +1712,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         //store result in index
         if (index->settings->function_type == 4) {
             gettimeofday(&transformation_time_start, NULL);
+
             for (int j = 0; j < index->settings->timeseries_size; ++j) {
                 ts_fftw[j] = ts[j];
             }
@@ -1462,8 +1722,8 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                 transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
                                         (transformation_time_start.tv_sec * 1000000 +
                                          (transformation_time_start.tv_usec)));
-
                 gettimeofday(&indexing_time_start, NULL);
+
                 *pos = (file_position_type) (i * index->settings->timeseries_size);
 
                 memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1486,6 +1746,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         //MESSI iSAX
         else {
             gettimeofday(&transformation_time_start, NULL);
+
             if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
                             index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
                             index->settings->sax_bit_cardinality,
@@ -1494,8 +1755,8 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                 transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
                                         (transformation_time_start.tv_sec * 1000000 +
                                          (transformation_time_start.tv_usec)));
-
                 gettimeofday(&indexing_time_start, NULL);
+
                 *pos = (file_position_type) (i * index->settings->timeseries_size);
 
                 memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
@@ -1564,6 +1825,196 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
                 add_record_to_node(index, current_fbl_node->node, r, 1);
+            }
+        }
+        if (have_record) {
+            flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
+
+            // clear FBL records moved in LBL buffers
+
+            // clear records read from files (free only prev sax buffers)
+        }
+
+    }
+
+    gettimeofday(&current_time, NULL);
+    indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                      (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+
+    __sync_fetch_and_add(&TOTAL_INDEXING_PART_TIME, (int) indexing_time);
+    __sync_fetch_and_add(&TOTAL_TRANSFORMATION_PART_TIME, (int) transformation_time);
+
+    free(r);
+}
+
+void *index_creation_pRecBuf_SFAD_worker(void *transferdata) {
+    unsigned long int transformation_time = 0.0;
+    unsigned long int indexing_time = 0.0;
+
+    struct timeval current_time;
+    struct timeval transformation_time_start;
+    struct timeval indexing_time_start;
+
+    sax_type *sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory *) transferdata)->index->settings->paa_segments);
+
+    unsigned long start_number = ((buffer_data_inmemory *) transferdata)->start_number;
+    unsigned long stop_number = ((buffer_data_inmemory *) transferdata)->stop_number;
+    file_position_type *pos = malloc(sizeof(file_position_type));
+    isax_index *index = ((buffer_data_inmemory *) transferdata)->index;
+    ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
+    int paa_segments = ((buffer_data_inmemory *) transferdata)->index->settings->paa_segments;
+
+    unsigned long i = 0;
+    float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
+
+    ts_type *ts_fftw;
+    fftwf_complex *ts_out;
+    fftwf_plan plan_forward;
+    ts_type *transform;
+
+    if (index->settings->function_type == 4) {
+        unsigned long ts_length = index->settings->timeseries_size;
+
+        pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        ts_fftw = fftwf_malloc(sizeof(ts_type) * ts_length);
+
+        ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
+
+        //create fftw plan
+        plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ts_fftw, ts_out, FFTW_ESTIMATE);
+
+        transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+
+        pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+    }
+    //printf("this is check point 11\n");
+    for (i = start_number; i < stop_number; i++) {
+#ifndef DEBUG
+#if VERBOSE_LEVEL == 2
+        printf("\r\x1b[32mLoading: \x1b[36m%d\x1b[0m",(i + 1));
+#endif
+#endif
+        memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
+
+        //SFA
+        //store result in index
+        if (index->settings->function_type == 4) {
+            gettimeofday(&transformation_time_start, NULL);
+
+            for (int j = 0; j < index->settings->timeseries_size; ++j) {
+                ts_fftw[j] = ts[j];
+            }
+
+            if (sfa_from_ts(index, ts_fftw, sax, ts_out, transform, plan_forward) == SUCCESS) {
+                gettimeofday(&current_time, NULL);
+                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                        (transformation_time_start.tv_sec * 1000000 +
+                                         (transformation_time_start.tv_usec)));
+                gettimeofday(&indexing_time_start, NULL);
+
+                *pos = (file_position_type) (i * index->settings->timeseries_size);
+
+                memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
+                       sizeof(sax_type) * index->settings->paa_segments);
+//printf("this is check point 12\n");
+                isax_pRecBuf_index_insert_inmemory_SFAD(index, sax, pos,
+                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
+                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
+                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber,((buffer_data_inmemory *) transferdata)->kn);
+//printf("this is check point 121\n");
+
+                gettimeofday(&current_time, NULL);
+                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+            } else {
+                fprintf(stderr, "error: cannot insert record in index, since sfa representation\
+                        failed to be created");
+            }
+        }
+
+        //MESSI iSAX
+        else {
+            gettimeofday(&transformation_time_start, NULL);
+
+            if (sax_from_ts(ts, sax, index->settings->ts_values_per_paa_segment,
+                            index->settings->paa_segments, index->settings->sax_alphabet_cardinality,
+                            index->settings->sax_bit_cardinality,
+                            index->settings->timeseries_size) == SUCCESS) {
+                gettimeofday(&current_time, NULL);
+                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                        (transformation_time_start.tv_sec * 1000000 +
+                                         (transformation_time_start.tv_usec)));
+                gettimeofday(&indexing_time_start, NULL);
+
+                *pos = (file_position_type) (i * index->settings->timeseries_size);
+
+                memcpy(&(index->sax_cache[i * index->settings->paa_segments]), sax,
+                       sizeof(sax_type) * index->settings->paa_segments);
+
+                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
+                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
+                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
+                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
+
+                gettimeofday(&current_time, NULL);
+                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+            } else {
+                fprintf(stderr, "error: cannot insert record in index, since sax representation\
+                        failed to be created");
+            }
+        }
+    }
+//printf("this is check point 13\n");
+    if (index->settings->function_type == 4) {
+        pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        fftwf_destroy_plan(plan_forward);
+        fftwf_free(ts_fftw);
+        fftwf_free(ts_out);
+        fftwf_free(transform);
+        pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+    }
+
+    free(pos);
+    free(sax);
+    free(ts);
+
+    pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier1);
+
+    bool have_record = false;
+    int j;
+    isax_node_record *r = malloc(sizeof(isax_node_record));
+
+    gettimeofday(&indexing_time_start, NULL);
+
+    while (1) {
+//printf("this is check point 14\n");
+        j = __sync_fetch_and_add(((buffer_data_inmemory *) transferdata)->node_counter, 1);
+
+        if (j >= index->fbl->number_of_buffers) {
+            break;
+        }
+        //fbl_soft_buffer *current_fbl_node = &index->fbl->soft_buffers[j];
+        parallel_fbl_soft_buffer *current_fbl_node = &((parallel_first_buffer_layer * )(index->fbl))->soft_buffers[j];
+        if (!current_fbl_node->initialized) {
+            continue;
+        }
+
+        int i;
+        have_record = false;
+        //printf("this is check point 15\n");
+        for (int k = 0; k < ((buffer_data_inmemory *) transferdata)->total_workernumber; k++) {
+            if (current_fbl_node->buffer_size[k] > 0)
+                have_record = true;
+
+            for (i = 0; i < current_fbl_node->buffer_size[k]; i++) {
+                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i * index->settings->paa_segments]);
+                r->position = (file_position_type *) &((file_position_type *) (current_fbl_node->pos_records[k]))[i];
+                r->insertion_mode = NO_TMP | PARTIAL;
+                // Add record to index
+                //printf("the position 1 is %d\n",*(r->position));
+                //sleep(1);
+                add_record_to_node_SFAD(index, current_fbl_node->node, r, 1,((buffer_data_inmemory *) transferdata)->kn);
             }
         }
         if (have_record) {
@@ -1756,6 +2207,36 @@ root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
     //insert_to_fbl_m(index->fbl, sax, pos,first_bit_mask, index,lock_firstnode,lock_fbl);
     insert_to_pRecBuf((parallel_first_buffer_layer * )(index->fbl), sax, pos, first_bit_mask, index, lock_firstnode,
                       workernumber, total_workernumber);
+    return first_bit_mask;
+}
+
+root_mask_type isax_pRecBuf_index_insert_inmemory_SFAD(isax_index *index,
+                                                  sax_type *sax,
+                                                  file_position_type *pos, pthread_mutex_t *lock_firstnode,
+                                                  int workernumber, int total_workernumber, int kn) {
+    int i, t;
+    int totalsize = index->settings->max_total_buffer_size;
+
+    // Create mask for the first bit of the sax representation
+
+    // Step 1: Check if there is a root node that represents the 
+    //         current node's sax representation
+
+    // TODO: Create INSERTION SHORT AND BINARY SEARCH METHODS.
+
+    root_mask_type first_bit_mask = 0x00;
+    //root_mask_type first_bit_maskv2 = 0x00;
+
+    CREATE_MASK_SFAD(first_bit_mask, index, sax,kn);
+    //CREATE_MASK(first_bit_maskv2, index, sax);
+    
+    //printf("the mask is %ld the mask old is %ld and the 1st sax bit is \n",first_bit_mask, first_bit_maskv2, sax[0]);
+
+//printf("this is check point inside 1\n");
+    //insert_to_fbl_m(index->fbl, sax, pos,first_bit_mask, index,lock_firstnode,lock_fbl);
+    insert_to_pRecBuf((parallel_first_buffer_layer * )(index->fbl), sax, pos, first_bit_mask, index, lock_firstnode,
+                      workernumber, total_workernumber);
+    //printf("this is checkpoint inside 2\n");
     return first_bit_mask;
 }
 

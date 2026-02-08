@@ -81,12 +81,14 @@ query_result exact_search_ParISnew_inmemory_workstealing (ts_type *ts, ts_type *
                            float minimum_distance, int min_checked_leaves);
 query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves);
-
+query_result exact_search_MESSI_SFAD (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
+                           float minimum_distance, int min_checked_leaves, int kn);
 query_result exact_search_ParISnew_inmemory_hybrid_workstealing (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves);
 void* exact_search_worker_inmemory(void *rfdata);
 void* exact_search_worker_inmemory_workstealing(void *rfdata);
 void* exact_search_worker_inmemory_hybridpqueue(void *rfdata);
+void* exact_search_worker_inmemory_hybridpqueue_SFAD(void *rfdata);
 void* exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata);
 void insert_tree_node_m(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t *pq,pthread_mutex_t *lock_queue);
 void insert_tree_node_mgpu(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_bsf *pq,pthread_mutex_t *lock_queue);

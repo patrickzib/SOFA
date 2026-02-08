@@ -135,6 +135,11 @@ void print_settings(isax_index_settings *settings);
 isax_node * add_record_to_node(isax_index *index, isax_node *node, 
                                  isax_node_record *record,
                                  const char leaf_size_check);
+                                 
+isax_node * add_record_to_node_SFAD(isax_index *index, 
+                                 isax_node *tree_node, 
+                                 isax_node_record *record,
+                                 const char leaf_size_check,int kn);
 root_mask_type isax_fbl_index_insert(isax_index *index, 
                                     sax_type * sax,
                                     file_position_type * pos);
@@ -147,6 +152,10 @@ enum response flush_all_leaf_buffers(isax_index *index, enum buffer_cleaning_mod
 enum response create_node_filename(isax_index *index,
                                    isax_node *node,
                                    isax_node_record *record);
+enum response create_node_filename_SFAD(isax_index *index,
+                                   isax_node *node,
+                                   isax_node_record *record,
+                                    int kn);
 void isax_index_clear_node_buffers(isax_index *index, isax_node *node, 
                                    enum node_cleaning_mode node_cleaning_mode,
                                    enum buffer_cleaning_mode buffer_clean_mode);

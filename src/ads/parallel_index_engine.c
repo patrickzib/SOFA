@@ -2110,6 +2110,7 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
     char * cd_s,*cd_p;
     // Check if this buffer is initialized
 
+    //printf("this is check point prefb 1\n");
 
     if (!current_buffer->initialized) 
     {
@@ -2156,7 +2157,8 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
            pthread_mutex_unlock(lock_firstnode); 
         }
     }  
-    
+        //printf("this is check point prefb 2\n");
+
     // Check if this buffer is not full!
     if (current_buffer->buffer_size[workernumber] >= current_buffer->max_buffer_size[workernumber]) {
         if(current_buffer->max_buffer_size[workernumber] == 0) {
@@ -2178,6 +2180,7 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
             
         }
     }
+    //printf("this is check point prefb 3\n");
 
     if (current_buffer->sax_records[workernumber] == NULL || current_buffer->pos_records[workernumber] == NULL) {
         fprintf(stderr, "error: Could not allocate memory in FBL.");

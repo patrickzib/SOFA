@@ -26,6 +26,7 @@ void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index
 void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_mix(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm, isax_index *index);
+void index_creation_pRecBuf_SFAD(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm, isax_index *index, int kn);
 void index_creation_pRecBuf_new(const char *ifilename, long int ts_num, isax_index *index);
 void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isax_index *index);
 void* indexbulkloadingworker_inmemory(void *transferdata);
@@ -34,6 +35,7 @@ void* index_creation_worker_inmemory_new(void *transferdata);
 void* index_creation_worker2_inmemory(void *transferdata);
 void* index_creation_mix_worker_inmemory(void *transferdata);
 void* index_creation_pRecBuf_worker(void *transferdata);
+void *index_creation_pRecBuf_SFAD_worker(void *transferdata);
 void* index_creation_pRecBuf_worker_new(void *transferdata);
 void* indexbulkloadingworker_pRecBuf_inmemory(void *transferdata);
 root_mask_type isax_fbl_index_insert_inmemory_para(isax_index *index, 
@@ -42,6 +44,10 @@ root_mask_type isax_fbl_index_insert_inmemory_para(isax_index *index,
 root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index, 
                                     sax_type * sax,
                                     file_position_type * pos,pthread_mutex_t *lock_firstnode,int workernumber,int total_workernumber);
+									root_mask_type isax_pRecBuf_index_insert_inmemory_SFAD(isax_index *index,
+                                                  sax_type *sax,
+                                                  file_position_type *pos, pthread_mutex_t *lock_firstnode,
+                                                  int workernumber, int total_workernumber, int kn);
 root_mask_type isax_fbl_index_insert_inmemory(isax_index *index, sax_type * sax, file_position_type * pos);
 enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index);
 enum response flush_fbl_inmemory_m(first_buffer_layer *fbl, isax_index *index);
@@ -75,6 +81,7 @@ typedef struct buffer_data_inmemory
 	bool finished;
 	int *nodeid;
 	unsigned long *shared_start_number;
+	int kn;
 }buffer_data_inmemory;
 
 typedef struct transferfblinmemory

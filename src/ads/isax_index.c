@@ -656,7 +656,85 @@ enum response create_node_filename(isax_index *index,
     return SUCCESS;
 }
 
+enum response create_node_filename_SFAD(isax_index *index,
+                                   isax_node *node,
+                                   isax_node_record *record,int kn)
+{
+    int i;
 
+    node->filename = malloc(sizeof(char) * index->settings->max_filename_size);
+    sprintf(node->filename, "%s", index->settings->root_directory);
+    int l = (int) strlen(index->settings->root_directory);
+    
+    // If this has a parent then it is not a root node and as such it does have some 
+    // split data on its parent about the cardinalities.
+    node->isax_values = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->paa_segments);
+    
+    for (i=0; i<index->settings->paa_segments; i++)
+    {
+        node->isax_cardinalities[i]=0;
+    }
+
+    if (node->parent) {
+        for (i=0; i<index->settings->paa_segments; i++) {
+            root_mask_type mask = 0x00;
+            int k; 
+            for (k=0; k <= node->parent->split_data->split_mask[i]; k++) 
+            {
+                mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - k] & 
+                         record->sax[i]);
+            }
+            mask = mask >> index->settings->sax_bit_cardinality - node->parent->split_data->split_mask[i] - 1;
+            
+            node->isax_values[i] = (int) mask;
+            node->isax_cardinalities[i] = node->parent->split_data->split_mask[i]+1;
+            
+            if (i==0) {
+                l += sprintf(node->filename+l ,"%d.%d", node->isax_values[i], node->isax_cardinalities[i]);
+            }
+            else {
+                l += sprintf(node->filename+l ,"_%d.%d", node->isax_values[i], node->isax_cardinalities[i]);
+            } 
+            
+        }
+    }// If it has no parent it is root node and as such it's cardinality is 1.
+    else
+    {
+        root_mask_type mask = 0x00;
+        
+        for (i=0; i<index->settings->paa_segments/kn; i++) {
+            
+            for (int j=0; j < kn; j++)
+            {
+                mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - j]& record->sax[i]);
+                //mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
+
+
+            //mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
+               // mask = mask >> index->settings->sax_bit_cardinality - 1-j;
+
+            }
+             mask = mask >> index->settings->sax_bit_cardinality - kn;
+            node->isax_values[i] = (int) mask;
+            node->isax_cardinalities[i] = kn;
+            
+            if (i==0) {
+                l += sprintf(node->filename+l ,"%d.1", (int) mask);
+            }
+            else {
+                l += sprintf(node->filename+l ,"_%d.1", (int) mask);
+            } 
+        }
+
+    }
+    
+#ifdef DEBUG
+    printf("\tCreated filename:\t\t %s\n\n", node->filename);
+#endif
+    
+    return SUCCESS;
+}
 isax_node * add_record_to_node(isax_index *index, 
                                  isax_node *tree_node, 
                                  isax_node_record *record,
@@ -703,6 +781,52 @@ isax_node * add_record_to_node(isax_index *index,
     return node;
 }
 
+
+isax_node * add_record_to_node_SFAD(isax_index *index, 
+                                 isax_node *tree_node, 
+                                 isax_node_record *record,
+                                 const char leaf_size_check,int kn) 
+{
+    #ifdef DEBUG
+    printf("*** Adding to node ***\n\n");
+    #endif
+    isax_node *node = tree_node;
+
+    // Traverse tree
+    while (!node->is_leaf) {
+        int location = index->settings->sax_bit_cardinality - 1 -
+        node->split_data->split_mask[node->split_data->splitpoint];
+        
+        root_mask_type mask = index->settings->bit_masks[location];
+        if(record->sax[node->split_data->splitpoint] & mask) 
+        {
+            node = node->right_child;
+        }
+        else
+        {
+            node = node->left_child;
+        }
+    }
+    // Check if split needed
+    if ((node->leaf_size) >= index->settings->max_leaf_size && leaf_size_check) {
+    #ifdef DEBUG
+        printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
+    #endif
+        split_node_SFAD(index, node,kn);
+        add_record_to_node_SFAD(index, node, record, leaf_size_check,kn);
+    }
+    else
+    {
+        if (node->filename == NULL) {
+            create_node_filename_SFAD(index,node,record,kn);
+        }
+        add_to_node_buffer(node->buffer, record, index->settings->paa_segments, 
+                           index->settings->timeseries_size);
+        node->leaf_size++;
+
+    }
+    return node;
+}
 /**
  Flushes all leaf buffers of a tree to disk.
  */

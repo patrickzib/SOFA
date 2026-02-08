@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
     static int coeff_number = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
+    static int dynamic_index = 0;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -171,6 +172,7 @@ int main(int argc, char **argv) {
                 {"coeff-number",        required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
+                {"dynamic-index",       required_argument, 0,    'G'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -308,7 +310,9 @@ int main(int argc, char **argv) {
             case 'F':
                 apply_znorm = 1;
                 break;
-
+            case 'G':
+                dynamic_index = atoi(optarg);;
+                break;
             case 'h':
 #ifdef BENCHMARK
                 printf(PRODUCT);
@@ -574,7 +578,7 @@ int main(int argc, char **argv) {
         calculate_thread = 24;
         maxquerythread = 24;
     }
-        //new control type for gruenau1-server with 36 cores on 2 CPUs
+    //new control type for gruenau1-server with 36 cores on 2 CPUs
     else if (cpu_control_type == 362) {
         CPU_SET(0, &mask);
         CPU_SET(1, &mask);
@@ -642,7 +646,7 @@ int main(int argc, char **argv) {
         print_settings(idx->settings);
         //fprintf(stderr,"total_records: %ld\n", idx->total_records);
         //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-        //create_wedges(idx, NULL);
+         //create_wedges(idx, NULL);
 
         char sanity_test = 0;
         if (sanity_test) {
@@ -844,7 +848,7 @@ int main(int argc, char **argv) {
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
                                                                        coeff_number       //coeff number
-        );
+                                                                       );
 
 
         if (!inmemory_flag) {
@@ -882,9 +886,16 @@ int main(int argc, char **argv) {
             //set bins
             sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
-            //build index            
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
-
+            //build index   
+            if(dynamic_index==1)
+            {
+                index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            }         
+            else
+            {
+                //printf("this ic chefewlfwe!\n");
+                index_creation_pRecBuf_SFAD(dataset, dataset_size, filetype_int, apply_znorm, idx,dynamic_index);
+            } 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
 
@@ -897,15 +908,19 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
+            if(dynamic_index==1)
+            {
                 isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
+                                                filetype_int, apply_znorm, &exact_search_MESSI);
+            }
+            else
+            {
+                isax_query_binary_file_traditional_SFAD(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm,dynamic_index, &exact_search_MESSI_SFAD);
+
             }
 
+        
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
@@ -928,12 +943,6 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk && k_size > 1) {
-                if (function_type == 3)
-                    isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                            min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                            &exact_topk_MESSImq_inmemory);//MESSI topk
-
             } else {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);

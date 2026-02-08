@@ -13,6 +13,7 @@
 #include <fftw3.h>
 #include <sys/types.h>
 
+
 enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
 void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread, int filetype_int, int apply_znorm);
@@ -30,11 +31,15 @@ int compare_ts_type (const void * a, const void * b);
 int compare_var (const void *a, const void *b);
 int compare_int (const void *a, const void *b);
 
-ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_fft_to_sfa_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_fft_to_sfa_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_fft_to_sfa_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_raw(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_raw_autoSIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_raw_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_rawa_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_rawav2_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+
+ts_type minidist_fft_to_isax_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
+ts_type minidist_fft_to_isax_rawev2_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 
 ts_type get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sax_type c_c, sax_type c_m, int max_cardinality, float factor);
 
