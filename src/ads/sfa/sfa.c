@@ -540,7 +540,7 @@ ts_type
 get_lb_distance(const ts_type *bins, const float fft, const sax_type v, const sax_type c_c,
                 sax_type c_m, int max_cardinality, float factor) {
     sax_type region_lower = (v << (c_m - c_c));
-    sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
+    sax_type region_upper = region_lower | ((1U << (c_m - c_c)) - 1); // (~((int) MAXFLOAT << (c_m - c_c)) | region_lower);
 
     ts_type distance = 0.0;
     float breakpoint_lower = 0.0;

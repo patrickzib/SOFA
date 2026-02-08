@@ -158,9 +158,10 @@ ts_type messi_minidist_range_raw(isax_index *index,
         sax_type c_c = sax_cardinalities[i];
         sax_type c_m = max_bit_cardinality;
 
-        sax_type region_lower = (sax_min[i] >> (c_m - c_c)) << (c_m - c_c);
-        sax_type region_upper = (~((int) MAXFLOAT << (c_m - c_c)) |
-                                 ((sax_max[i] >> (c_m - c_c)) << (c_m - c_c)));
+        int shift = c_m - c_c;
+        sax_type region_lower = (sax_min[i] >> shift) << shift;
+        unsigned int low_mask = (shift == 0) ? 0U : ((1U << shift) - 1U);
+        sax_type region_upper = (sax_type)(((sax_max[i] >> shift) << shift) | low_mask);
 
         float breakpoint_lower = (region_lower == 0)
                 ? MINVAL
