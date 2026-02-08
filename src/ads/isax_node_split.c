@@ -368,7 +368,7 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 }
 
 
-void split_node(isax_index *index, isax_node *node, int inmemory) {
+int split_node(isax_index *index, isax_node *node, int inmemory) {
     if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
@@ -379,7 +379,7 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
         }
         if (!can_split) {
             // fprintf(stderr, "Not enough different symbols to split.\n");
-            return;
+            return 0;
         }
     }
 
@@ -388,12 +388,14 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     // *******************************************************
     if (!node->is_leaf) {
         fprintf(stderr, "sanity error: You are trying to split something weird.\n");
+        return 0;
     }
 
     // Create split_data for this node.
     isax_node_split_data *split_data = malloc(sizeof(isax_node_split_data));
     if (split_data == NULL) {
         fprintf(stderr, "error: could not allocate memory for node split data.\n");
+        return 0;
     }
 
     split_data->split_mask = calloc(index->settings->n_segments, sizeof(sax_type));
@@ -401,6 +403,11 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
         memcpy(split_data->split_mask,
             node->parent->split_data->split_mask,
             sizeof(sax_type) * index->settings->n_segments);
+    }
+    if (split_data->split_mask == NULL) {
+        fprintf(stderr, "error: could not allocate memory for split mask.\n");
+        free(split_data);
+        return 0;
     }
 
     // TODO: needed???
@@ -451,7 +458,7 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
                              node->buffer->tmp_partial_position_buffer, &node->buffer->tmp_partial_buffer_size,
                              TMP | PARTIAL, &split_buffer_capacity)) {
         free(split_buffer);
-        return;
+        return 0;
     }
 
     destroy_node_buffer(node->buffer);
@@ -463,7 +470,7 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     if (!inmemory) {
         if (!append_disk_buffers(index, node, &split_buffer, &split_buffer_index, &split_buffer_capacity)) {
             free(split_buffer);
-            return;
+            return 0;
         }
     }
 
@@ -498,4 +505,5 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     }
 
     free(split_buffer);
+    return 1;
 }

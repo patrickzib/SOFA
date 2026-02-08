@@ -697,11 +697,10 @@ enum response create_node_filename(isax_index *index,
 isax_node * add_record_to_node(isax_index *index, 
                                  isax_node *tree_node, 
                                  isax_node_record *record,
-                                 const char leaf_size_check) 
-{
-    #ifdef DEBUG
+                                 const char leaf_size_check) {
+#ifdef DEBUG
     printf("*** Adding to node ***\n\n");
-    #endif
+#endif
     isax_node *node = tree_node;
 
     // Traverse tree
@@ -713,9 +712,9 @@ isax_node * add_record_to_node(isax_index *index,
         }
         int location = index->settings->sax_bit_cardinality - 1 -
         node->split_data->split_mask[node->split_data->splitpoint];
-        
+
         root_mask_type mask = index->settings->bit_masks[location];
-        if(record->sax[node->split_data->splitpoint] & mask) 
+        if(record->sax[node->split_data->splitpoint] & mask)
         {
             node = node->right_child;
         }
@@ -726,11 +725,10 @@ isax_node * add_record_to_node(isax_index *index,
     }
     // Check if split needed
     if ((node->leaf_size) >= index->settings->max_leaf_size && leaf_size_check) {
-    #ifdef DEBUG
+#ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
-    #endif
-        split_node(index, node, 0);
-        if (!node->is_leaf) {
+#endif
+        if (split_node(index, node, 0)) {
             return add_record_to_node(index, node, record, leaf_size_check);
         }
     }

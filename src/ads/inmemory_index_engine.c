@@ -2093,8 +2093,7 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
 #ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
-        split_node(index, node, 1);
-        if (!node->is_leaf) {
+        if (split_node(index, node, 1)) {
             return add_record_to_node_inmemory(index, node, record, leaf_size_check);
         }
     }
