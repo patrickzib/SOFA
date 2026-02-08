@@ -228,6 +228,13 @@ int simple_split_decision(isax_node_split_data *split_data, isax_index_settings 
             min_index = i;
         }
     }
+    if (min_index == -1) {
+        fprintf(stderr, "split_mask (n_segments=%d):", settings->n_segments);
+        for (int i = 0; i < settings->n_segments; i++) {
+            fprintf(stderr, " %u", (unsigned) split_data->split_mask[i]);
+        }
+        fprintf(stderr, "\n");
+    }
     return min_index;
 }
 
