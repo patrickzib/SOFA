@@ -371,28 +371,11 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     int fallback_splitpoint = -1;
     if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
-        if (node->parent != NULL && node->parent->split_data != NULL &&
-            node->parent->split_data->split_mask != NULL) {
-            for (int i = 0; i < index->settings->n_segments; ++i) {
-                int current_cardinality = node->parent->split_data->split_mask[i];
-                if (current_cardinality >= index->settings->sax_bit_cardinality - 1) {
-                    continue;
-                }
-                int next_bit_index = index->settings->sax_bit_cardinality - current_cardinality - 1;
-                root_mask_type mask = index->settings->bit_masks[next_bit_index];
-                if ((node->mbb_sax_min[i] & mask) != (node->mbb_sax_max[i] & mask)) {
-                    can_split = 1;
-                    fallback_splitpoint = i;
-                    break;
-                }
-            }
-        } else {
-            for (int i = 0; i < index->settings->n_segments; ++i) {
-                if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
-                    can_split = 1;
-                    fallback_splitpoint = i;
-                    break;
-                }
+        for (int i = 0; i < index->settings->n_segments; ++i) {
+            if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
+                can_split = 1;
+                fallback_splitpoint = i;
+                break;
             }
         }
         if (!can_split) {
