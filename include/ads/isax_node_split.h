@@ -30,6 +30,6 @@ int maxbin_split_decision (isax_node_split_data * split_data,
                            isax_node_record * records_buffer,
                            int records_buffer_size);
 
-void split_node(isax_index *index, isax_node *node, int inmemory);
+int split_node(isax_index *index, isax_node *node, int inmemory);
 
 #endif
