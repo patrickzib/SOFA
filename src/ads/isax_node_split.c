@@ -22,19 +22,44 @@
 #include "ads/calc_utils.h"
 #include "ads/inmemory_index_engine.h"
 
-static void append_split_buffer(isax_node_record *split_buffer, int *split_buffer_index,
-                                sax_type **sax_buffer, ts_type **ts_buffer,
-                                file_position_type **pos_buffer, int *buffer_size,
-                                int insertion_mode) {
+static int ensure_split_capacity(isax_node_record **split_buffer, int *capacity, int needed) {
+    if (needed <= *capacity) {
+        return 1;
+    }
+    int new_capacity = *capacity;
+    while (new_capacity < needed) {
+        new_capacity *= 2;
+    }
+    isax_node_record *resized = realloc(*split_buffer, sizeof(isax_node_record) * (size_t) new_capacity);
+    if (resized == NULL) {
+        fprintf(stderr, "error: could not grow split buffer.\n");
+        return 0;
+    }
+    *split_buffer = resized;
+    *capacity = new_capacity;
+    return 1;
+}
+
+static int append_split_buffer(isax_node_record **split_buffer, int *split_buffer_index,
+                               sax_type **sax_buffer, ts_type **ts_buffer,
+                               file_position_type **pos_buffer, int *buffer_size,
+                               int insertion_mode, int *capacity) {
     int size = *buffer_size;
+    if (size <= 0) {
+        return 1;
+    }
+    if (!ensure_split_capacity(split_buffer, capacity, *split_buffer_index + size)) {
+        return 0;
+    }
     for (int i = size - 1; i >= 0; i--) {
-        split_buffer[*split_buffer_index].sax = sax_buffer[i];
-        split_buffer[*split_buffer_index].ts = ts_buffer ? ts_buffer[i] : NULL;
-        split_buffer[*split_buffer_index].position = pos_buffer[i];
-        split_buffer[*split_buffer_index].insertion_mode = insertion_mode;
+        (*split_buffer)[*split_buffer_index].sax = sax_buffer[i];
+        (*split_buffer)[*split_buffer_index].ts = ts_buffer ? ts_buffer[i] : NULL;
+        (*split_buffer)[*split_buffer_index].position = pos_buffer[i];
+        (*split_buffer)[*split_buffer_index].insertion_mode = insertion_mode;
         (*split_buffer_index)++;
     }
     *buffer_size = 0;
+    return 1;
 }
 
 static int select_split_point(isax_node_split_data *split_data,
@@ -55,12 +80,17 @@ static int select_split_point(isax_node_split_data *split_data,
     }
 }
 
-static void append_disk_buffers(isax_index *index, isax_node *node,
-                                isax_node_record *split_buffer, int *split_buffer_index) {
+static int append_disk_buffers(isax_index *index, isax_node *node,
+                               isax_node_record **split_buffer, int *split_buffer_index,
+                               int *capacity) {
     // File is split in two files, but it is not
     // removed from disk. It is going to be used in the end.
     if (node->filename != NULL) {
         char *full_fname = malloc(sizeof(char) * (strlen(node->filename) + 6));
+        if (full_fname == NULL) {
+            fprintf(stderr, "error: could not allocate split filename.\n");
+            return 0;
+        }
         strcpy(full_fname, node->filename);
         strcat(full_fname, ".full");
         //COUNT_INPUT_TIME_START
@@ -74,30 +104,35 @@ static void append_disk_buffers(isax_index *index, isax_node *node,
 #endif
             //COUNT_INPUT_TIME_START
             while (!feof(full_file)) {
-                split_buffer[*split_buffer_index].position = malloc(index->settings->position_byte_size);
-                split_buffer[*split_buffer_index].sax = malloc(index->settings->sax_byte_size);
-                split_buffer[*split_buffer_index].ts = malloc(index->settings->ts_byte_size);
-                split_buffer[*split_buffer_index].insertion_mode = FULL | TMP;
+                if (!ensure_split_capacity(split_buffer, capacity, *split_buffer_index + 1)) {
+                    fclose(full_file);
+                    free(full_fname);
+                    return 0;
+                }
+                (*split_buffer)[*split_buffer_index].position = malloc(index->settings->position_byte_size);
+                (*split_buffer)[*split_buffer_index].sax = malloc(index->settings->sax_byte_size);
+                (*split_buffer)[*split_buffer_index].ts = malloc(index->settings->ts_byte_size);
+                (*split_buffer)[*split_buffer_index].insertion_mode = FULL | TMP;
 
                 // If it can't read continue.
-                if (!fread(split_buffer[*split_buffer_index].position, sizeof(file_position_type),
+                if (!fread((*split_buffer)[*split_buffer_index].position, sizeof(file_position_type),
                            1, full_file)) {
                     // Free because it is not inserted in the tree
-                    free(split_buffer[*split_buffer_index].position);
+                    free((*split_buffer)[*split_buffer_index].position);
                 } else {
-                    if (!fread(split_buffer[*split_buffer_index].sax, sizeof(sax_type),
+                    if (!fread((*split_buffer)[*split_buffer_index].sax, sizeof(sax_type),
                                index->settings->n_segments, full_file)) {
                         // Free because it is not inserted in the tree
-                        free(split_buffer[*split_buffer_index].position);
-                        free(split_buffer[*split_buffer_index].sax);
-                        free(split_buffer[*split_buffer_index].ts);
+                        free((*split_buffer)[*split_buffer_index].position);
+                        free((*split_buffer)[*split_buffer_index].sax);
+                        free((*split_buffer)[*split_buffer_index].ts);
                     } else {
-                        if (!fread(split_buffer[*split_buffer_index].sax, sizeof(ts_type),
+                        if (!fread((*split_buffer)[*split_buffer_index].sax, sizeof(ts_type),
                                    index->settings->timeseries_size, full_file)) {
                             // Free because it is not inserted in the tree
-                            free(split_buffer[*split_buffer_index].position);
-                            free(split_buffer[*split_buffer_index].sax);
-                            free(split_buffer[*split_buffer_index].ts);
+                            free((*split_buffer)[*split_buffer_index].position);
+                            free((*split_buffer)[*split_buffer_index].sax);
+                            free((*split_buffer)[*split_buffer_index].ts);
                         } else {
                             // Increase leaf size (from 0) so that we keep track how many raw time series we
                             // have to move in the finalization step.
@@ -123,6 +158,10 @@ static void append_disk_buffers(isax_index *index, isax_node *node,
         free(full_fname);
 
         char *partial_fname = malloc(sizeof(char) * (strlen(node->filename) + 6));
+        if (partial_fname == NULL) {
+            fprintf(stderr, "error: could not allocate split filename.\n");
+            return 0;
+        }
         strcpy(partial_fname, node->filename);
         strcat(partial_fname, ".part");
         //COUNT_INPUT_TIME_START
@@ -136,22 +175,27 @@ static void append_disk_buffers(isax_index *index, isax_node *node,
 #endif
             //COUNT_INPUT_TIME_START
             while (!feof(partial_file)) {
-                split_buffer[*split_buffer_index].position = malloc(index->settings->position_byte_size);
-                split_buffer[*split_buffer_index].sax = malloc(index->settings->sax_byte_size);
-                split_buffer[*split_buffer_index].insertion_mode = PARTIAL | TMP;
+                if (!ensure_split_capacity(split_buffer, capacity, *split_buffer_index + 1)) {
+                    fclose(partial_file);
+                    free(partial_fname);
+                    return 0;
+                }
+                (*split_buffer)[*split_buffer_index].position = malloc(index->settings->position_byte_size);
+                (*split_buffer)[*split_buffer_index].sax = malloc(index->settings->sax_byte_size);
+                (*split_buffer)[*split_buffer_index].insertion_mode = PARTIAL | TMP;
                 // If it can't read continue.
-                if (!fread(split_buffer[*split_buffer_index].position, sizeof(file_position_type),
+                if (!fread((*split_buffer)[*split_buffer_index].position, sizeof(file_position_type),
                            1, partial_file)) {
                     // Free because it is not inserted in the tree
-                    free(split_buffer[*split_buffer_index].position);
-                    free(split_buffer[*split_buffer_index].sax);
+                    free((*split_buffer)[*split_buffer_index].position);
+                    free((*split_buffer)[*split_buffer_index].sax);
                     continue;
                 } else {
-                    if (!fread(split_buffer[*split_buffer_index].sax, sizeof(sax_type),
+                    if (!fread((*split_buffer)[*split_buffer_index].sax, sizeof(sax_type),
                                index->settings->n_segments, partial_file)) {
                         // Free because it is not inserted in the tree
-                        free(split_buffer[*split_buffer_index].position);
-                        free(split_buffer[*split_buffer_index].sax);
+                        free((*split_buffer)[*split_buffer_index].position);
+                        free((*split_buffer)[*split_buffer_index].sax);
                         continue;
                     } else {
                         node->leaf_size++;
@@ -171,6 +215,7 @@ static void append_disk_buffers(isax_index *index, isax_node *node,
 
         free(partial_fname);
     }
+    return 1;
 }
 
 int simple_split_decision(isax_node_split_data *split_data, isax_index_settings *settings) {
@@ -326,11 +371,28 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     int fallback_splitpoint = -1;
     if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
-        for (int i = 0; i < index->settings->n_segments; ++i) {
-            if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
-                can_split = 1;
-                fallback_splitpoint = i;
-                break;
+        if (node->parent != NULL && node->parent->split_data != NULL &&
+            node->parent->split_data->split_mask != NULL) {
+            for (int i = 0; i < index->settings->n_segments; ++i) {
+                int current_cardinality = node->parent->split_data->split_mask[i];
+                if (current_cardinality >= index->settings->sax_bit_cardinality - 1) {
+                    continue;
+                }
+                int next_bit_index = index->settings->sax_bit_cardinality - current_cardinality - 1;
+                root_mask_type mask = index->settings->bit_masks[next_bit_index];
+                if ((node->mbb_sax_min[i] & mask) != (node->mbb_sax_max[i] & mask)) {
+                    can_split = 1;
+                    fallback_splitpoint = i;
+                    break;
+                }
+            }
+        } else {
+            for (int i = 0; i < index->settings->n_segments; ++i) {
+                if (node->mbb_sax_min[i] != node->mbb_sax_max[i]) {
+                    can_split = 1;
+                    fallback_splitpoint = i;
+                    break;
+                }
             }
         }
         if (!can_split) {
@@ -377,7 +439,12 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     // Allocating 1 more position to cover any off-sized allocations happening due to
     // trying to load one more record from a fetched file page which does not exist.
     // e.g. line 284 ( if(!fread... )
-    isax_node_record *split_buffer = malloc(sizeof(isax_node_record) * (index->settings->max_leaf_size + 1));
+    int split_buffer_capacity = node->buffer->full_buffer_size + node->buffer->partial_buffer_size +
+                                node->buffer->tmp_full_buffer_size + node->buffer->tmp_partial_buffer_size + 1;
+    if (split_buffer_capacity < 1) {
+        split_buffer_capacity = 1;
+    }
+    isax_node_record *split_buffer = malloc(sizeof(isax_node_record) * (size_t) split_buffer_capacity);
     int split_buffer_index = 0;
 
     // ********************************************************
@@ -385,22 +452,25 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     // ********************************************************
     // Split both sax and ts data and move to the new leafs
 
-    append_split_buffer(split_buffer, &split_buffer_index,
-                        node->buffer->full_sax_buffer, node->buffer->full_ts_buffer,
-                        node->buffer->full_position_buffer, &node->buffer->full_buffer_size,
-                        NO_TMP | FULL);
-    append_split_buffer(split_buffer, &split_buffer_index,
-                        node->buffer->partial_sax_buffer, NULL,
-                        node->buffer->partial_position_buffer, &node->buffer->partial_buffer_size,
-                        NO_TMP | PARTIAL);
-    append_split_buffer(split_buffer, &split_buffer_index,
-                        node->buffer->tmp_full_sax_buffer, node->buffer->tmp_full_ts_buffer,
-                        node->buffer->tmp_full_position_buffer, &node->buffer->tmp_full_buffer_size,
-                        TMP | FULL);
-    append_split_buffer(split_buffer, &split_buffer_index,
-                        node->buffer->tmp_partial_sax_buffer, NULL,
-                        node->buffer->tmp_partial_position_buffer, &node->buffer->tmp_partial_buffer_size,
-                        TMP | PARTIAL);
+    if (!append_split_buffer(&split_buffer, &split_buffer_index,
+                             node->buffer->full_sax_buffer, node->buffer->full_ts_buffer,
+                             node->buffer->full_position_buffer, &node->buffer->full_buffer_size,
+                             NO_TMP | FULL, &split_buffer_capacity) ||
+        !append_split_buffer(&split_buffer, &split_buffer_index,
+                             node->buffer->partial_sax_buffer, NULL,
+                             node->buffer->partial_position_buffer, &node->buffer->partial_buffer_size,
+                             NO_TMP | PARTIAL, &split_buffer_capacity) ||
+        !append_split_buffer(&split_buffer, &split_buffer_index,
+                             node->buffer->tmp_full_sax_buffer, node->buffer->tmp_full_ts_buffer,
+                             node->buffer->tmp_full_position_buffer, &node->buffer->tmp_full_buffer_size,
+                             TMP | FULL, &split_buffer_capacity) ||
+        !append_split_buffer(&split_buffer, &split_buffer_index,
+                             node->buffer->tmp_partial_sax_buffer, NULL,
+                             node->buffer->tmp_partial_position_buffer, &node->buffer->tmp_partial_buffer_size,
+                             TMP | PARTIAL, &split_buffer_capacity)) {
+        free(split_buffer);
+        return;
+    }
 
     destroy_node_buffer(node->buffer);
     node->buffer = NULL;
@@ -409,7 +479,10 @@ void split_node(isax_index *index, isax_node *node, int inmemory) {
     // SPLIT BUFFERS CONTAINED ON *DISK* AND PUT IN CHILDREN
     // *****************************************************
     if (!inmemory) {
-        append_disk_buffers(index, node, split_buffer, &split_buffer_index);
+        if (!append_disk_buffers(index, node, &split_buffer, &split_buffer_index, &split_buffer_capacity)) {
+            free(split_buffer);
+            return;
+        }
     }
 
     split_data->splitpoint = select_split_point(
