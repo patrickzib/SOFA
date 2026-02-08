@@ -483,7 +483,11 @@ int split_node(isax_index *index, isax_node *node, int inmemory) {
     if (split_data->splitpoint < 0 ||
         split_data->split_mask[split_data->splitpoint] + 1 > index->settings->sax_bit_cardinality - 1) {
         fprintf(stderr, "fallback: cannot split in depth more than %d.\n", index->settings->sax_bit_cardinality);
-        split_data->splitpoint = simple_split_decision(split_data, index->settings);
+        int simple_split = simple_split_decision(split_data, index->settings);
+        if (simple_split < 0) {
+            fprintf(stderr, "fallback fatal: %d.\n", simple_split);
+        }
+        split_data->splitpoint = simple_split;
     }
 
     if (split_data->splitpoint == -1 ||
