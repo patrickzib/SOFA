@@ -388,7 +388,7 @@ int split_node(isax_index *index, isax_node *node, int inmemory) {
             }
         }
         if (!can_split) {
-            fprintf(stderr, "Not enough different symbols to split.\n");
+            // fprintf(stderr, "Not enough different symbols to split.\n");
             return 0;
         }
     }
