@@ -774,6 +774,10 @@ void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isa
 void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
                             isax_index *index, int kn) {
     fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+    if (kn <= 0) {
+        fprintf(stderr, "warning: dynamic_index=%d is invalid; defaulting to 1\n", kn);
+        kn = 1;
+    }
 
     FILE *ifile;
     COUNT_INPUT_TIME_START
@@ -1777,6 +1781,9 @@ root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
     // TODO: Create INSERTION SHORT AND BINARY SEARCH METHODS.
 
     root_mask_type first_bit_mask = 0x00;
+    if (kn <= 0) {
+        kn = 1;
+    }
 
     CREATE_MASK_SFAD(first_bit_mask, index, sax, kn);
 

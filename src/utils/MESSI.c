@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
-    static int dynamic_index = 0;
+    static int dynamic_index = 1;
     static int node_split_criterion = 1;
 
     int calculate_thread = 8;
