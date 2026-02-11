@@ -554,7 +554,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
 
 
         query_result *mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
+        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings, 0);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -641,7 +641,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->left_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -662,7 +662,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->right_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -1307,7 +1307,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
         fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[i];
         if (current_buffer->initialized == 1) {
             isax_node *node = (((first_buffer_layer2 *) (index->fbl))->soft_buffers[i]).node;
-            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
             //COUNT_CAL_TIME_END
             if (distance <= bsf_distance) {
                 //query_result * mindist_result = malloc(sizeof(query_result));
@@ -2405,7 +2405,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
 void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                         pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2432,7 +2432,7 @@ void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bs
 void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_bsf *pq,
                            pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2455,7 +2455,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 /*void insert_tree_node_m_parallelqueue(float *paa,isax_node *node,isax_index *index,float bsf,FGHPQueue *pq,FGHPQueueThreadState *th_state)
 {
     //COUNT_CAL_TIME_START
-    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if(distance < bsf)
@@ -2489,7 +2489,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 void insert_tree_node_m_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                                      pthread_mutex_t *lock_queue, localStack *workstack) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2520,7 +2520,7 @@ void
 insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                              pthread_mutex_t *lock_queue, localStack *workstack, int *tnumber) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {

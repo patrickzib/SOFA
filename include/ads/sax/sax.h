@@ -19,10 +19,7 @@ void printbin(unsigned long long n, int size);
 void serial_printbin (unsigned long long n, int size);
 int compare(const void *a, const void *b);
 float minidist_paa_to_isax(float *paa, sax_type *sax, sax_type *sax_cardinalities,
-                           const isax_index_settings *settings);
-
-float minidist_paa_to_isax_raw(float *paa, sax_type *sax, sax_type *sax_cardinalities,
-                               const isax_index_settings *settings);
+                                  const isax_index_settings *settings, int use_raw);
 #if ADS_HAVE_AVX2
 float   minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
@@ -31,7 +28,7 @@ float   minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
 static inline float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
                            const isax_index_settings *settings) {
-    return minidist_paa_to_isax_raw(paa, sax, sax_cardinalities, settings);
+    return minidist_paa_to_isax(paa, sax, sax_cardinalities, settings, 1);
 }
 #endif
 #if ADS_HAVE_AVX2
@@ -42,7 +39,7 @@ float   minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
 static inline float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
                            sax_type *sax_cardinalities,
                            const isax_index_settings *settings) {
-    return minidist_paa_to_isax(paa, sax, sax_cardinalities, settings);
+    return minidist_paa_to_isax(paa, sax, sax_cardinalities, settings, 0);
 }
 #endif
 

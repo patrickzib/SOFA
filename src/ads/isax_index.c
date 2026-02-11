@@ -1537,7 +1537,7 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 	//printf("Calculating minimum distance...\n");
 	float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                               node->isax_cardinalities,
-                                              index->settings);
+                                              index->settings, 0);
 	float bsfRecord = FLT_MAX;																 
 	//printf("---> Distance: %lf\n", bsfLeaf);
     //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
@@ -1556,8 +1556,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			while(!feof(partial_file)) {
 				if(fread(pos, sizeof(file_position_type), 1, partial_file)) {
 					if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
-						float mindist = minidist_paa_to_isax_raw(query, sax, index->settings->max_sax_cardinalities,
-																 index->settings);
+						float mindist = minidist_paa_to_isax(query, sax, index->settings->max_sax_cardinalities,
+																 index->settings, 1);
     //			printf("+[FILE] %lf\n", mindist);
 
 						if(mindist < bsfRecord) {
@@ -1575,8 +1575,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 
 		if (node->buffer != NULL) {
 			for (i=0; i<node->buffer->partial_buffer_size; i++) {
-				float mindist = minidist_paa_to_isax_raw(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
-														 index->settings);
+				float mindist = minidist_paa_to_isax(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
+														 index->settings, 1);
     //				printf("+[PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
@@ -1584,8 +1584,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			}
 
 			for (i=0; i<node->buffer->tmp_partial_buffer_size; i++) {
-				float mindist = minidist_paa_to_isax_raw(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
-														 index->settings);
+				float mindist = minidist_paa_to_isax(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
+														 index->settings, 1);
     //				printf("+[TMP_PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
@@ -1627,7 +1627,7 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
     //printf("Calculating minimum distance...\n");
     float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                           node->isax_cardinalities,
-                                          index->settings);
+                                          index->settings, 0);
     float bsfRecord = FLT_MAX;                                                               
     //printf("---> Distance: %lf\n", bsfLeaf);
     //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
