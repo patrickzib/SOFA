@@ -1627,10 +1627,9 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves, int kn) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
 
     query_result bsf_result = approximate_result;
-    (void)kn;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
     int node_counter = 0;
