@@ -250,7 +250,7 @@ enum response flush_fbl(first_buffer_layer *fbl, isax_index *index)
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
 
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
 
             }
 

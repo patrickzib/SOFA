@@ -105,7 +105,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     //Split and push again in the queue
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     pqueue_insert(pq, n);
                     continue;
                 }
@@ -145,7 +145,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                     }
                 }
                 if (n->node->right_child->isax_cardinalities != NULL) {
-                    if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
+                    if (n->node->right_child->is_leaf && !n->node->right_child->has_partial_data_file &&
                         aggressive_check) {
                         calculate_node_topk_inmemory(index, n->node->right_child, ts, paa, pq_bsf);
                     } else {

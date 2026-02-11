@@ -77,8 +77,8 @@ query_result exact_search_ParISnew_inmemory (ts_type *ts, ts_type *paa, isax_ind
                            float minimum_distance, int min_checked_leaves);
 query_result exact_search_ParISnew_inmemory_workstealing (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves);
-query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
-                           float minimum_distance, int min_checked_leaves);
+query_result exact_search_MESSI (ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
+                                 float minimum_distance, int min_checked_leaves, int kn);
 
 query_result exact_search_ParISnew_inmemory_hybrid_workstealing (ts_type *ts, ts_type *paa, isax_index *index,node_list *nodelist,
                            float minimum_distance, int min_checked_leaves);

@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
                 }
                 break;
             case 'H':
-                dynamic_index = atoi(optarg);;
+                dynamic_index = atoi(optarg);
                 break;
 
             case 'h':
@@ -736,10 +736,8 @@ int main(int argc, char **argv) {
             //set bins
             sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
-            // TODO add dynamic_index
-
-            //build index            
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            //build index
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -753,15 +751,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            // TODO add dynamic_index
-            if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            // if (topk && k_size > 1) {
+            //     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+            //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
+            //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
+            // } else {
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -771,7 +767,7 @@ int main(int argc, char **argv) {
             spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -785,14 +781,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -802,7 +797,7 @@ int main(int argc, char **argv) {
             pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -816,18 +811,17 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             calculate_average_depth(logfile_tree, idx);
 
@@ -847,13 +841,13 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk && k_size > 1) {
+            } /*else if (topk && k_size > 1) {
                 if (function_type == 3)
                     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                             &exact_topk_MESSImq_inmemory);//MESSI topk
 
-            } else {
+            } */ else {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);
@@ -877,7 +871,7 @@ int main(int argc, char **argv) {
                     //MESSI-mq: in-memory flag set with function-type 3
                 else if (function_type == 3) {
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, &exact_search_MESSI);
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
                 } else if (function_type == 8) {

@@ -606,7 +606,7 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
     memcpy((void *)record->sax, sax, index->settings->sax_byte_size);
     memcpy((void *)record->position, pos, index->settings->position_byte_size);
     
-    add_record_to_node(index, curr_node, record, 1);
+    add_record_to_node(index, curr_node, record, 1, 1);
     
     free(record);
     
@@ -628,7 +628,8 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
 
 enum response create_node_filename(isax_index *index,
                                    isax_node *node,
-                                   isax_node_record *record)
+                                   isax_node_record *record,
+                                   int kn)
 {
     int i;
 
@@ -649,7 +650,7 @@ enum response create_node_filename(isax_index *index,
                 mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - k] & 
                          record->sax[i]);
             }
-            mask = mask >> (index->settings->sax_bit_cardinality - node->parent->split_data->split_mask[i] - 1);
+            mask = mask >> index->settings->sax_bit_cardinality - node->parent->split_data->split_mask[i] - 1;
             
             node->isax_values[i] = (int) mask;
             node->isax_cardinalities[i] = node->parent->split_data->split_mask[i]+1;
@@ -663,23 +664,24 @@ enum response create_node_filename(isax_index *index,
             
         }
     }
-    // If it has no parent it is root node and as such it's cardinality is 1.
+    // If it has no parent it is root node and as such it's cardinality is kn (default 1).
     else {
-        root_mask_type mask = 0x00;
-        
-        for (i=0; i<index->settings->n_segments; i++) {
-            
-            mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
-            mask = mask >> (index->settings->sax_bit_cardinality - 1);
+        for (i=0; i<index->settings->n_segments/kn; i++) {
+            root_mask_type mask = 0x00;
+            for (int j = 0; j < kn; j++) {
+                mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - j] &
+                         record->sax[i]);
+            }
+            mask = mask >> index->settings->sax_bit_cardinality - kn;
             
             node->isax_values[i] = (int) mask;
-            node->isax_cardinalities[i] = 1;
+            node->isax_cardinalities[i] = kn;
             
             if (i==0) {
-                l += sprintf(node->filename+l ,"%d.1", (int) mask);
+                l += sprintf(node->filename+l ,"%d.%d", (int) mask, kn);
             }
             else {
-                l += sprintf(node->filename+l ,"_%d.1", (int) mask);
+                l += sprintf(node->filename+l ,"_%d.%d", (int) mask, kn);
             } 
         }
     }
@@ -692,10 +694,10 @@ enum response create_node_filename(isax_index *index,
 }
 
 
-isax_node * add_record_to_node(isax_index *index, 
-                                 isax_node *tree_node, 
-                                 isax_node_record *record,
-                                 const char leaf_size_check) {
+isax_node * add_record_to_node(isax_index *index,
+                               isax_node *tree_node,
+                               isax_node_record *record,
+                               const char leaf_size_check, int kn) {
 #ifdef DEBUG
     printf("*** Adding to node ***\n\n");
 #endif
@@ -725,12 +727,12 @@ isax_node * add_record_to_node(isax_index *index,
 #ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
-        if (split_node(index, node, 0)) {
-            return add_record_to_node(index, node, record, leaf_size_check);
+        if (split_node(index, node, 0, kn)) {
+            return add_record_to_node(index, node, record, leaf_size_check, kn);
         }
     }
     if (node->filename == NULL) {
-        create_node_filename(index,node,record);
+        create_node_filename(index, node, record, kn);
     }
     add_to_node_buffer(node->buffer, record, index->settings->n_segments,
                        index->settings->timeseries_size);
@@ -2121,7 +2123,7 @@ void complete_index(isax_index *index, int ts_num)
                 }
                 
             }
-            isax_node * dest = add_record_to_node(index, index->fbl->soft_buffers[first_bit_mask].node, record, 0);
+            isax_node * dest = add_record_to_node(index, index->fbl->soft_buffers[first_bit_mask].node, record, 0, 1);
             
             // Define leaf as loaded.
             if(!dest->has_full_data_file)

@@ -440,7 +440,7 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
 
 query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                           float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -591,7 +591,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -686,7 +686,7 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
 
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -1357,7 +1357,7 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
     bool *rdcbitmap = malloc(sizeof(bool) * index->sax_cache_size);
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
     int sum_of_lab = 0;
@@ -1430,7 +1430,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
                                             float minimum_distance, int min_checked_leaves) {
     //RDcalculationnumber=0;
     //LBDcalculationnumber=0;
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1520,7 +1520,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
 query_result
 exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1626,10 +1626,11 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 }
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
-                                float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+                                float minimum_distance, int min_checked_leaves, int kn) {
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
 
     query_result bsf_result = approximate_result;
+    (void)kn;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
     int node_counter = 0;
@@ -1691,6 +1692,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].startqueuenumber = i % N_PQUEUE;
     }
 
+    // parameterinitial();
     for (int i = 0; i < maxquerythread; i++) {
         pthread_create(&(threadid[i]), NULL, exact_search_worker_inmemory_hybridpqueue, (void *) &(workerdata[i]));
     }
@@ -1716,7 +1718,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 query_result
 exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                                    float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;

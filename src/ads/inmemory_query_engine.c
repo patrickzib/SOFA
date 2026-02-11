@@ -135,7 +135,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
     return result;
 }
 
-query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index, int kn) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -151,7 +151,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
     }
 
     root_mask_type root_mask = 0;
-    CREATE_MASK(root_mask, index, sax);
+    CREATE_MASK_SFAD(root_mask, index, sax, kn);
 
     COUNT_INIT_TIME_END
 
@@ -164,7 +164,8 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
         // Adaptive splitting
 
         while (!node->is_leaf) {
-            int location = index->settings->sax_bit_cardinality - 1 -
+            // TODO: confirm whether this should be "sax_bit_cardinality - 1 - split_mask".
+            int location = index->settings->sax_bit_cardinality -
                            node->split_data->split_mask[node->split_data->splitpoint];
             root_mask_type mask = index->settings->bit_masks[location];
 
@@ -332,7 +333,7 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     // END
 
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
 
     // Early termination...
     if (approximate_result.distance == 0) {
@@ -742,7 +743,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
 
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
@@ -902,7 +903,7 @@ query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue                    
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END

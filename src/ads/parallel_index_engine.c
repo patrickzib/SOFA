@@ -1675,7 +1675,7 @@ void* indexbulkloadingworker_new(void *transferdata)
                 r->insertion_mode = NO_TMP | PARTIAL;
                 
                 // Add record to index
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
                 
             }
             ((index_buffer_data*)transferdata)->bufferpresize[j]=current_fbl_node->buffer_size;
@@ -2056,7 +2056,7 @@ isax_node * insert_to_fbl_m_new(first_buffer_layer *fbl, sax_type *sax,
     r->position = (file_position_type*) cd_p; 
     r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-    add_record_to_node(index, current_buffer->node, r, 1);
+    add_record_to_node(index, current_buffer->node, r, 1, 1);
                 
 
     free(r);
@@ -2550,7 +2550,7 @@ enum response indexconstruction_pRecBuf(first_buffer_layer *fbl, isax_index *ind
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
                 
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
                 
             }
 
@@ -2628,7 +2628,7 @@ void* indexconstructionworker(void *input)
                 r->position = (file_position_type *) current_fbl_node->pos_records[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
                 
             }
 
@@ -2848,7 +2848,7 @@ void* indexconstructionworker_pRecBuf(void *input)
 
                 sax_type* saxpointer=(sax_type *)current_fbl_node->sax_records[k];
 
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
             }
         }
         if (have_record) 
@@ -2935,7 +2935,7 @@ void* indexconstructionworker_pRecBuf_new(void *input)
 
                 sax_type* saxpointer=(sax_type *)current_fbl_node->sax_records[k];
 
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
             }
         }
 
@@ -3016,7 +3016,7 @@ void* indexconstructionworker_2RecBuf(void *input)
                 r->position = (file_position_type *) &((file_position_type *)(current_fbl_node->pos_records[fbloffset]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
             }
             ((trans_fbl_input*)input)->buffersize[j+fbloffset*index->fbl->number_of_buffers]=current_fbl_node->buffer_size[fbloffset];
         }
@@ -3072,7 +3072,7 @@ void* indexconstructionworker_2nRecBuf(void *input)
                 r->position = (file_position_type *)(((current_fbl_node->pos_records[k]))[i]);
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
             }
             ((trans_fbl_input*)input)->buffersize[j+k*index->fbl->number_of_buffers]=current_fbl_node->buffer_size[k];
             

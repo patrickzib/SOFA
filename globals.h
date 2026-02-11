@@ -77,12 +77,11 @@ void* LOGFILE;
 			mask |= index->settings->bit_masks[index->settings->n_segments - mask__i - 1];  
 
 #define CREATE_MASK_SFAD(mask, index, sax_array, kn)\
-int mask__i2, mask__j; \
-for (mask__i2=0; mask__i2 < index->settings->paa_segments/kn; mask__i2++) \
-for (mask__j=0; mask__j < kn; mask__j++) \
-if(index->settings->bit_masks[index->settings->sax_bit_cardinality - 1-mask__j] & sax_array[mask__i2]) \
-mask |= index->settings->bit_masks[index->settings->paa_segments - mask__i2*kn-mask__j - 1];
-
+	int mask__i2, mask__j; \
+	for (mask__i2=0; mask__i2 < index->settings->n_segments/kn; mask__i2++) \
+		for (mask__j=0; mask__j < kn; mask__j++) \
+			if(index->settings->bit_masks[index->settings->sax_bit_cardinality - 1-mask__j] & sax_array[mask__i2]) \
+				mask |= index->settings->bit_masks[index->settings->n_segments - mask__i2*kn-mask__j - 1];
 
 ///// BENCHMARKING /////
 #ifdef BENCHMARK

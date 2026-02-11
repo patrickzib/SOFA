@@ -378,7 +378,7 @@ int maxbin_split_decision(isax_node_split_data *split_data,
 }
 
 
-int split_node(isax_index *index, isax_node *node, int inmemory) {
+int split_node(isax_index *index, isax_node *node, int inmemory, int kn) {
     if (node->mbb_sax_valid && node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
         int can_split = 0;
         for (int i = 0; i < index->settings->n_segments; ++i) {
@@ -411,8 +411,13 @@ int split_node(isax_index *index, isax_node *node, int inmemory) {
     split_data->split_mask = calloc(index->settings->n_segments, sizeof(sax_type));
     if (split_data->split_mask != NULL && node->parent != NULL) {
         memcpy(split_data->split_mask,
-            node->parent->split_data->split_mask,
-            sizeof(sax_type) * index->settings->n_segments);
+               node->parent->split_data->split_mask,
+               sizeof(sax_type) * index->settings->n_segments);
+    } else if (split_data->split_mask != NULL) {
+        int root_segments = index->settings->n_segments / kn;
+        for (int i = 0; i < root_segments; i++) {
+            split_data->split_mask[i] = (sax_type) (kn - 1);
+        }
     }
     if (split_data->split_mask == NULL) {
         fprintf(stderr, "error: could not allocate memory for split mask.\n");
@@ -513,9 +518,9 @@ int split_node(isax_index *index, isax_node *node, int inmemory) {
     while (split_buffer_index > 0) {
         split_buffer_index--;
         if (mask & split_buffer[split_buffer_index].sax[split_data->splitpoint]) {
-            add_record_to_node(index, right_child, &split_buffer[split_buffer_index], 1);
+            add_record_to_node(index, right_child, &split_buffer[split_buffer_index], 1, kn);
         } else {
-            add_record_to_node(index, left_child, &split_buffer[split_buffer_index], 1);
+            add_record_to_node(index, left_child, &split_buffer[split_buffer_index], 1, kn);
         }
     }
 
