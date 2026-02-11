@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
+    static int dynamic_index = 0;
     static int node_split_criterion = 1;
 
     int calculate_thread = 8;
@@ -193,7 +194,8 @@ int main(int argc, char **argv) {
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
-                {"node-split-criterion", required_argument, 0,   'G'},
+                {"node-split-criterion",required_argument, 0,   'G'},
+                {"dynamic-index",       required_argument, 0,   'H'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -340,6 +342,9 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
                 break;
+            case 'H':
+                dynamic_index = atoi(optarg);;
+                break;
 
             case 'h':
 #ifdef BENCHMARK
@@ -482,9 +487,9 @@ int main(int argc, char **argv) {
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
         print_settings(idx->settings);
-        //fprintf(stderr,"total_records: %ld\n", idx->total_records);
-        //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-        //create_wedges(idx, NULL);
+        // fprintf(stderr,"total_records: %ld\n", idx->total_records);
+        // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
+        // create_wedges(idx, NULL);
 
         if (serial_scan) {
             cache_sax_file(idx);
@@ -731,6 +736,8 @@ int main(int argc, char **argv) {
             //set bins
             sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
+            // TODO add dynamic_index
+
             //build index            
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
 
@@ -746,6 +753,7 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
+            // TODO add dynamic_index
             if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,

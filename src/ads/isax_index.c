@@ -645,12 +645,11 @@ enum response create_node_filename(isax_index *index,
         for (i=0; i<index->settings->n_segments; i++) {
             root_mask_type mask = 0x00;
             int k; 
-            for (k=0; k <= node->parent->split_data->split_mask[i]; k++) 
-            {
+            for (k=0; k <= node->parent->split_data->split_mask[i]; k++) {
                 mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - k] & 
                          record->sax[i]);
             }
-            mask = mask >> index->settings->sax_bit_cardinality - node->parent->split_data->split_mask[i] - 1;
+            mask = mask >> (index->settings->sax_bit_cardinality - node->parent->split_data->split_mask[i] - 1);
             
             node->isax_values[i] = (int) mask;
             node->isax_cardinalities[i] = node->parent->split_data->split_mask[i]+1;
@@ -665,14 +664,13 @@ enum response create_node_filename(isax_index *index,
         }
     }
     // If it has no parent it is root node and as such it's cardinality is 1.
-    else
-    {
+    else {
         root_mask_type mask = 0x00;
         
         for (i=0; i<index->settings->n_segments; i++) {
             
             mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
-            mask = mask >> index->settings->sax_bit_cardinality - 1;
+            mask = mask >> (index->settings->sax_bit_cardinality - 1);
             
             node->isax_values[i] = (int) mask;
             node->isax_cardinalities[i] = 1;
@@ -701,6 +699,7 @@ isax_node * add_record_to_node(isax_index *index,
 #ifdef DEBUG
     printf("*** Adding to node ***\n\n");
 #endif
+
     isax_node *node = tree_node;
 
     // Traverse tree
@@ -714,15 +713,13 @@ isax_node * add_record_to_node(isax_index *index,
         node->split_data->split_mask[node->split_data->splitpoint];
 
         root_mask_type mask = index->settings->bit_masks[location];
-        if(record->sax[node->split_data->splitpoint] & mask)
-        {
+        if(record->sax[node->split_data->splitpoint] & mask) {
             node = node->right_child;
-        }
-        else
-        {
+        } else {
             node = node->left_child;
         }
     }
+
     // Check if split needed
     if ((node->leaf_size) >= index->settings->max_leaf_size && leaf_size_check) {
 #ifdef DEBUG

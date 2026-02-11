@@ -2077,11 +2077,11 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     int checks = 0;
     bool finished = true;
     int current_root_node_number;
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
+    // int tight_bound = index->settings->tight_bound;
+    // int aggressive_check = index->settings->aggressive_check;
     query_result *bsf_result = (((MESSI_workerdata *) rfdata)->bsf_result);
     float bsfdisntance = bsf_result->distance;
-    int calculate_node = 0, calculate_node_quque = 0;
+    // int calculate_node = 0, calculate_node_quque = 0;
     int tnumber = rand() % N_PQUEUE;
     int startqueuenumber = ((MESSI_workerdata *) rfdata)->startqueuenumber;
 

@@ -117,10 +117,11 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
 void isax_query_binary_file_traditional(
         const char *ifilename, int q_num, isax_index *index,
         float minimum_distance, int min_checked_leaves, int filetype_int,
-        int apply_znorm,
+        int apply_znorm, int kn, int dynamic_index,
         query_result (*search_function)(ts_type *, ts_type *, isax_index *, node_list *, float, int)) {
 
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
+
     FILE *ifile;
     ifile = fopen(ifilename, "rb");
     if (ifile == NULL) {
@@ -158,7 +159,6 @@ void isax_query_binary_file_traditional(
 
     fftw_workspace fftw = {0};
 
-    // ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
     file_type *ts_int32;
     if (filetype_int) {
         ts_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size);
@@ -176,7 +176,6 @@ void isax_query_binary_file_traditional(
         COUNT_INPUT_TIME_START
 
         if (filetype_int) {
-            // fprintf(stderr, ">>> Converting queries int8 to float\n");
             fread(ts_int32, sizeof(file_type), ts_length, ifile);
             for (int i = 0; i < ts_length; ++i) {
                 ts[i] = (ts_type) ts_int32[i];
@@ -188,7 +187,6 @@ void isax_query_binary_file_traditional(
 
         // apply z-normalization
         if (apply_znorm) {
-            //fprintf(stderr, ">>> Applying z-norm\n");
             znorm(ts, ts_length);
         }
 
@@ -251,10 +249,10 @@ void isax_query_binary_file_traditional(
 
 }
 
-void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index *index,
-                                   float minimum_distance, int min_checked_leaves,
-                                   query_result (*search_function)(ts_type *, ts_type *, isax_index *, float, int,
-                                                                   float)) {
+void isax_query_binary_fixbsf_file(
+    const char *ifilename, int q_num, isax_index *index,
+    float minimum_distance, int min_checked_leaves,
+    query_result (*search_function)(ts_type *, ts_type *, isax_index *, float, int, float, int, int)) {
     fprintf(stderr, ">>> Performing queries in file: %s\n", ifilename);
 
     FILE *ifile;
@@ -300,9 +298,9 @@ void isax_query_binary_fixbsf_file(const char *ifilename, int q_num, isax_index 
             // Parse ts and make PAA representation
             paa_from_ts(ts, paa, index->settings);
         }
-        query_result bsf = search_function(ts, paa, index, minimum_distance, min_checked_leaves, FLT_MAX);
+
         COUNT_TOTAL_TIME_START
-        query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, bsf.distance);
+        query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves, bsf.distance, min_checked_leaves, kn);
         COUNT_TOTAL_TIME_END
         PRINT_STATS(result.distance)
 
