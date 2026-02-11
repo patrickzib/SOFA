@@ -23,7 +23,6 @@ QUEUE_NUMBER=${8:-1}
   --function-type 4 \
   --histogram-type 2 \
   --sfa-n-coefficients $COEFF_NUMBER \
-  --leaf-size 10 \
-  --sax-cardinality 8 \
+  --leaf-size 1000 \
   --is-norm
   # --node-split-criterion 4 \
