@@ -104,13 +104,13 @@ cdef class Index:
                 pass
             self._index = NULL
 
-    def add(self, filename: str, long ts_num):
+    def add(self, filename: str, long ts_num, int dynamic_index=1):
         cdef bytes path = filename.encode("utf-8")
-        if messi_index_add_file(self._index, path, ts_num) != 0:
+        if messi_index_add_file(self._index, path, ts_num, dynamic_index) != 0:
             raise RuntimeError("Bulk add failed")
         self._has_data = True
 
-    def search(self, np.ndarray[FLOAT32_t, ndim=2] queries, int k):
+    def search(self, np.ndarray[FLOAT32_t, ndim=2] queries, int k, int dynamic_index=1):
         if not self._has_data:
             raise RuntimeError("Index contains no data. Call add() before search().")
         if queries.dtype != np.float32:
@@ -132,7 +132,8 @@ cdef class Index:
                                self._dim,
                                k,
                                d_ptr,
-                               l_ptr) != 0:
+                               l_ptr,
+                               dynamic_index) != 0:
             raise RuntimeError("search failed")
 
         return distances, labels
