@@ -2202,6 +2202,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
 
                     if (n == NULL) {
+                        ((MESSI_workerdata *) rfdata)->allqueuelabel[i] = 0;
                         break;
                     }
 
