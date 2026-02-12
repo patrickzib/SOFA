@@ -660,8 +660,7 @@ enum response create_node_filename(isax_index *index,
             }
             else {
                 l += sprintf(node->filename+l ,"_%d.%d", node->isax_values[i], node->isax_cardinalities[i]);
-            } 
-            
+            }
         }
     }
     // If it has no parent it is root node and as such it's cardinality is kn (default 1).

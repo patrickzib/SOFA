@@ -75,9 +75,11 @@ void sfa_from_fft(isax_index *index, ts_type *cur_transform, sax_type *cur_sfa_w
 /*
     This function creates an SFA representation of a time series 
 */
-enum response sfa_from_ts(isax_index *index, sax_type *sax_out, fftw_workspace *fftw) {
+enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                          fftw_workspace *fftw) {
 
     int use_best = index->settings->n_coefficients != 0;
+    memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
     fft_from_ts(index, index->settings->n_segments, use_best, fftw);
 
     ts_type *cur_coeff_line = calloc(index->settings->n_segments, sizeof(ts_type));

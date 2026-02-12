@@ -2108,7 +2108,7 @@ isax_node * insert_to_pRecBuf(parallel_first_buffer_layer *fbl, sax_type *sax,
                 current_buffer->pos_records[i]=NULL;
                 current_buffer->sax_records[i]=NULL;
             }
-            current_buffer->node = isax_root_node_init(mask,index->settings->initial_leaf_buffer_size);
+            current_buffer->node = isax_root_node_init(mask, index->settings->initial_leaf_buffer_size);
             //current_buffer->finished=1;
             current_buffer->initialized = 1;
             //__sync_synchronize();
