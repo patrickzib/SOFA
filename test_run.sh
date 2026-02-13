@@ -3,13 +3,13 @@ QUERIES_PATH=data_queries/astro_queries.bin
 
 TS_SIZE=256
 COEFF_NUMBER=64
-QUERY_SIZE=100
+QUERY_SIZE=10
 
 DATASET_SIZE=10000
 SAMPLE_SIZE=10000
 
-CPU_TYPE=${82:-1}
-QUEUE_NUMBER=${8:-1}
+CPU_TYPE=${1:-81}
+QUEUE_NUMBER=${2:-8}
 
 ./bin/MESSI \
   --dataset $FILE_PATH \
@@ -20,9 +20,11 @@ QUEUE_NUMBER=${8:-1}
   --sample-size $SAMPLE_SIZE \
   --cpu-type $CPU_TYPE \
   --queue-number $QUEUE_NUMBER \
-  --function-type 4 \
+  --function-type 6 \
   --histogram-type 2 \
   --sfa-n-coefficients $COEFF_NUMBER \
   --leaf-size 1000 \
-  --is-norm
+  --is-norm \
+  --dynamic-index 4
   # --node-split-criterion 4 \
+
