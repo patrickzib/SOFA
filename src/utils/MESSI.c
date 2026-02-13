@@ -404,7 +404,9 @@ int main(int argc, char **argv) {
                 \t\t\tequi-width splitting: 2\n\
                 \t--cpu-type\t\t\tSet for how many cores you want to used and in 1 or 2 cpu\n\
                 \t--help\n\n\
-                \tCPU type code:\t\t\t21 : 2 core in 1 CPU\n\
+                \tCPU type code:\t\t\tAny 2-digit value ending in 1 or 2 uses that many cores\n\
+                \t\t\t\t\t362: 36 core in 2 CPUs\n\
+                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 \t\t\t\t\t22 : 2 core in 2 CPUs\n\
                 \t\t\t\t\t41 : 4 core in 1 CPU\n\
                 \t\t\t\t\t42 : 4 core in 2 CPUs\n\
@@ -419,8 +421,6 @@ int main(int argc, char **argv) {
                 \t\t\t\t\t181: 18 core in 1 CPU\n\
                 \t\t\t\t\t182: 18 core in 2 CPUs\n\
                 \t\t\t\t\t242: 24 core in 2 CPUs\n\
-                \t\t\t\t\t362: 36 core in 2 CPUs\n\
-                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 ");
                 return 0;
                 break;
@@ -451,12 +451,14 @@ int main(int argc, char **argv) {
     cpu_set_t mask, get;
     CPU_ZERO(&mask);
     CPU_ZERO(&get);
-    if (cpu_control_type >= 20 && (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
-        int thread_count = cpu_control_type / 10;
-        int step = (cpu_control_type % 10 == 1) ? 2 : 1;
+    int cpu_count = 1;
+    if (cpu_control_type >= 10 && cpu_control_type < 100 &&
+        (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
+        int thread_count = cpu_control_type;
+        cpu_count = cpu_control_type % 10;
 
         for (int i = 0; i < thread_count; i++) {
-            CPU_SET(i * step, &mask);
+            CPU_SET(i, &mask);
         }
         calculate_thread = thread_count;
         maxquerythread = thread_count;
@@ -464,15 +466,20 @@ int main(int argc, char **argv) {
     } else if (cpu_control_type == 1) {
         calculate_thread = 1;
         maxquerythread = 1;
+        cpu_count = 1;
 
     } else {
         calculate_thread = cpu_control_type;
         maxquerythread = cpu_control_type;
+        cpu_count = 1;
 
         for (int i = 0; i < cpu_control_type; i++) {
             // CPU_SET(i, &mask);
         }
     }
+
+    fprintf(stderr, ">>> cpu-type=%d -> using %d cores in %d CPUs\n",
+            cpu_control_type, maxquerythread, cpu_count);
 
     if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
         fprintf(stderr, "set thread affinity failed\n");

@@ -341,6 +341,9 @@ enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *o
         const ts_type *component = index->pca_components + (k * input_dim);
         for (int i = 0; i < input_dim; ++i) {
             // Temporary: disable PCA mean-centering.
+            // double centered = (double) ts[i] - index->pca_mean[i];
+            // acc += centered * component[i];
+
             acc += (double) ts[i] * component[i];
         }
         out[k] = (ts_type) acc;
