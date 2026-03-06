@@ -25,28 +25,27 @@ typedef struct isax_node {
     int leaf_size;
     char has_partial_data_file;
     char has_full_data_file;
-    
+
     sax_type * isax_values;
     sax_type * isax_cardinalities;
-    
+
     struct isax_node *next;
     struct isax_node *previous;
     root_mask_type mask;
     struct isax_node *parent;
-    
+
     // If is leaf
-    unsigned char is_leaf; 
+    unsigned char is_leaf;
     char * filename;
     isax_node_buffer *buffer;
-    
+
     // If is intermediate
     struct isax_node_split_data *split_data;
     struct isax_node *left_child;
     struct isax_node *right_child;
-    
+
     // Wedges
     ts_type *wedges;
-
 } isax_node;
 
 

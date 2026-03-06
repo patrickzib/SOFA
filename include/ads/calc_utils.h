@@ -7,11 +7,16 @@
 ////// Utility functions ////
 // Function to calculate mean of an array of floats
 float calculateMean(ts_type *data, int n);
+float calculateMean_SIMD(ts_type *data, int n);
 
 // Function to calculate standard deviation of an array of floats
 float calculateStdDev(ts_type *data, int n, ts_type mean);
+float calculateStdDev_SIMD(ts_type *data, int n, ts_type mean);
+float calculateStdDev_SIMD512F(ts_type *data, int n, ts_type mean);
 
 // Function to perform zero mean normalization
 void znorm(ts_type *data, int n);
+void znorm_SIMD(ts_type *data, int n);
+void znorm_SIMD512F(ts_type *data, int n);
 
 #endif //MESSI_SFA_CALC_UTILS_H
