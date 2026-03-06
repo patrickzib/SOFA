@@ -15,4 +15,5 @@ void bst_print_dot(isax_node* tree, FILE* stream);
 void isax_print_dot(isax_index* index, FILE *stream);
 
 void calculate_average_depth(FILE *ifile, isax_index *index);
-void traverse_tree(isax_node *node, unsigned int parent_depth, unsigned int *total_depth, unsigned int *node_count, unsigned int *leaf_count, unsigned long *leaf_size);
+void traverse_tree(isax_node *node, unsigned int parent_depth, unsigned int *total_depth, unsigned int *node_count,
+        unsigned int *leaf_count, unsigned long *leaf_size);

@@ -3,6 +3,9 @@
 /* Create a benchmark version */
 #undef BENCHMARK
 
+/* armv8.2-a */
+#undef BUILD_ARCH
+
 /* Enable clustering */
 #undef CLUSTERED
 

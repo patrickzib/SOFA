@@ -58,7 +58,6 @@ float   minidist_paa_to_isax_raw_DTW(float *paaU, float *paaL , sax_type *sax,
                            float ratio_sqrt);
 void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isax_index *index,
                             float minimum_distance, int min_checked_leaves,int warpWind);
-                    //query_result (*search_function)(ts_type*, ts_type*, isax_index*,node_list*, float, int));
 float dtw(float* A, float* B,float *cb,int m, int r,  float bsf);
 float dtwsimd(float* A, float* B, float *cb, int m, int r, float bsf, float* tSum, float* pCost, float* rDist);
 float dtwsimdPruned(float* A, float* B,float *cb, int m, int r, float bsf, float* tSum, float* pCost, float* rDist);

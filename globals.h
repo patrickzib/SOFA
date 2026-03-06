@@ -5,7 +5,12 @@
 //  Created by Kostas Zoumpatianos and Botao Peng, March 2020
 //
 #include "config.h"
+#include <stdio.h>
 #include <math.h>
+#if defined(__APPLE_CC__)
+#include <stdbool.h>
+#include <errno.h>
+#endif
 
 #ifndef isax_globals_h
 #define isax_globals_h
@@ -34,8 +39,12 @@ typedef unsigned long long root_mask_type;
 enum response {OUT_OF_MEMORY_FAILURE, FAILURE, SUCCESS};
 enum insertion_mode {PARTIAL = 1, 
                      TMP = 2, 
+                     PARTIAL_OR_TMP = 3,
                      FULL = 4,
-                     NO_TMP = 8};
+                     TMP_OR_FULL = 6,
+                     NO_TMP = 8,
+                     PARTIAL_OR_NO_TMP = 9,
+                     FULL_OR_NO_TMP = 12};
 
 enum buffer_cleaning_mode {FULL_CLEAN, TMP_ONLY_CLEAN, TMP_AND_TS_CLEAN};
 enum node_cleaning_mode {DO_NOT_INCLUDE_CHILDREN = 0,
@@ -49,12 +58,41 @@ enum node_cleaning_mode {DO_NOT_INCLUDE_CHILDREN = 0,
 #define FALSE 0
 #define BUFFER_REALLOCATION_RATE  2 
 
+#if defined(__APPLE_CC__)
+#ifndef ADS_PTHREAD_BARRIER_COMPAT_H
+#define ADS_PTHREAD_BARRIER_COMPAT_H
+
+#if !(defined(HAVE_PTHREAD_BARRIER) && HAVE_PTHREAD_BARRIER)
+
+#include "ads/barrier.h"
+
+#ifndef PTHREAD_BARRIER_SERIAL_THREAD
+#define PTHREAD_BARRIER_SERIAL_THREAD 1
+#endif
+
+#undef pthread_barrier_t
+#undef pthread_barrier_init
+#undef pthread_barrier_wait
+#undef pthread_barrier_destroy
+
+#define pthread_barrier_t ads_barrier_t
+#define pthread_barrier_init(barrier, attr, count) ads_barrier_init((barrier), (unsigned int)(count))
+#define pthread_barrier_destroy(barrier) ads_barrier_destroy((barrier))
+#define pthread_barrier_wait(barrier) ads_barrier_wait((barrier))
+
+#endif /* !(HAVE_PTHREAD_BARRIER) */
+
+#endif /* ADS_PTHREAD_BARRIER_COMPAT_H */
+
+#endif
+
+
 ///// GLOBAL VARIABLES /////
 int FLUSHES;
 unsigned long BYTES_ACCESSED;
 float APPROXIMATE;
 
-void* LOGFILE;
+FILE* LOGFILE;
 
 #define INCREASE_BYTES_ACCESSED(new_bytes) \
 	    BYTES_ACCESSED += (unsigned long) new_bytes;
@@ -194,7 +232,7 @@ void* LOGFILE;
         loaded_records, APPROXIMATE,\
         result_distance, total_time);
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
-        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%lf,%lf,%ld,%ld,%lf,", total_binning_time, total_indexing_time,\
+        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total,transformation,indexing,total time,index file size\n%lf,%lf,%ld,%ld,%lf,\n", total_binning_time, total_indexing_time,\
         TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));
         #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, init time, tree pass time, pq insert time, pq remove time, lb dist time, real dist time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
         #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%lf, %lf, %lf, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %lf\n", \
@@ -233,13 +271,13 @@ void* LOGFILE;
         TOTAL_REAL_DIST_CALC_TIME=0;
         #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
         (total_querying_time_all / queries_size), (total_init_time_all / queries_size),\
-        (total_tree_pass_time_all / queries_size), (total_pq_insert_time_all / queries_size),(total_pq_remove_time_all / queries_size),\
+        (total_tree_pass_time_all / queries_size), (total_pq_insert_time_all / queries_size), (total_pq_remove_time_all / queries_size),\
         (total_lb_dist_calc_time_all / queries_size), (total_real_dist_calc_time_all / queries_size),\
         total_tree_nodes, ((double)checked_nodes_all / queries_size), \
         ((double)bytes_accessed_all / queries_size), ((double)loaded_nodes_all / queries_size), \
         ((double)loaded_records / queries_size), ((double)RDcalculationnumber_all / queries_size), \
         ((double)LBDcalculationnumber_all / queries_size), (approximate_all / queries_size),\
-        (result_distance_all / queries_size), (total_time_all / queries_size));
+        (result_distance_all / queries_size), total_time);
         #define min(x,y)  ( x<y?x:y )
         #define COUNT_NEW_NODE() __sync_fetch_and_add(&total_tree_nodes,1);
         #define COUNT_LOADED_NODE() loaded_nodes++;

@@ -19,7 +19,7 @@ typedef struct {
 } isax_node_record;
 
 
-isax_node_record * isax_node_record_init(int sax_size, int ts_size, 
-                                         enum insertion_mode);
+isax_node_record * isax_node_record_init(int sax_size, int ts_size,
+        enum insertion_mode);
 void isax_node_record_destroy(isax_node_record *node);
 #endif
