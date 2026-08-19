@@ -66,6 +66,7 @@
 #include "ads/isax_first_buffer_layer.h"
  #include "ads/inmemory_query_engine.h"
 #include "ads/pqueue.h"
+#include "ads/calc_utils.h"
 /**
  This function initializes the settings of an isax index
  */
@@ -355,6 +356,12 @@ void isax_index_destroy(isax_index *index, isax_node *node)
         {
             destroy_node_buffer(node->buffer);
         }
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
+        }
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
+        }
         free(node);
     }
 }
@@ -425,6 +432,12 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
         {
             destroy_node_buffer(node->buffer);
         }
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
+        }
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
+        }
         free(node);
     }
 }
@@ -488,6 +501,12 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
         if(node->buffer != NULL)
         {
             destroy_node_buffer(node->buffer);
+        }
+        if (node->mbb_sax_min != NULL) {
+            free(node->mbb_sax_min);
+        }
+        if (node->mbb_sax_max != NULL) {
+            free(node->mbb_sax_max);
         }
     
         free(node);
@@ -567,9 +586,7 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
         isax_node *new_node = isax_root_node_init(first_bit_mask, 
                                                   index->settings->initial_leaf_buffer_size);
         index->root_nodes++;
-    
-        new_node->is_leaf = 1;
-        
+
         if(index->first_node == NULL)
         {
             index->first_node = new_node;
@@ -589,7 +606,7 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
     memcpy((void *)record->sax, sax, index->settings->sax_byte_size);
     memcpy((void *)record->position, pos, index->settings->position_byte_size);
     
-    add_record_to_node(index, curr_node, record, 1);
+    add_record_to_node(index, curr_node, record, 1, 1);
     
     free(record);
     
@@ -611,7 +628,8 @@ enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_
 
 enum response create_node_filename(isax_index *index,
                                    isax_node *node,
-                                   isax_node_record *record)
+                                   isax_node_record *record,
+                                   int kn)
 {
     int i;
 
@@ -628,8 +646,7 @@ enum response create_node_filename(isax_index *index,
         for (i=0; i<index->settings->n_segments; i++) {
             root_mask_type mask = 0x00;
             int k; 
-            for (k=0; k <= node->parent->split_data->split_mask[i]; k++) 
-            {
+            for (k=0; k <= node->parent->split_data->split_mask[i]; k++) {
                 mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - k] & 
                          record->sax[i]);
             }
@@ -643,28 +660,27 @@ enum response create_node_filename(isax_index *index,
             }
             else {
                 l += sprintf(node->filename+l ,"_%d.%d", node->isax_values[i], node->isax_cardinalities[i]);
-            } 
-            
+            }
         }
     }
-    // If it has no parent it is root node and as such it's cardinality is 1.
-    else
-    {
-        root_mask_type mask = 0x00;
-        
-        for (i=0; i<index->settings->n_segments; i++) {
-            
-            mask = (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1] & record->sax[i]);
-            mask = mask >> index->settings->sax_bit_cardinality - 1;
+    // If it has no parent it is root node and as such it's cardinality is kn (default 1).
+    else {
+        for (i=0; i<index->settings->n_segments/kn; i++) {
+            root_mask_type mask = 0x00;
+            for (int j = 0; j < kn; j++) {
+                mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - j] &
+                         record->sax[i]);
+            }
+            mask = mask >> index->settings->sax_bit_cardinality - kn;
             
             node->isax_values[i] = (int) mask;
-            node->isax_cardinalities[i] = 1;
+            node->isax_cardinalities[i] = kn;
             
             if (i==0) {
-                l += sprintf(node->filename+l ,"%d.1", (int) mask);
+                l += sprintf(node->filename+l ,"%d.%d", (int) mask, kn);
             }
             else {
-                l += sprintf(node->filename+l ,"_%d.1", (int) mask);
+                l += sprintf(node->filename+l ,"_%d.%d", (int) mask, kn);
             } 
         }
     }
@@ -677,48 +693,53 @@ enum response create_node_filename(isax_index *index,
 }
 
 
-isax_node * add_record_to_node(isax_index *index, 
-                                 isax_node *tree_node, 
-                                 isax_node_record *record,
-                                 const char leaf_size_check) 
-{
-    #ifdef DEBUG
+isax_node * add_record_to_node(isax_index *index,
+                               isax_node *tree_node,
+                               isax_node_record *record,
+                               const char leaf_size_check, int kn) {
+#ifdef DEBUG
     printf("*** Adding to node ***\n\n");
-    #endif
+#endif
+
     isax_node *node = tree_node;
 
     // Traverse tree
     while (!node->is_leaf) {
+        if (record->sax != NULL) {
+            isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+        } else {
+            fprintf(stderr, "debug: missing sax for MBR update.\n");
+        }
         int location = index->settings->sax_bit_cardinality - 1 -
         node->split_data->split_mask[node->split_data->splitpoint];
-        
+
         root_mask_type mask = index->settings->bit_masks[location];
-        if(record->sax[node->split_data->splitpoint] & mask) 
-        {
+        if(record->sax[node->split_data->splitpoint] & mask) {
             node = node->right_child;
-        }
-        else
-        {
+        } else {
             node = node->left_child;
         }
     }
+
     // Check if split needed
     if ((node->leaf_size) >= index->settings->max_leaf_size && leaf_size_check) {
-    #ifdef DEBUG
+#ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
-    #endif
-        split_node(index, node);
-        add_record_to_node(index, node, record, leaf_size_check);
-    }
-    else
-    {
-        if (node->filename == NULL) {
-            create_node_filename(index,node,record);
+#endif
+        if (split_node(index, node, 0, kn)) {
+            return add_record_to_node(index, node, record, leaf_size_check, kn);
         }
-        add_to_node_buffer(node->buffer, record, index->settings->n_segments, 
-                           index->settings->timeseries_size);
-        node->leaf_size++;
-
+    }
+    if (node->filename == NULL) {
+        create_node_filename(index, node, record, kn);
+    }
+    add_to_node_buffer(node->buffer, record, index->settings->n_segments,
+                       index->settings->timeseries_size);
+    node->leaf_size++;
+    if (record->sax != NULL) {
+        isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+    } else {
+        fprintf(stderr, "debug: missing sax for MBR update.\n");
     }
     return node;
 }
@@ -1514,7 +1535,7 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 	//printf("Calculating minimum distance...\n");
 	float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                               node->isax_cardinalities,
-                                              index->settings);
+                                              index->settings, 0);
 	float bsfRecord = FLT_MAX;																 
 	//printf("---> Distance: %lf\n", bsfLeaf);
     //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
@@ -1533,8 +1554,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			while(!feof(partial_file)) {
 				if(fread(pos, sizeof(file_position_type), 1, partial_file)) {
 					if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
-						float mindist = minidist_paa_to_isax_raw(query, sax, index->settings->max_sax_cardinalities,
-																 index->settings);
+						float mindist = minidist_paa_to_isax(query, sax, index->settings->max_sax_cardinalities,
+																 index->settings, 1);
     //			printf("+[FILE] %lf\n", mindist);
 
 						if(mindist < bsfRecord) {
@@ -1552,8 +1573,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 
 		if (node->buffer != NULL) {
 			for (i=0; i<node->buffer->partial_buffer_size; i++) {
-				float mindist = minidist_paa_to_isax_raw(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
-														 index->settings);
+				float mindist = minidist_paa_to_isax(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
+														 index->settings, 1);
     //				printf("+[PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
@@ -1561,8 +1582,8 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			}
 
 			for (i=0; i<node->buffer->tmp_partial_buffer_size; i++) {
-				float mindist = minidist_paa_to_isax_raw(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
-														 index->settings);
+				float mindist = minidist_paa_to_isax(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
+														 index->settings, 1);
     //				printf("+[TMP_PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
@@ -1604,7 +1625,7 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
     //printf("Calculating minimum distance...\n");
     float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                           node->isax_cardinalities,
-                                          index->settings);
+                                          index->settings, 0);
     float bsfRecord = FLT_MAX;                                                               
     //printf("---> Distance: %lf\n", bsfLeaf);
     //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
@@ -2085,8 +2106,7 @@ void complete_index(isax_index *index, int ts_num)
                 index->fbl->soft_buffers[first_bit_mask].node = isax_root_node_init(first_bit_mask, 
                                                                                     index->settings->initial_leaf_buffer_size);
                 index->root_nodes++;
-                index->fbl->soft_buffers[first_bit_mask].node->is_leaf = 1;
-                
+
                 if(index->first_node == NULL)
                 {
                     index->first_node = index->fbl->soft_buffers[first_bit_mask].node;
@@ -2102,7 +2122,7 @@ void complete_index(isax_index *index, int ts_num)
                 }
                 
             }
-            isax_node * dest = add_record_to_node(index, index->fbl->soft_buffers[first_bit_mask].node, record, 0);
+            isax_node * dest = add_record_to_node(index, index->fbl->soft_buffers[first_bit_mask].node, record, 0, 1);
             
             // Define leaf as loaded.
             if(!dest->has_full_data_file)

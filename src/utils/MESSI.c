@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
+    static int dynamic_index = 1;
     static int node_split_criterion = 1;
 
     int calculate_thread = 8;
@@ -193,7 +194,8 @@ int main(int argc, char **argv) {
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
-                {"node-split-criterion", required_argument, 0,   'G'},
+                {"node-split-criterion",required_argument, 0,   'G'},
+                {"dynamic-index",       required_argument, 0,   'H'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -340,6 +342,9 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
                 break;
+            case 'H':
+                dynamic_index = atoi(optarg);
+                break;
 
             case 'h':
 #ifdef BENCHMARK
@@ -362,6 +367,7 @@ int main(int argc, char **argv) {
                 \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
                 \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
+                \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -398,7 +404,9 @@ int main(int argc, char **argv) {
                 \t\t\tequi-width splitting: 2\n\
                 \t--cpu-type\t\t\tSet for how many cores you want to used and in 1 or 2 cpu\n\
                 \t--help\n\n\
-                \tCPU type code:\t\t\t21 : 2 core in 1 CPU\n\
+                \tCPU type code:\t\t\tAny 2-digit value ending in 1 or 2 uses that many cores\n\
+                \t\t\t\t\t362: 36 core in 2 CPUs\n\
+                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 \t\t\t\t\t22 : 2 core in 2 CPUs\n\
                 \t\t\t\t\t41 : 4 core in 1 CPU\n\
                 \t\t\t\t\t42 : 4 core in 2 CPUs\n\
@@ -413,8 +421,6 @@ int main(int argc, char **argv) {
                 \t\t\t\t\t181: 18 core in 1 CPU\n\
                 \t\t\t\t\t182: 18 core in 2 CPUs\n\
                 \t\t\t\t\t242: 24 core in 2 CPUs\n\
-                \t\t\t\t\t362: 36 core in 2 CPUs\n\
-                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 ");
                 return 0;
                 break;
@@ -445,226 +451,35 @@ int main(int argc, char **argv) {
     cpu_set_t mask, get;
     CPU_ZERO(&mask);
     CPU_ZERO(&get);
-    if (cpu_control_type == 21) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        calculate_thread = 2;
-        maxquerythread = 2;
-    } else if (cpu_control_type == 22) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        calculate_thread = 2;
-        maxquerythread = 2;
-    } else if (cpu_control_type == 41) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        calculate_thread = 4;
-        maxquerythread = 4;
-    } else if (cpu_control_type == 42) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        calculate_thread = 4;
-        maxquerythread = 4;
-    } else if (cpu_control_type == 61) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        calculate_thread = 6;
-        maxquerythread = 6;
-    } else if (cpu_control_type == 62) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        calculate_thread = 6;
-        maxquerythread = 6;
-    } else if (cpu_control_type == 81) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        calculate_thread = 8;
-        maxquerythread = 8;
-    } else if (cpu_control_type == 82) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        calculate_thread = 8;
-        maxquerythread = 8;
-    } else if (cpu_control_type == 101) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(18, &mask);
-        calculate_thread = 10;
-        maxquerythread = 10;
-    } else if (cpu_control_type == 102) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        calculate_thread = 10;
-        maxquerythread = 10;
-    } else if (cpu_control_type == 121) {
-        CPU_SET(0, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(22, &mask);
-        calculate_thread = 12;
-        maxquerythread = 12;
-    } else if (cpu_control_type == 122) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        calculate_thread = 12;
-        maxquerythread = 12;
-    } else if (cpu_control_type == 182) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        calculate_thread = 18;
-        maxquerythread = 18;
-    } else if (cpu_control_type == 242) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(19, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(21, &mask);
-        CPU_SET(22, &mask);
-        CPU_SET(23, &mask);
-        calculate_thread = 24;
-        maxquerythread = 24;
-    }
-        //new control type for gruenau1-server with 36 cores on 2 CPUs
-    else if (cpu_control_type == 362) {
-        CPU_SET(0, &mask);
-        CPU_SET(1, &mask);
-        CPU_SET(2, &mask);
-        CPU_SET(3, &mask);
-        CPU_SET(4, &mask);
-        CPU_SET(5, &mask);
-        CPU_SET(6, &mask);
-        CPU_SET(7, &mask);
-        CPU_SET(8, &mask);
-        CPU_SET(9, &mask);
-        CPU_SET(10, &mask);
-        CPU_SET(11, &mask);
-        CPU_SET(12, &mask);
-        CPU_SET(13, &mask);
-        CPU_SET(14, &mask);
-        CPU_SET(15, &mask);
-        CPU_SET(16, &mask);
-        CPU_SET(17, &mask);
-        CPU_SET(18, &mask);
-        CPU_SET(19, &mask);
-        CPU_SET(20, &mask);
-        CPU_SET(21, &mask);
-        CPU_SET(22, &mask);
-        CPU_SET(23, &mask);
-        CPU_SET(24, &mask);
-        CPU_SET(25, &mask);
-        CPU_SET(26, &mask);
-        CPU_SET(27, &mask);
-        CPU_SET(28, &mask);
-        CPU_SET(29, &mask);
-        CPU_SET(30, &mask);
-        CPU_SET(31, &mask);
-        CPU_SET(32, &mask);
-        CPU_SET(33, &mask);
-        CPU_SET(34, &mask);
-        CPU_SET(35, &mask);
-        calculate_thread = 36;
-        maxquerythread = 36;
+    int cpu_count = 1;
+    if (cpu_control_type >= 10 && cpu_control_type < 100 &&
+        (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
+        int thread_count = cpu_control_type;
+        cpu_count = cpu_control_type % 10;
+
+        for (int i = 0; i < thread_count; i++) {
+            CPU_SET(i, &mask);
+        }
+        calculate_thread = thread_count;
+        maxquerythread = thread_count;
+
     } else if (cpu_control_type == 1) {
         calculate_thread = 1;
         maxquerythread = 1;
+        cpu_count = 1;
+
     } else {
         calculate_thread = cpu_control_type;
         maxquerythread = cpu_control_type;
+        cpu_count = 1;
 
         for (int i = 0; i < cpu_control_type; i++) {
-            //CPU_SET(i, &mask);
+            // CPU_SET(i, &mask);
         }
     }
+
+    fprintf(stderr, ">>> cpu-type=%d -> using %d cores in %d CPUs\n",
+            cpu_control_type, maxquerythread, cpu_count);
 
     if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
         fprintf(stderr, "set thread affinity failed\n");
@@ -680,72 +495,65 @@ int main(int argc, char **argv) {
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
         print_settings(idx->settings);
-        //fprintf(stderr,"total_records: %ld\n", idx->total_records);
-        //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-        //create_wedges(idx, NULL);
+        // fprintf(stderr,"total_records: %ld\n", idx->total_records);
+        // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
+        // create_wedges(idx, NULL);
 
-        char sanity_test = 0;
-        if (sanity_test) {
+        if (serial_scan) {
             cache_sax_file(idx);
-            isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                   &sanity_check_query);
-        } else {
-            if (serial_scan) {
-                cache_sax_file(idx);
-                if (knnlabel) {
-                    if (function_type == 0) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize,
-                                                   &exact_topk_serial); //ADS+ knn
-                    } else if (function_type == 1) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize,
-                                                   &exact_topk_serial_ParIS); //ParIS knn
-                    }
-
-                } else if (topk) {
-                    if (function_type == 0) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk_serial);//ADS+ topk
-                    } else if (function_type == 1) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk_serial_ParIS);//ParIS topk
-                    }
-                } else {
-                    if (function_type == 0) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial);//ADS+ similarity search
-                    } else if (function_type == 1) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial_ParIS);//ParIS similarity search
-                    } else if (function_type == 2) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
-                    } else if (function_type == 3) {
-                        //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
-                    }
+            if (knnlabel) {
+                if (function_type == 0) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize,
+                                               &exact_topk_serial); //ADS+ knn
+                } else if (function_type == 1) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize,
+                                               &exact_topk_serial_ParIS); //ParIS knn
                 }
 
+            } else if (topk) {
+                if (function_type == 0) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk_serial);//ADS+ topk
+                } else if (function_type == 1) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk_serial_ParIS);//ParIS topk
+                }
             } else {
-                if (knnlabel) {
-                    if (function_type == 0) {
-                        isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
-                                                   min_checked_leaves, k_size, labelsize, &exact_topk);
-                    }
+                if (function_type == 0) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial);//ADS+ similarity search
+                } else if (function_type == 1) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial_ParIS);//ParIS similarity search
+                } else if (function_type == 2) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
+                } else if (function_type == 3) {
+                    //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
+                }
+            }
 
-                } else if (topk) {
-                    if (function_type == 0) {
-                        isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                    k_size, &exact_topk);
-                    }
+        } else {
+            if (knnlabel) {
+                if (function_type == 0) {
+                    isax_knn_query_binary_file(queries, labelset, queries_size, idx, minimum_distance,
+                                               min_checked_leaves, k_size, labelsize, &exact_topk);
+                }
+
+            } else if (topk) {
+                if (function_type == 0) {
+                    isax_topk_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                k_size, &exact_topk);
+                }
+            } else {
+                if (function_type == 0) {
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search);
                 } else {
-                    if (function_type == 0) {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search);
-                    } else {
-                        isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                               &exact_search_m);
-                    }
+                    isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                           &exact_search_m);
                 }
             }
         }
@@ -936,8 +744,8 @@ int main(int argc, char **argv) {
             //set bins
             sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
-            //build index            
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            //build index
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -951,14 +759,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            // if (topk && k_size > 1) {
+            //     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+            //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
+            //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
+            // } else {
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -968,7 +775,7 @@ int main(int argc, char **argv) {
             spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -982,14 +789,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -999,7 +805,7 @@ int main(int argc, char **argv) {
             pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -1013,18 +819,17 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             calculate_average_depth(logfile_tree, idx);
 
@@ -1044,13 +849,13 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk && k_size > 1) {
+            } /*else if (topk && k_size > 1) {
                 if (function_type == 3)
                     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                             &exact_topk_MESSImq_inmemory);//MESSI topk
 
-            } else {
+            } */ else {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);
@@ -1074,7 +879,7 @@ int main(int argc, char **argv) {
                     //MESSI-mq: in-memory flag set with function-type 3
                 else if (function_type == 3) {
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, &exact_search_MESSI);
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
                 } else if (function_type == 8) {

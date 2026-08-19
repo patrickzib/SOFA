@@ -16,12 +16,11 @@ void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_ou
 enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *out);
 
 ts_type minidist_pca_to_spartan(isax_index *index, float *pca, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_pca_to_spartan_raw(isax_index *index, float *pca, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 ts_type minidist_pca_to_spartan_rawe_SIMD(isax_index *index, float *pca, sax_type *sax, sax_type *sax_cardinalities,
                                           float bsf);
 
 #if !ADS_HAVE_AVX2
-#define minidist_pca_to_spartan_rawe_SIMD minidist_pca_to_spartan_raw
+#define minidist_pca_to_spartan_rawe_SIMD minidist_pca_to_spartan
 #endif
 
 #endif /* MESSI_SPARTAN_H */

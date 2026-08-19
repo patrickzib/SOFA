@@ -133,7 +133,6 @@ isax_node * insert_to_fbl(first_buffer_layer *fbl, sax_type *sax,
         current_buffer->node = isax_root_node_init(mask,
                                                    index->settings->initial_leaf_buffer_size);
         index->root_nodes++;
-        current_buffer->node->is_leaf = 1;
 
         if(index->first_node == NULL)
         {
@@ -224,7 +223,7 @@ enum response flush_fbl(first_buffer_layer *fbl, isax_index *index)
 
     int c = 1;
     int j;
-    isax_node_record *r = malloc(sizeof(isax_node_record));
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
     for (j=0; j<fbl->number_of_buffers; j++)
     {
 
@@ -251,7 +250,7 @@ enum response flush_fbl(first_buffer_layer *fbl, isax_index *index)
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
 
-                add_record_to_node(index, current_fbl_node->node, r, 1);
+                add_record_to_node(index, current_fbl_node->node, r, 1, 1);
 
             }
 

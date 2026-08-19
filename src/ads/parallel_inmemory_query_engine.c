@@ -75,52 +75,57 @@ query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index
 }
 
 float calculate_node_distance_inmemory_m(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf) {
-    COUNT_CHECKED_NODE()
     float distmin;
+    COUNT_CHECKED_NODE()
 
     // If node has buffered data
     if (node->buffer != NULL) {
         int i;
 
+        if (node->buffer->full_buffer_size > 0) {
 #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-        for (i = 0; i < node->buffer->full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
-                                         index->settings->max_sax_cardinalities, bsf);
+            for (i = 0; i < node->buffer->full_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->full_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
 
-            if (distmin < bsf) {
-                float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
-                               index->settings->timeseries_size, bsf);
-                if (dist < bsf) {
-                    bsf = dist;
-                }
-            }
-        }
-
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-        for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
-            distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
-                                         index->settings->max_sax_cardinalities, bsf);
-
-            if (distmin < bsf) {
-                float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
-                               index->settings->timeseries_size, bsf);
-                if (dist < bsf) {
-                    bsf = dist;
-                }
-            }
-        }
-
-#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
-        for (i = 0; i < node->buffer->partial_buffer_size; i++) {
-
-            distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
-                                         index->settings->max_sax_cardinalities, bsf);
-
-            if (distmin < bsf) {
-                float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, node->buffer->full_ts_buffer[i],
                                    index->settings->timeseries_size, bsf);
-                if (dist < bsf) {
-                    bsf = dist;
+                    if (dist < bsf) {
+                        bsf = dist;
+                    }
+                }
+            }
+        }
+
+        if (node->buffer->tmp_full_buffer_size > 0) {
+#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+            for (i = 0; i < node->buffer->tmp_full_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->tmp_full_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
+
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, node->buffer->tmp_full_ts_buffer[i],
+                                   index->settings->timeseries_size, bsf);
+                    if (dist < bsf) {
+                        bsf = dist;
+                    }
+                }
+            }
+        }
+
+        if (node->buffer->partial_buffer_size > 0) {
+#pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf)
+            for (i = 0; i < node->buffer->partial_buffer_size; i++) {
+                distmin = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                             index->settings->max_sax_cardinalities, bsf);
+
+                if (distmin < bsf) {
+                    float dist = ts_ed(query, &(rawfile[*node->buffer->partial_position_buffer[i]]),
+                                       index->settings->timeseries_size, bsf);
+                    if (dist < bsf) {
+                        bsf = dist;
+                    }
                 }
             }
         }
@@ -170,7 +175,7 @@ query_result refine_answer_inmemory_m(ts_type *ts, ts_type *paa, isax_index *ind
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
-                    //split_node(index, n->node);
+                    //split_node(index, n->node, 1);
                     //pqueue_insert(pq, n);
                     continue;
                 }
@@ -435,7 +440,7 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
 
 query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                           float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -549,7 +554,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
 
 
         query_result *mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
+        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings, 0);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -586,7 +591,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
-                    split_node(index, n->node);
+                    split_node(index, n->node, 1, 1);
                     pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -636,7 +641,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->left_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -657,7 +662,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->right_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -681,7 +686,7 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
 
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -1302,7 +1307,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
         fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[i];
         if (current_buffer->initialized == 1) {
             isax_node *node = (((first_buffer_layer2 *) (index->fbl))->soft_buffers[i]).node;
-            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
             //COUNT_CAL_TIME_END
             if (distance <= bsf_distance) {
                 //query_result * mindist_result = malloc(sizeof(query_result));
@@ -1349,13 +1354,10 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     //LBDcalculationnumber=0;
     //RDcalculationnumber=0;
 
-
-
-
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
     bool *rdcbitmap = malloc(sizeof(bool) * index->sax_cache_size);
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
     int sum_of_lab = 0;
@@ -1428,7 +1430,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
                                             float minimum_distance, int min_checked_leaves) {
     //RDcalculationnumber=0;
     //LBDcalculationnumber=0;
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1518,7 +1520,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
 query_result
 exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1624,8 +1626,8 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 }
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
-                                float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+                                float minimum_distance, int min_checked_leaves, int kn) {
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
 
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1689,6 +1691,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].startqueuenumber = i % N_PQUEUE;
     }
 
+    // parameterinitial();
     for (int i = 0; i < maxquerythread; i++) {
         pthread_create(&(threadid[i]), NULL, exact_search_worker_inmemory_hybridpqueue, (void *) &(workerdata[i]));
     }
@@ -1714,7 +1717,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 query_result
 exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                                    float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -2075,15 +2078,14 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     int checks = 0;
     bool finished = true;
     int current_root_node_number;
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
+    // int tight_bound = index->settings->tight_bound;
+    // int aggressive_check = index->settings->aggressive_check;
     query_result *bsf_result = (((MESSI_workerdata *) rfdata)->bsf_result);
     float bsfdisntance = bsf_result->distance;
-    int calculate_node = 0, calculate_node_quque = 0;
+    // int calculate_node = 0, calculate_node_quque = 0;
     int tnumber = rand() % N_PQUEUE;
     int startqueuenumber = ((MESSI_workerdata *) rfdata)->startqueuenumber;
 
-    /*
     struct timeval current_time;
     struct timeval pq_insert_time_start;
     struct timeval pq_remove_time_start;
@@ -2097,7 +2099,6 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
 
 
     gettimeofday(&pq_insert_time_start, NULL);
-    */
 
     while (1) {
         current_root_node_number = __sync_fetch_and_add(((MESSI_workerdata *) rfdata)->node_counter, 1);
@@ -2105,61 +2106,70 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             break;
         current_root_node = ((MESSI_workerdata *) rfdata)->nodelist[current_root_node_number];
 
-        insert_tree_node_m_hybridpqueue(paa, current_root_node, index, bsfdisntance,
-                                        ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
-                                        &tnumber);
-        //insert_tree_node_m_hybridpqueue_time(paa,current_root_node,index,bsfdisntance,((MESSI_workerdata*)rfdata)->allpq,((MESSI_workerdata*)rfdata)->alllock,&tnumber, &total_lb_dist_calc_time);
+        insert_tree_node_m_hybridpqueue(
+            paa, current_root_node, index, bsfdisntance,
+            ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
+            &tnumber);
+
+        /*
+        insert_tree_node_m_hybridpqueue_time(
+            paa,current_root_node,
+            index,bsfdisntance,
+            ((MESSI_workerdata*)rfdata)->allpq,
+            ((MESSI_workerdata*)rfdata)->alllock,
+            &tnumber,
+            &total_lb_dist_calc_time);
+        */
     }
 
     pthread_barrier_wait(((MESSI_workerdata *) rfdata)->lock_barrier);
 
     //calculate time for pq-insertion
-    /*
     gettimeofday(&current_time, NULL);
-    total_pq_insert_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_insert_time_start.tv_sec*1000000 + (pq_insert_time_start.tv_usec)));
-    */
+    total_pq_insert_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) -
+        (pq_insert_time_start.tv_sec*1000000 + (pq_insert_time_start.tv_usec)));
 
     while (1) {
-        //gettimeofday(&pq_remove_time_start, NULL);
+        gettimeofday(&pq_remove_time_start, NULL);
         pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
         n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[startqueuenumber]);
         pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
 
         //calculate time for pq remove
-        /*
         gettimeofday(&current_time, NULL);
-        total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
-        */
+        total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) -
+            (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
 
-        if (n == NULL)
+        if (n == NULL) {
             break;
-        bsfdisntance = bsf_result->distance;
+        }
 
+        bsfdisntance = bsf_result->distance;
         if (n->distance > bsfdisntance || n->distance > minimum_distance) {
             break;
-        } else {
-            // If it is a leaf, check its real distance.
-            if (n->node->is_leaf) {
-
-                checks++;
-                float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
-
-                if (distance < bsfdisntance) {
-                    pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
-                    if (distance < bsf_result->distance) {
-                        bsf_result->distance = distance;
-                        bsf_result->node = n->node;
-                    }
-                    pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
-                }
-            }
-
         }
+
+        // If it is a leaf, check its real distance.
+        if (n->node->is_leaf) {
+            checks++;
+            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+
+            if (distance < bsfdisntance) {
+                pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
+                if (distance < bsf_result->distance) {
+                    bsf_result->distance = distance;
+                    bsf_result->node = n->node;
+                    bsfdisntance = distance;
+                }
+                pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
+            }
+        }
+
         free(n);
     }
 
     if ((((MESSI_workerdata *) rfdata)->allqueuelabel[startqueuenumber]) == 1) {
-        //gettimeofday(&pq_remove_time_start, NULL);
+        gettimeofday(&pq_remove_time_start, NULL);
 
         (((MESSI_workerdata *) rfdata)->allqueuelabel[startqueuenumber]) = 0;
         pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
@@ -2169,10 +2179,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
 
         //calculate time for pq remove
-        /*
         gettimeofday(&current_time, NULL);
         total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
-        */
     }
 
     while (1) {
@@ -2182,39 +2190,46 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             if ((((MESSI_workerdata *) rfdata)->allqueuelabel[i]) == 1) {
                 finished = false;
                 while (1) {
-                    //gettimeofday(&pq_remove_time_start, NULL);
+                    gettimeofday(&pq_remove_time_start, NULL);
 
                     pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[i]));
                     n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[i]);
                     pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[i]));
 
                     //calculate time for pq remove
-                    /*
                     gettimeofday(&current_time, NULL);
-                    total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec)) - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
-                    */
+                    total_pq_remove_time += ((current_time.tv_sec*1000000 + (current_time.tv_usec))
+                        - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
 
-                    if (n == NULL)
+                    if (n == NULL) {
+                        ((MESSI_workerdata *) rfdata)->allqueuelabel[i] = 0;
                         break;
+                    }
+
+                    bsfdisntance = bsf_result->distance;
                     if (n->distance > bsfdisntance || n->distance > minimum_distance) {
                         break;
-                    } else {
-                        // If it is a leaf, check its real distance.
-                        if (n->node->is_leaf) {
-                            checks++;
+                    }
 
-                            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+                    // If it is a leaf, check its real distance.
+                    if (n->node->is_leaf) {
+                        checks++;
+                        float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsf_result->distance);
 
-                            if (distance < bsfdisntance) {
-                                pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
-                                if (distance < bsf_result->distance) {
-                                    bsf_result->distance = distance;
-                                    bsf_result->node = n->node;
-                                }
-                                pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
+                        // the method itself runs in parallel, thus this would add a second level of parallelizm
+                        // float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
+
+                        if (distance < bsfdisntance) {
+                            pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
+                            if (distance < bsf_result->distance) {
+                                bsf_result->distance = distance;
+                                bsf_result->node = n->node;
+                                bsfdisntance = distance;
                             }
+                            pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                         }
                     }
+
                     //add
                     free(n);
                 }
@@ -2225,11 +2240,11 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             break;
         }
     }
-    /*
+
     __sync_fetch_and_add(&TOTAL_PQ_INSERT_TIME,(int)total_pq_insert_time);
     __sync_fetch_and_add(&TOTAL_PQ_REMOVE_TIME,(int)total_pq_remove_time);
     __sync_fetch_and_add(&TOTAL_LB_DIST_CALC_TIME,(int)total_lb_dist_calc_time);
-    __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);*/
+    __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);
 }
 
 void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
@@ -2392,7 +2407,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
 void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                         pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2419,7 +2434,7 @@ void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bs
 void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_bsf *pq,
                            pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2442,7 +2457,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 /*void insert_tree_node_m_parallelqueue(float *paa,isax_node *node,isax_index *index,float bsf,FGHPQueue *pq,FGHPQueueThreadState *th_state)
 {
     //COUNT_CAL_TIME_START
-    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if(distance < bsf)
@@ -2476,7 +2491,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 void insert_tree_node_m_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                                      pthread_mutex_t *lock_queue, localStack *workstack) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2507,7 +2522,7 @@ void
 insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                              pthread_mutex_t *lock_queue, localStack *workstack, int *tnumber) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2539,9 +2554,13 @@ insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_i
 
 void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                      pthread_mutex_t *lock_queue, int *tnumber) {
-    float distance;
 
-    distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+    // float distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+    float distance = messi_minidist_range_raw(
+        index, paa,
+        node->mbb_sax_min, node->mbb_sax_max,
+        index->settings->max_sax_cardinalities, bsf);
+
     //__sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
     if (distance < bsf) {
@@ -2567,13 +2586,16 @@ void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *in
 
 void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                           pthread_mutex_t *lock_queue, int *tnumber, unsigned long int *time_lb) {
-    float distance;
-
     struct timeval current_time;
     struct timeval lb_dist_time_start;
 
     gettimeofday(&lb_dist_time_start, NULL);
-    distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+    // distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+    float distance = messi_minidist_range_raw(
+            index, paa,
+            node->mbb_sax_min, node->mbb_sax_max,
+            index->settings->max_sax_cardinalities, bsf);
+
     __sync_fetch_and_add(&LBDcalculationnumber, 1);
     gettimeofday(&current_time, NULL);
     *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -

@@ -16,7 +16,7 @@
  */
 isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size) 
 {
-    isax_node *node = isax_leaf_node_init(initial_buffer_size);
+    isax_node *node = isax_leaf_node_init(initial_buffer_size, NULL);
     node->mask = mask;
     return node;
 }
@@ -24,7 +24,7 @@ isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size)
 /**
  This function initalizes an isax leaf node.
  */
-isax_node * isax_leaf_node_init(int initial_buffer_size) 
+isax_node * isax_leaf_node_init(int initial_buffer_size, isax_node *parent) 
 {
     COUNT_NEW_NODE()
     isax_node *node = malloc(sizeof(isax_node));
@@ -32,11 +32,12 @@ isax_node * isax_leaf_node_init(int initial_buffer_size)
         fprintf(stderr,"error: could not allocate memory for new node.\n");
         return NULL;
     }
+
     node->has_partial_data_file = 0;
     node->has_full_data_file = 0;
     node->right_child = NULL;
     node->left_child = NULL;
-    node->parent = NULL;
+    node->parent = parent;
     node->next = NULL;
     node->leaf_size = 0;
     node->filename = NULL;
@@ -47,8 +48,10 @@ isax_node * isax_leaf_node_init(int initial_buffer_size)
     node->buffer = init_node_buffer(initial_buffer_size);
     node->mask = 0;
     node->wedges = NULL;
+    node->mbb_sax_min = NULL;
+    node->mbb_sax_max = NULL;
+    node->mbb_sax_valid = 0;
+    node->is_leaf = 1;
+
     return node;
 }
-
-
-

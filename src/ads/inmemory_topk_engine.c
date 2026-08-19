@@ -58,7 +58,7 @@ void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqu
             }
             // Adaptive splitting
         }
-        calculate_node_topk_inmemory(index, node, ts, pq_bsf);
+        calculate_node_topk_inmemory(index, node, ts, paa, pq_bsf);
     } else {
 
     }
@@ -105,7 +105,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     //Split and push again in the queue
-                    split_node(index, n->node);
+                    split_node(index, n->node, 1, 1);
                     pqueue_insert(pq, n);
                     continue;
                 }
@@ -121,7 +121,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 }
                 // *** REAL DISTANCE ***
                 checks++;
-                calculate_node_topk_inmemory(index, n->node, ts, pq_bsf);
+                calculate_node_topk_inmemory(index, n->node, ts, paa, pq_bsf);
 
                 if (pq_bsf->knn[pq_bsf->k - 1] < FLT_MAX) {
                     pqueue_insert(pq, n);
@@ -133,7 +133,7 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 if (n->node->left_child->isax_cardinalities != NULL) {
                     if (n->node->left_child->is_leaf && !n->node->left_child->has_partial_data_file &&
                         aggressive_check) {
-                        calculate_node_topk_inmemory(index, n->node->left_child, ts, pq_bsf);
+                        calculate_node_topk_inmemory(index, n->node->left_child, ts, paa, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = messi_minidist(index, paa,
@@ -145,9 +145,9 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                     }
                 }
                 if (n->node->right_child->isax_cardinalities != NULL) {
-                    if (n->node->right_child->is_leaf && !n->node->left_child->has_partial_data_file &&
+                    if (n->node->right_child->is_leaf && !n->node->right_child->has_partial_data_file &&
                         aggressive_check) {
-                        calculate_node_topk_inmemory(index, n->node->right_child, ts, pq_bsf);
+                        calculate_node_topk_inmemory(index, n->node->right_child, ts, paa, pq_bsf);
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = messi_minidist(index, paa,
@@ -177,10 +177,17 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
 }
 
 
-void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf) {
+void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, pqueue_bsf *pq_bsf) {
     COUNT_CHECKED_NODE()
-    // If node has buffered data
-
+    if (node->mbb_sax_valid) {
+        ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
+        ts_type mbb = messi_minidist_range_raw(index, paa,
+                                               node->mbb_sax_min, node->mbb_sax_max,
+                                               index->settings->max_sax_cardinalities, bsf);
+        if (mbb >= bsf) {
+            return;
+        }
+    }
     if (node->buffer != NULL) {
         int i;
         RDcalculationnumber = RDcalculationnumber + node->buffer->full_buffer_size;
@@ -215,7 +222,15 @@ void calculate_node_topk_inmemory(isax_index *index, isax_node *node, ts_type *q
 void calculate_node2_topk_inmemory(isax_index *index, isax_node *node, ts_type *query, ts_type *paa, pqueue_bsf *pq_bsf,
                                    pthread_rwlock_t *lock_queue) {
     COUNT_CHECKED_NODE()
-    // If node has buffered data
+    if (node->mbb_sax_valid) {
+        ts_type bsf = pq_bsf->knn[pq_bsf->k - 1];
+        ts_type mbb = messi_minidist_range_raw(index, paa,
+                                               node->mbb_sax_min, node->mbb_sax_max,
+                                               index->settings->max_sax_cardinalities, bsf);
+        if (mbb >= bsf) {
+            return;
+        }
+    }
     if (node->buffer != NULL) {
         int i;
         for (i = 0; i < node->buffer->full_buffer_size; i++) {

@@ -25,7 +25,8 @@ void index_creation_m_gpu(const char *ifilename, long int ts_num, isax_index *in
 void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *index);
 void index_creation_mix(const char *ifilename, long int ts_num, isax_index *index);
-void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm, isax_index *index);
+void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
+                            isax_index *index, int kn);
 void index_creation_pRecBuf_new(const char *ifilename, long int ts_num, isax_index *index);
 void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isax_index *index);
 void* indexbulkloadingworker_inmemory(void *transferdata);
@@ -41,14 +42,15 @@ root_mask_type isax_fbl_index_insert_inmemory_para(isax_index *index,
                                     file_position_type * pos, pthread_mutex_t *lock_fbl, pthread_mutex_t *lock_cbl,pthread_mutex_t *lock_firstnode,pthread_mutex_t *lock_index);
 root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index, 
                                     sax_type * sax,
-                                    file_position_type * pos,pthread_mutex_t *lock_firstnode,int workernumber,int total_workernumber);
+                                    file_position_type * pos, pthread_mutex_t *lock_firstnode,
+                                    int workernumber, int total_workernumber, int kn);
 root_mask_type isax_fbl_index_insert_inmemory(isax_index *index, sax_type * sax, file_position_type * pos);
 enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index);
 enum response flush_fbl_inmemory_m(first_buffer_layer *fbl, isax_index *index);
-isax_node * add_record_to_node_inmemory(isax_index *index, 
-                                 isax_node *tree_node, 
+isax_node * add_record_to_node_inmemory(isax_index *index,
+                                 isax_node *tree_node,
                                  isax_node_record *record,
-                                 const char leaf_size_check);
+                                 const char leaf_size_check, int kn);
 enum response flush_pRecBuf_inmemory(parallel_first_buffer_layer *fbl, isax_index *index);
 void* flush_fbl_inmemory_worker(void *input);
 void* flush_pRecBuf_inmemory_worker(void *input);
@@ -70,11 +72,12 @@ typedef struct buffer_data_inmemory
 	pthread_mutex_t *lock_fft_plan;
 	int workernumber;
 	int total_workernumber;
-    pthread_barrier_t *lock_barrier1, *lock_barrier2;
+	pthread_barrier_t *lock_barrier1, *lock_barrier2;
 	int *node_counter;
 	bool finished;
 	int *nodeid;
 	unsigned long *shared_start_number;
+	int kn;
 }buffer_data_inmemory;
 
 typedef struct transferfblinmemory
