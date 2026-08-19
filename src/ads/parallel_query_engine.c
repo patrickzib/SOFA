@@ -147,7 +147,7 @@ query_result exact_search_serial_para(ts_type *ts, ts_type *paa, isax_index *ind
     for(i=0; i<index->sax_cache_size; i++) 
     {
         sax_type *sax = &(index->sax_cache[i * index->settings->n_segments]);
-        MINDISTS[i] = minidist_paa_to_isax_raw(paa, sax, index->settings->max_sax_cardinalities, index->settings);
+        MINDISTS[i] = minidist_paa_to_isax(paa, sax, index->settings->max_sax_cardinalities, index->settings, 1);
     }
     // END
     
@@ -1023,7 +1023,7 @@ void* refind_answer_fonction(void *rfdata)
         
 
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings, 0);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1060,7 +1060,7 @@ void* refind_answer_fonction(void *rfdata)
                     (n->node->leaf_size > index->settings->min_leaf_size))
                 {
                     // Split and push again in the queue
-                    split_node(index, n->node, 0);
+                    split_node(index, n->node, 0, 1);
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1115,7 +1115,7 @@ void* refind_answer_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings, 0);
                     mindist_result->node = n->node->left_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1138,7 +1138,7 @@ void* refind_answer_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings, 0);
                     mindist_result->node = n->node->right_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1279,7 +1279,7 @@ void* exact_search_fonction(void *rfdata)
         
 
         query_result * mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
+        mindist_result->distance =  minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings, 0);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1320,7 +1320,7 @@ void* exact_search_fonction(void *rfdata)
                     (n->node->leaf_size > index->settings->min_leaf_size))
                 {
                     // Split and push again in the queue
-                    split_node(index, n->node, 0);
+                    split_node(index, n->node, 0, 1);
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data*)rfdata)->lock_queue);
@@ -1376,7 +1376,7 @@ void* exact_search_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings, 0);
                     mindist_result->node = n->node->left_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);
@@ -1399,7 +1399,7 @@ void* exact_search_fonction(void *rfdata)
                     }
                     else {
                     query_result * mindist_result = malloc(sizeof(query_result));
-                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
+                    mindist_result->distance =  minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings, 0);
                     mindist_result->node = n->node->right_child;
                     pthread_mutex_lock(((refind_answer_fonction_data*)rfdata)->lock_queue);
                     pqueue_insert(pq, mindist_result);

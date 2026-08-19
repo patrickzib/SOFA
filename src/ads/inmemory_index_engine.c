@@ -59,6 +59,7 @@ void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index 
     int read_number = fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
     COUNT_INPUT_TIME_END
     COUNT_OUTPUT_TIME_START
+
     while (ts_loaded < ts_num) {
 
         *pos = (file_position_type) (ts_loaded * index->settings->timeseries_size);
@@ -771,11 +772,18 @@ void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isa
     COUNT_OUTPUT_TIME_END
 }
 
-void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm, isax_index *index) {
+void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
+                            isax_index *index, int kn) {
     fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+    if (kn <= 0) {
+        fprintf(stderr, "warning: dynamic_index=%d is invalid; defaulting to 1\n", kn);
+        kn = 1;
+    }
 
     FILE *ifile;
     COUNT_INPUT_TIME_START
+    COUNT_INDEXING_TIME_START
+
     ifile = fopen(ifilename, "rb");
     COUNT_INPUT_TIME_END
     if (ifile == NULL) {
@@ -840,7 +848,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     }
     COUNT_INPUT_TIME_END
 
-    COUNT_INDEXING_TIME_START
     pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
             lock_firstnode = PTHREAD_MUTEX_INITIALIZER, lock_disk = PTHREAD_MUTEX_INITIALIZER, lock_fft_plan = PTHREAD_MUTEX_INITIALIZER;
 
@@ -868,6 +875,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
         input_data[i].stop_number = (i + 1) * (ts_num / maxquerythread);
         input_data[i].node_counter = &node_counter;
         input_data[i].lock_barrier1 = &lock_barrier1;
+        input_data[i].kn = kn;
     }
 
     input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (ts_num / maxquerythread);
@@ -890,13 +898,16 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     COUNT_INDEXING_TIME_END
 
+    fprintf(stderr, ">>> dynamic_index=%d root_nodes=%lu\n",
+            kn, index->root_nodes);
     fprintf(stderr, ">>> Finished indexing\n");
     COUNT_OUTPUT_TIME_END
 }
 
 
 void *indexbulkloadingworker_inmemory(void *transferdata) {
-    sax_type *sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory *) transferdata)->index->settings->n_segments);
+    buffer_data_inmemory *data = (buffer_data_inmemory *) transferdata;
+    sax_type *sax = malloc(sizeof(sax_type) * data->index->settings->n_segments);
     //struct timeval workertimestart;
     //struct timeval writetiemstart;
     //struct timeval workercurenttime;
@@ -905,15 +916,15 @@ void *indexbulkloadingworker_inmemory(void *transferdata) {
     //gettimeofday(&workertimestart, NULL);       
 
 
-    unsigned long start_number = ((buffer_data_inmemory *) transferdata)->start_number;
-    unsigned long stop_number = ((buffer_data_inmemory *) transferdata)->stop_number;
+    unsigned long start_number = data->start_number;
+    unsigned long stop_number = data->stop_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
-    isax_index *index = ((buffer_data_inmemory *) transferdata)->index;
+    isax_index *index = data->index;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    int n_segments = ((buffer_data_inmemory *) transferdata)->index->settings->n_segments;
+    int n_segments = data->index->settings->n_segments;
 
     unsigned long i = 0;
-    float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
+    float *raw_file = data->ts;
     for (i = start_number; i < stop_number; i++) {
 #ifndef DEBUG
 #if VERBOSE_LEVEL == 2
@@ -1020,7 +1031,8 @@ void *index_creation_worker_inmemory(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1,
+                                            ((buffer_data_inmemory *) transferdata)->kn);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1119,7 +1131,8 @@ void *index_creation_worker_inmemory_new(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1,
+                                            ((buffer_data_inmemory *) transferdata)->kn);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1184,7 +1197,8 @@ void *index_creation_worker2_inmemory(void *transferdata) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1,
+                                            ((buffer_data_inmemory *) transferdata)->kn);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1268,7 +1282,8 @@ void *index_creation_mix_worker_inmemory(void *transferdata) {
             }
 
 
-            add_record_to_node_inmemory(index, current_buffer->node, r, 1);
+            add_record_to_node_inmemory(index, current_buffer->node, r, 1,
+                                        ((buffer_data_inmemory *) transferdata)->kn);
             pthread_mutex_unlock(&((buffer_data_inmemory *) transferdata)->lock_cbl[first_bit_mask]);
 
             //isax_fbl_index_insert_inmemory_para(index, sax, pos, ((buffer_data_inmemory*)transferdata)->lock_fbl,
@@ -1357,9 +1372,11 @@ void *indexbulkloadingworker_pRecBuf_inmemory(void *transferdata) {
             memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
                    sizeof(sax_type) * index->settings->n_segments);
 
-            isax_pRecBuf_index_insert_inmemory(index, sax, pos, ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                               ((buffer_data_inmemory *) transferdata)->workernumber,
-                                               ((buffer_data_inmemory *) transferdata)->total_workernumber);
+                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
+                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
+                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
+                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber,
+                                                   ((buffer_data_inmemory *) transferdata)->kn);
 
         } else {
             fprintf(stderr, "error: cannot insert record in index, since sax representation\
@@ -1380,30 +1397,31 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
     unsigned long int transformation_time = 0.0;
     unsigned long int indexing_time = 0.0;
 
+    buffer_data_inmemory *data = (buffer_data_inmemory *) transferdata;
+
     struct timeval current_time;
     struct timeval transformation_time_start;
     struct timeval indexing_time_start;
 
-    sax_type *sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory *) transferdata)->index->settings->n_segments);
+    sax_type *sax = malloc(sizeof(sax_type) * data->index->settings->n_segments);
 
-    unsigned long start_number = ((buffer_data_inmemory *) transferdata)->start_number;
-    unsigned long stop_number = ((buffer_data_inmemory *) transferdata)->stop_number;
+    unsigned long start_number = data->start_number;
+    unsigned long stop_number = data->stop_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
-    isax_index *index = ((buffer_data_inmemory *) transferdata)->index;
+    isax_index *index = data->index;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    int n_segments = ((buffer_data_inmemory *) transferdata)->index->settings->n_segments;
 
     unsigned long i = 0;
-    float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
+    float *raw_file = data->ts;
 
     fftw_workspace fftw = {0};
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         unsigned long ts_length = index->settings->timeseries_size;
 
-        pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        pthread_mutex_lock(data->lock_fft_plan);
         fftw_workspace_init(&fftw, ts_length);
-        pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        pthread_mutex_unlock(data->lock_fft_plan);
     }
 
     for (i = start_number; i < stop_number; i++) {
@@ -1414,135 +1432,51 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 #endif
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
-        //SFA
-        //store result in index
+        gettimeofday(&transformation_time_start, NULL);
+        int success = FAILURE;
         if (index->settings->function_type == 4) {
-            gettimeofday(&transformation_time_start, NULL);
-            memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
-
-            if (sfa_from_ts(index, sax, &fftw) == SUCCESS) {
-                gettimeofday(&current_time, NULL);
-                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                        (transformation_time_start.tv_sec * 1000000 +
-                                         (transformation_time_start.tv_usec)));
-
-                gettimeofday(&indexing_time_start, NULL);
-                *pos = (file_position_type) (i * index->settings->timeseries_size);
-
-                memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
-                       sizeof(sax_type) * index->settings->n_segments);
-
-                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
-                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
-                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
-
-                gettimeofday(&current_time, NULL);
-                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
-            } else {
-                fprintf(stderr, "error: cannot insert record in index, since sfa representation\
-                        failed to be created");
-            }
-        }
-        //SPARTAN
-        else if (index->settings->function_type == 5) {
-            gettimeofday(&transformation_time_start, NULL);
-            if (spartan_from_ts(index, ts, sax) == SUCCESS) {
-                gettimeofday(&current_time, NULL);
-                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                        (transformation_time_start.tv_sec * 1000000 +
-                                         (transformation_time_start.tv_usec)));
-
-                gettimeofday(&indexing_time_start, NULL);
-                *pos = (file_position_type) (i * index->settings->timeseries_size);
-
-                memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
-                       sizeof(sax_type) * index->settings->n_segments);
-
-                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
-                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
-                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
-
-                gettimeofday(&current_time, NULL);
-                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
-            } else {
-                fprintf(stderr, "error: cannot insert record in index, since spartan representation\
-                        failed to be created");
-            }
-        }
-        //PISA
-        else if (index->settings->function_type == 6) {
-            gettimeofday(&transformation_time_start, NULL);
-            if (pisa_from_ts(index, ts, sax, &fftw) == SUCCESS) {
-                gettimeofday(&current_time, NULL);
-                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                        (transformation_time_start.tv_sec * 1000000 +
-                                         (transformation_time_start.tv_usec)));
-
-                gettimeofday(&indexing_time_start, NULL);
-                *pos = (file_position_type) (i * index->settings->timeseries_size);
-
-                memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
-                       sizeof(sax_type) * index->settings->n_segments);
-
-                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
-                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
-                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
-
-                gettimeofday(&current_time, NULL);
-                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
-            } else {
-                fprintf(stderr, "error: cannot insert record in index, since pisa representation\
-                        failed to be created");
-            }
+            success = sfa_from_ts(index, ts, sax, &fftw);
+        } else if (index->settings->function_type == 5) {
+            success = spartan_from_ts(index, ts, sax);
+        } else if (index->settings->function_type == 6) {
+            success = pisa_from_ts(index, ts, sax, &fftw);
+        } else {
+            success = sax_from_ts(ts, sax, index->settings);
         }
 
-        //MESSI iSAX
-        else {
-            gettimeofday(&transformation_time_start, NULL);
-            if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
-                gettimeofday(&current_time, NULL);
-                transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                        (transformation_time_start.tv_sec * 1000000 +
-                                         (transformation_time_start.tv_usec)));
+        gettimeofday(&current_time, NULL);
+        transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                (transformation_time_start.tv_sec * 1000000 +
+                                 (transformation_time_start.tv_usec)));
 
-                gettimeofday(&indexing_time_start, NULL);
-                *pos = (file_position_type) (i * index->settings->timeseries_size);
+        if (success == SUCCESS) {
+            gettimeofday(&indexing_time_start, NULL);
+            *pos = (file_position_type) (i * index->settings->timeseries_size);
+            memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
+                   sizeof(sax_type) * index->settings->n_segments);
 
-                memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
-                       sizeof(sax_type) * index->settings->n_segments);
+            isax_pRecBuf_index_insert_inmemory(index, sax, pos, data->lock_firstnode,
+                                               data->workernumber, data->total_workernumber, data->kn);
 
-                isax_pRecBuf_index_insert_inmemory(index, sax, pos,
-                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
-                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
-
-                gettimeofday(&current_time, NULL);
-                indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
-                                  (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
-            } else {
-                fprintf(stderr, "error: cannot insert record in index, since sax representation\
-                        failed to be created");
-            }
+            gettimeofday(&current_time, NULL);
+            indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                              (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+        } else {
+            fprintf(stderr, "error: cannot insert record in index, since representation failed to be created\n");
         }
     }
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
-        pthread_mutex_lock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        pthread_mutex_lock(data->lock_fft_plan);
         fftw_workspace_destroy(&fftw);
-        pthread_mutex_unlock(((buffer_data_inmemory *) transferdata)->lock_fft_plan);
+        pthread_mutex_unlock(data->lock_fft_plan);
     }
 
     free(pos);
     free(sax);
     free(ts);
 
-    pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier1);
+    pthread_barrier_wait(data->lock_barrier1);
 
     bool have_record = false;
     int j;
@@ -1552,12 +1486,11 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
     while (1) {
 
-        j = __sync_fetch_and_add(((buffer_data_inmemory *) transferdata)->node_counter, 1);
+        j = __sync_fetch_and_add(data->node_counter, 1);
 
         if (j >= index->fbl->number_of_buffers) {
             break;
         }
-        //fbl_soft_buffer *current_fbl_node = &index->fbl->soft_buffers[j];
         parallel_fbl_soft_buffer *current_fbl_node = &((parallel_first_buffer_layer * )(index->fbl))->soft_buffers[j];
         if (!current_fbl_node->initialized) {
             continue;
@@ -1565,7 +1498,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
         int i;
         have_record = false;
-        for (int k = 0; k < ((buffer_data_inmemory *) transferdata)->total_workernumber; k++) {
+        for (int k = 0; k < data->total_workernumber; k++) {
             if (current_fbl_node->buffer_size[k] > 0)
                 have_record = true;
 
@@ -1574,9 +1507,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
                 r->position = (file_position_type *) &((file_position_type *) (current_fbl_node->pos_records[k]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                //printf("the position 1 is %d\n",*(r->position));
-                //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, data->kn);
             }
         }
         if (have_record) {
@@ -1600,26 +1531,28 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 }
 
 void *index_creation_pRecBuf_worker_new(void *transferdata) {
-    sax_type *sax = malloc(sizeof(sax_type) * ((buffer_data_inmemory *) transferdata)->index->settings->n_segments);
-    //struct timeval workertimestart;
-    //struct timeval writetiemstart;
-    //struct timeval workercurenttime;
-    //struct timeval writecurenttime;
-    //double worker_total_time,tee,tss;
-    //gettimeofday(&workertimestart, NULL);    
+    buffer_data_inmemory *data = (buffer_data_inmemory *) transferdata;
+    sax_type *sax = malloc(sizeof(sax_type) * data->index->settings->n_segments);
     unsigned long roundfinishednumber;
 
     unsigned long start_number;
-    unsigned long stop_number = ((buffer_data_inmemory *) transferdata)->stop_number;
+    unsigned long stop_number = data->stop_number;
     file_position_type *pos = malloc(sizeof(file_position_type));
-    isax_index *index = ((buffer_data_inmemory *) transferdata)->index;
+    isax_index *index = data->index;
     ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    int n_segments = ((buffer_data_inmemory *) transferdata)->index->settings->n_segments;
 
     unsigned long i = 0;
-    float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
+    float *raw_file = data->ts;
+    fftw_workspace fftw = {0};
+
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
+        unsigned long ts_length = index->settings->timeseries_size;
+        pthread_mutex_lock(data->lock_fft_plan);
+        fftw_workspace_init(&fftw, ts_length);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
     while (1) {
-        start_number = __sync_fetch_and_add(((buffer_data_inmemory *) transferdata)->shared_start_number,
+        start_number = __sync_fetch_and_add(data->shared_start_number,
                                             read_block_length);
         if (start_number > stop_number) {
             break;
@@ -1631,54 +1564,59 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
         for (i = start_number; i < roundfinishednumber; i++) {
             memcpy(ts, &(raw_file[i * index->settings->timeseries_size]),
                    sizeof(float) * index->settings->timeseries_size);
-            if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
+            int success = FAILURE;
+            if (index->settings->function_type == 4) {
+                success = sfa_from_ts(index, ts, sax, &fftw);
+            } else if (index->settings->function_type == 5) {
+                success = spartan_from_ts(index, ts, sax);
+            } else if (index->settings->function_type == 6) {
+                success = pisa_from_ts(index, ts, sax, &fftw);
+            } else {
+                success = sax_from_ts(ts, sax, index->settings);
+            }
+            if (success == SUCCESS) {
                 *pos = (file_position_type) (i * index->settings->timeseries_size);
                 memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
                        sizeof(sax_type) * index->settings->n_segments);
 
                 isax_pRecBuf_index_insert_inmemory(index, sax, pos,
-                                                   ((buffer_data_inmemory *) transferdata)->lock_firstnode,
-                                                   ((buffer_data_inmemory *) transferdata)->workernumber,
-                                                   ((buffer_data_inmemory *) transferdata)->total_workernumber);
+                                                   data->lock_firstnode,
+                                                   data->workernumber,
+                                                   data->total_workernumber,
+                                                   data->kn);
 
-                // TODO Progress
-                if (i % 1000000) {
-                    fprintf(stderr, ".");
-                }
             } else {
-                fprintf(stderr, "error: cannot insert record in index, since sax representation\
-                    failed to be created");
+                fprintf(stderr, "error: cannot insert record in index, since representation failed to be created\n");
             }
         }
 
     }
 
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        fftw_workspace_destroy(&fftw);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+
     free(pos);
     free(sax);
     free(ts);
-    //gettimeofday(&workercurenttime, NULL);
-    //tss = workertimestart.tv_sec*1000000 + (workertimestart.tv_usec); 
-    //tee = workercurenttime.tv_sec*1000000  + (workercurenttime.tv_usec); 
-    //worker_total_time += (tee - tss); 
-    //printf("the worker time is %f\n",worker_total_time );
 
-    pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier1);
+    pthread_barrier_wait(data->lock_barrier1);
 
-    pthread_barrier_wait(((buffer_data_inmemory *) transferdata)->lock_barrier2);
+    // pthread_barrier_wait(data->lock_barrier2);
+
     bool have_record = false;
     int j;
     isax_node_record *r = calloc(1, sizeof(isax_node_record));
-    //int preworkernumber=((buffer_data_inmemory*)transferdata)->total_workernumber;
 
-    //for (j=((trans_fbl_input*)input)->start_number; j<((trans_fbl_input*)input)->stop_number; j++) 
     while (1) {
 
-        j = __sync_fetch_and_add(((buffer_data_inmemory *) transferdata)->node_counter, 1);
+        j = __sync_fetch_and_add(data->node_counter, 1);
 
         if (j >= index->fbl->number_of_buffers) {
             break;
         }
-        //fbl_soft_buffer *current_fbl_node = &index->fbl->soft_buffers[j];
         parallel_fbl_soft_buffer *current_fbl_node = &((parallel_first_buffer_layer * )(index->fbl))->soft_buffers[j];
         if (!current_fbl_node->initialized) {
             continue;
@@ -1686,7 +1624,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
 
         int i;
         have_record = false;
-        for (int k = 0; k < ((buffer_data_inmemory *) transferdata)->total_workernumber; k++) {
+        for (int k = 0; k < data->total_workernumber; k++) {
             if (current_fbl_node->buffer_size[k] > 0)
                 have_record = true;
             for (i = 0; i < current_fbl_node->buffer_size[k]; i++) {
@@ -1694,9 +1632,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
                 r->position = (file_position_type *) &((file_position_type *) (current_fbl_node->pos_records[k]))[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                //printf("the position 1 is %d\n",*(r->position));
-                //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, data->kn);
             }
         }
         if (have_record) {
@@ -1711,6 +1647,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
 
         }
     }
+
     free(r);
 }
 
@@ -1747,7 +1684,7 @@ root_mask_type isax_fbl_index_insert_inmemory_para(isax_index *index,
 root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
                                                   sax_type *sax,
                                                   file_position_type *pos, pthread_mutex_t *lock_firstnode,
-                                                  int workernumber, int total_workernumber) {
+                                                  int workernumber, int total_workernumber, int kn) {
     int i, t;
     int totalsize = index->settings->max_total_buffer_size;
 
@@ -1759,8 +1696,11 @@ root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
     // TODO: Create INSERTION SHORT AND BINARY SEARCH METHODS.
 
     root_mask_type first_bit_mask = 0x00;
+    if (kn <= 0) {
+        kn = 1;
+    }
 
-    CREATE_MASK(first_bit_mask, index, sax);
+    CREATE_MASK_SFAD(first_bit_mask, index, sax, kn);
 
 
     //insert_to_fbl_m(index->fbl, sax, pos,first_bit_mask, index,lock_firstnode,lock_fbl);
@@ -1918,7 +1858,7 @@ void *flush_fbl_inmemory_worker(void *input) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
 
@@ -1985,7 +1925,7 @@ void *flush_pRecBuf_inmemory_worker(void *input) {
                 // Add record to index
                 //printf("the position 1 is %d\n",*(r->position));
                 //sleep(1);
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, 1);
             }
         }
         if (have_record) {
@@ -2044,7 +1984,7 @@ enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index) {
                 r->position = (file_position_type *) current_fbl_node->pos_records[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
                 // Add record to index
-                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1);
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, 1);
             }
             flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
             free(current_fbl_node->sax_records);
@@ -2065,7 +2005,7 @@ enum response flush_fbl_inmemory(first_buffer_layer *fbl, isax_index *index) {
 isax_node *add_record_to_node_inmemory(isax_index *index,
                                        isax_node *tree_node,
                                        isax_node_record *record,
-                                       const char leaf_size_check) {
+                                       const char leaf_size_check, int kn) {
 #ifdef DEBUG
     printf("*** Adding to node ***\n\n");
 #endif
@@ -2093,12 +2033,12 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
 #ifdef DEBUG
         printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
 #endif
-        if (split_node(index, node, 1)) {
-            return add_record_to_node_inmemory(index, node, record, leaf_size_check);
+        if (split_node(index, node, 1, kn)) {
+            return add_record_to_node_inmemory(index, node, record, leaf_size_check, kn);
         }
     }
     if (node->filename == NULL) {
-        create_node_filename(index, node, record);
+        create_node_filename(index, node, record, kn);
     }
     add_to_node_buffer(node->buffer, record, index->settings->n_segments,
                        index->settings->timeseries_size);

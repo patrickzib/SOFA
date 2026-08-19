@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
+    static int dynamic_index = 1;
     static int node_split_criterion = 1;
 
     int calculate_thread = 8;
@@ -193,7 +194,8 @@ int main(int argc, char **argv) {
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
-                {"node-split-criterion", required_argument, 0,   'G'},
+                {"node-split-criterion",required_argument, 0,   'G'},
+                {"dynamic-index",       required_argument, 0,   'H'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -340,6 +342,9 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
                 break;
+            case 'H':
+                dynamic_index = atoi(optarg);
+                break;
 
             case 'h':
 #ifdef BENCHMARK
@@ -362,6 +367,7 @@ int main(int argc, char **argv) {
                 \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
                 \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
+                \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -398,7 +404,9 @@ int main(int argc, char **argv) {
                 \t\t\tequi-width splitting: 2\n\
                 \t--cpu-type\t\t\tSet for how many cores you want to used and in 1 or 2 cpu\n\
                 \t--help\n\n\
-                \tCPU type code:\t\t\t21 : 2 core in 1 CPU\n\
+                \tCPU type code:\t\t\tAny 2-digit value ending in 1 or 2 uses that many cores\n\
+                \t\t\t\t\t362: 36 core in 2 CPUs\n\
+                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 \t\t\t\t\t22 : 2 core in 2 CPUs\n\
                 \t\t\t\t\t41 : 4 core in 1 CPU\n\
                 \t\t\t\t\t42 : 4 core in 2 CPUs\n\
@@ -413,8 +421,6 @@ int main(int argc, char **argv) {
                 \t\t\t\t\t181: 18 core in 1 CPU\n\
                 \t\t\t\t\t182: 18 core in 2 CPUs\n\
                 \t\t\t\t\t242: 24 core in 2 CPUs\n\
-                \t\t\t\t\t362: 36 core in 2 CPUs\n\
-                \t\t\t\t\tOther: 1 core in 1 CPU\n\
                 ");
                 return 0;
                 break;
@@ -445,12 +451,14 @@ int main(int argc, char **argv) {
     cpu_set_t mask, get;
     CPU_ZERO(&mask);
     CPU_ZERO(&get);
-    if (cpu_control_type >= 20 && (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
-        int thread_count = cpu_control_type / 10;
-        int step = (cpu_control_type % 10 == 1) ? 2 : 1;
+    int cpu_count = 1;
+    if (cpu_control_type >= 10 && cpu_control_type < 100 &&
+        (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
+        int thread_count = cpu_control_type;
+        cpu_count = cpu_control_type % 10;
 
         for (int i = 0; i < thread_count; i++) {
-            CPU_SET(i * step, &mask);
+            CPU_SET(i, &mask);
         }
         calculate_thread = thread_count;
         maxquerythread = thread_count;
@@ -458,15 +466,20 @@ int main(int argc, char **argv) {
     } else if (cpu_control_type == 1) {
         calculate_thread = 1;
         maxquerythread = 1;
+        cpu_count = 1;
 
     } else {
         calculate_thread = cpu_control_type;
         maxquerythread = cpu_control_type;
+        cpu_count = 1;
 
         for (int i = 0; i < cpu_control_type; i++) {
             // CPU_SET(i, &mask);
         }
     }
+
+    fprintf(stderr, ">>> cpu-type=%d -> using %d cores in %d CPUs\n",
+            cpu_control_type, maxquerythread, cpu_count);
 
     if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
         fprintf(stderr, "set thread affinity failed\n");
@@ -482,9 +495,9 @@ int main(int argc, char **argv) {
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
         print_settings(idx->settings);
-        //fprintf(stderr,"total_records: %ld\n", idx->total_records);
-        //fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-        //create_wedges(idx, NULL);
+        // fprintf(stderr,"total_records: %ld\n", idx->total_records);
+        // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
+        // create_wedges(idx, NULL);
 
         if (serial_scan) {
             cache_sax_file(idx);
@@ -731,8 +744,8 @@ int main(int argc, char **argv) {
             //set bins
             sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
-            //build index            
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            //build index
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -746,14 +759,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            // if (topk && k_size > 1) {
+            //     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+            //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
+            //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
+            // } else {
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -763,7 +775,7 @@ int main(int argc, char **argv) {
             spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -777,14 +789,13 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -794,7 +805,7 @@ int main(int argc, char **argv) {
             pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
             calculate_average_depth(logfile_tree, idx);
@@ -808,18 +819,17 @@ int main(int argc, char **argv) {
             }
 
             //perform queries
-            if (topk && k_size > 1) {
+            /*if (topk && k_size > 1) {
                 isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {
-                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, &exact_search_MESSI);
-            }
+            } else {*/
+            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx);
+            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             calculate_average_depth(logfile_tree, idx);
 
@@ -839,13 +849,13 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } else if (topk && k_size > 1) {
+            } /*else if (topk && k_size > 1) {
                 if (function_type == 3)
                     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
                                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                             &exact_topk_MESSImq_inmemory);//MESSI topk
 
-            } else {
+            } */ else {
                 if (function_type == 0) {
                     //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
                     //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);
@@ -869,7 +879,7 @@ int main(int argc, char **argv) {
                     //MESSI-mq: in-memory flag set with function-type 3
                 else if (function_type == 3) {
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, &exact_search_MESSI);
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
                 } else if (function_type == 8) {

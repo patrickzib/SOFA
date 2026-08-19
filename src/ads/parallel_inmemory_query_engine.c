@@ -440,7 +440,7 @@ void *ParIS_nb_worker_inmemory(void *worker_data) {
 
 query_result exact_search_parads_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                                           float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -554,7 +554,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
 
 
         query_result *mindist_result = malloc(sizeof(query_result));
-        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings);
+        mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values, current_root_node->isax_cardinalities, index->settings, 0);
 
         mindist_result->node = current_root_node;
         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -591,7 +591,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                     pqueue_insert(pq, n);
                     pthread_mutex_unlock(((refind_answer_fonction_data *) rfdata)->lock_queue);
@@ -641,7 +641,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values, n->node->left_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->left_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -662,7 +662,7 @@ void *exact_search_old_worker_inmemory(void *rfdata) {
                         }
                     } else {
                         query_result *mindist_result = malloc(sizeof(query_result));
-                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings);
+                        mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values, n->node->right_child->isax_cardinalities, index->settings, 0);
                         mindist_result->node = n->node->right_child;
                         pthread_mutex_lock(((refind_answer_fonction_data *) rfdata)->lock_queue);
                         pqueue_insert(pq, mindist_result);
@@ -686,7 +686,7 @@ query_result exact_search_serial_ParIS_inmemory(ts_type *ts, ts_type *paa, isax_
 
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
 
@@ -1307,7 +1307,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
         fbl_soft_buffer2 *current_buffer = &((first_buffer_layer2 *) (index->fbl))->soft_buffers[i];
         if (current_buffer->initialized == 1) {
             isax_node *node = (((first_buffer_layer2 *) (index->fbl))->soft_buffers[i]).node;
-            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+            float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
             //COUNT_CAL_TIME_END
             if (distance <= bsf_distance) {
                 //query_result * mindist_result = malloc(sizeof(query_result));
@@ -1357,7 +1357,7 @@ exact_search_serial_ParGIS_openmp_inmemory(ts_type *ts, ts_type *paa, isax_index
     pthread_t threadid[maxquerythread];
     COUNT_INPUT_TIME_START
     bool *rdcbitmap = malloc(sizeof(bool) * index->sax_cache_size);
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     ts_type *ts_buffer = malloc(index->settings->ts_byte_size);
     query_result bsf_result = approximate_result;
     int sum_of_lab = 0;
@@ -1430,7 +1430,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
                                             float minimum_distance, int min_checked_leaves) {
     //RDcalculationnumber=0;
     //LBDcalculationnumber=0;
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
@@ -1520,7 +1520,7 @@ query_result exact_search_ParISnew_inmemory(ts_type *ts, ts_type *paa, isax_inde
 query_result
 exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                             float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1626,8 +1626,8 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 }
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
-                                float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+                                float minimum_distance, int min_checked_leaves, int kn) {
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
 
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1691,6 +1691,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].startqueuenumber = i % N_PQUEUE;
     }
 
+    // parameterinitial();
     for (int i = 0; i < maxquerythread; i++) {
         pthread_create(&(threadid[i]), NULL, exact_search_worker_inmemory_hybridpqueue, (void *) &(workerdata[i]));
     }
@@ -1716,7 +1717,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 query_result
 exact_search_ParISnew_inmemory_hybrid_workstealing(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                                    float minimum_distance, int min_checked_leaves) {
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
     //query_result approximate_result = approximate_search_inmemory(ts, paa, index);
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -2077,11 +2078,11 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     int checks = 0;
     bool finished = true;
     int current_root_node_number;
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
+    // int tight_bound = index->settings->tight_bound;
+    // int aggressive_check = index->settings->aggressive_check;
     query_result *bsf_result = (((MESSI_workerdata *) rfdata)->bsf_result);
     float bsfdisntance = bsf_result->distance;
-    int calculate_node = 0, calculate_node_quque = 0;
+    // int calculate_node = 0, calculate_node_quque = 0;
     int tnumber = rand() % N_PQUEUE;
     int startqueuenumber = ((MESSI_workerdata *) rfdata)->startqueuenumber;
 
@@ -2201,6 +2202,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                         - (pq_remove_time_start.tv_sec*1000000 + (pq_remove_time_start.tv_usec)));
 
                     if (n == NULL) {
+                        ((MESSI_workerdata *) rfdata)->allqueuelabel[i] = 0;
                         break;
                     }
 
@@ -2405,7 +2407,7 @@ void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
 void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                         pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2432,7 +2434,7 @@ void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bs
 void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_bsf *pq,
                            pthread_mutex_t *lock_queue) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2455,7 +2457,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 /*void insert_tree_node_m_parallelqueue(float *paa,isax_node *node,isax_index *index,float bsf,FGHPQueue *pq,FGHPQueueThreadState *th_state)
 {
     //COUNT_CAL_TIME_START
-    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance =  minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if(distance < bsf)
@@ -2489,7 +2491,7 @@ void insert_tree_node_mgpu(float *paa, isax_node *node, isax_index *index, float
 void insert_tree_node_m_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t *pq,
                                      pthread_mutex_t *lock_queue, localStack *workstack) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
@@ -2520,7 +2522,7 @@ void
 insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                              pthread_mutex_t *lock_queue, localStack *workstack, int *tnumber) {
     //COUNT_CAL_TIME_START
-    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings);
+    float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {

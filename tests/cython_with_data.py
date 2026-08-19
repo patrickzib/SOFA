@@ -28,7 +28,7 @@ def main() -> None:
     idx = Index(
         timeseries_size=TS_SIZE,
         max_query_threads=8,
-        n_segments=24,
+        n_segments=16,
         function_type=4,
         sample_size=sample_size,
         histogram_type=2,

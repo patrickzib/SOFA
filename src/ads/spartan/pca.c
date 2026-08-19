@@ -70,8 +70,26 @@ static int pca_compare_variance(const void *a, const void *b) {
     return 0;
 }
 
-enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sample_size, int dim) {
+enum response pca_fit(
+    isax_index *index,
+    const ts_type *samples,
+    unsigned int sample_size,
+    int dim) {
+    if (index == NULL ||
+        index->settings == NULL ||
+        samples == NULL ||
+        sample_size == 0 ||
+        dim <= 0) {
+        fprintf(stderr, "error: invalid PCA input.\n");
+        return FAILURE;
+    }
+
     int components = index->settings->n_segments;
+    if (components <= 0) {
+        fprintf(stderr, "error: PCA requires at least one component.\n");
+        return FAILURE;
+    }
+
     if (components > dim) {
         components = dim;
     }
@@ -83,7 +101,8 @@ enum response pca_fit(isax_index *index, const ts_type *samples, unsigned int sa
     double *ranked = calloc((size_t) dim * 2, sizeof(double));
     ts_type *components_matrix = calloc((size_t) components * dim, sizeof(ts_type));
 
-    if (mean == NULL || cov == NULL || eigvecs == NULL || eigvals == NULL || ranked == NULL || components_matrix == NULL) {
+    if (mean == NULL || cov == NULL || eigvecs == NULL || eigvals == NULL || ranked ==
+        NULL || components_matrix == NULL) {
         free(mean);
         free(cov);
         free(eigvecs);

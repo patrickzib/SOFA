@@ -340,8 +340,11 @@ enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *o
         double acc = 0.0;
         const ts_type *component = index->pca_components + (k * input_dim);
         for (int i = 0; i < input_dim; ++i) {
+            // Temporary: disable PCA mean-centering.
             double centered = (double) ts[i] - index->pca_mean[i];
             acc += centered * component[i];
+
+            // acc += (double) ts[i] * component[i];
         }
         out[k] = (ts_type) acc;
     }
@@ -349,29 +352,6 @@ enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *o
         out[k] = 0.0f;
     }
     return SUCCESS;
-}
-
-ts_type minidist_pca_to_spartan(isax_index *index, float *pca, sax_type *sax, sax_type *sax_cardinalities, float bsf) {
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
-    int max_cardinality = index->settings->sax_alphabet_cardinality;
-    int number_of_segments = index->settings->n_segments;
-
-    ts_type distance = 0.0;
-    for (int i = 0; i < number_of_segments; i++) {
-        distance += get_lb_distance(
-                index->bins[i], pca[i], sax[i], sax_cardinalities[i],
-                max_bit_cardinality, max_cardinality, 1.0);
-
-        if (distance > bsf) {
-            return distance;
-        }
-    }
-    return distance;
-}
-
-ts_type minidist_pca_to_spartan_raw(isax_index *index, float *pca, sax_type *sax, sax_type *sax_cardinalities,
-                                    float bsf) {
-    return minidist_pca_to_spartan(index, pca, sax, sax_cardinalities, bsf);
 }
 
 #if ADS_HAVE_AVX2

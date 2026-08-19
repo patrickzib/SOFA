@@ -126,7 +126,7 @@ void messi_index_destroy(messi_index *index) {
     free(index);
 }
 
-int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
+int messi_index_add_file(messi_index *index, const char *path, long ts_num, int dynamic_index) {
     if (index == NULL || index->index == NULL || path == NULL) {
         return -1;
     }
@@ -136,7 +136,9 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num) {
     prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
     prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int);
     prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
-    index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index);
+    index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index, dynamic_index);
+    fprintf(stderr, ">>> dynamic_index=%d root_nodes=%lu\n",
+            dynamic_index, index->index->root_nodes);
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
     finalize_pisa_bins_if_needed(index->index);
@@ -150,7 +152,8 @@ int messi_index_search(messi_index *index,
                        size_t dim,
                        size_t k,
                        float *distances,
-                       long *labels) {
+                       long *labels,
+                       int dynamic_index) {
     if (index == NULL || index->index == NULL || queries == NULL || distances == NULL || labels == NULL) {
         return -1;
     }
@@ -198,7 +201,8 @@ int messi_index_search(messi_index *index,
             index->index,
             &nlist,
             FLT_MAX,
-            -1);
+            -1,
+            dynamic_index);
         distances[i] = res.distance;
         labels[i] = res.node ? (long) (intptr_t) res.node : -1;
         if (nlist.nlist != NULL) {

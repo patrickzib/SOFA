@@ -135,7 +135,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
     return result;
 }
 
-query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index) {
+query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index, int kn) {
     query_result result;
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
@@ -151,7 +151,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
     }
 
     root_mask_type root_mask = 0;
-    CREATE_MASK(root_mask, index, sax);
+    CREATE_MASK_SFAD(root_mask, index, sax, kn);
 
     COUNT_INIT_TIME_END
 
@@ -164,7 +164,8 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
         // Adaptive splitting
 
         while (!node->is_leaf) {
-            int location = index->settings->sax_bit_cardinality - 1 -
+            // TODO: confirm whether this should be "sax_bit_cardinality - 1 - split_mask".
+            int location = index->settings->sax_bit_cardinality -
                            node->split_data->split_mask[node->split_data->splitpoint];
             root_mask_type mask = index->settings->bit_masks[location];
 
@@ -326,16 +327,13 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
 
     // FOR THREAD USE
     MINDISTS = malloc(sizeof(float) * index->sax_cache_size);
-    unsigned long j;
-    for (j = 0; j < index->sax_cache_size; j++)
+    for (unsigned long j = 0; j < index->sax_cache_size; j++) {
         MINDISTS[j] = FLT_MAX;
+    }
     // END
-    COUNT_INPUT_TIME_START
-    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index);
-    query_result bsf_result = approximate_result;
 
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
+    COUNT_INPUT_TIME_START
+    query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, 1);
 
     // Early termination...
     if (approximate_result.distance == 0) {
@@ -343,19 +341,14 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     }
 
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
-        approximate_result = refine_answer_inmemory(ts, paa, index, approximate_result, minimum_distance,
-                                                    min_checked_leaves);
+        approximate_result = refine_answer_inmemory(
+            ts, paa, index, approximate_result, minimum_distance, min_checked_leaves);
     }
 
     COUNT_INPUT_TIME_END
 
-
     unsigned long i;
-
-    //FILE *raw_file = fopen(index->settings->raw_filename, "rb");
-    //fseek(raw_file, 0, SEEK_SET);
     ts_type *ts_buffer;
-
 
     SET_APPROXIMATE(approximate_result.distance);
 
@@ -376,7 +369,7 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
         }
         arguments[i].paa = paa;
         arguments[i].index = index;
-        int ret = pthread_create(&thread[i], NULL, compute_mindists_in, &arguments[i]);
+        pthread_create(&thread[i], NULL, compute_mindists_in, &arguments[i]);
     }
 
     for (i = 0; i < 1; i++) {
@@ -384,14 +377,13 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     }
     // END
     COUNT_CAL_TIME_END
-    //printf("the min distance 0 is %f\n",MINDISTS[0] );
+
     COUNT_OUTPUT_TIME_START
     for (i = 0; i < index->sax_cache_size; i++) {
-        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if (MINDISTS[i] <= approximate_result.distance) {
             ts_buffer = &rawfile[i * index->settings->timeseries_size];
             checkts++;
-            float dist = ts_euclidean_distance_SIMD(ts, ts_buffer, index->settings->timeseries_size, FLT_MAX);
+            float dist = ts_ed(ts, ts_buffer, index->settings->timeseries_size, FLT_MAX);
             if (dist < approximate_result.distance) {
                 approximate_result.distance = dist;
 
@@ -404,10 +396,6 @@ query_result exact_search_serial_inmemory(ts_type *ts, ts_type *paa, isax_index 
     COUNT_OUTPUT_TIME_END
     free(MINDISTS);
 
-    //FILE *pfile = fopen("hhhehehehf.bin", "a+");
-    //float kkkkkk=approximate_result.distance;
-    //fwrite(&kkkkkk, sizeof(float), 1, pfile);
-    //fclose(pfile);
     return approximate_result;
 }
 
@@ -418,10 +406,9 @@ query_result exact_search_serial_1bsf_inmemory(ts_type *ts, ts_type *paa, isax_i
 
     // FOR THREAD USE
     MINDISTS = malloc(sizeof(float) * index->sax_cache_size);
-    unsigned long j;
     unsigned long diskconter = 0, bsfupdate = 0;
 
-    for (j = 0; j < index->sax_cache_size; j++)
+    for (unsigned long j = 0; j < index->sax_cache_size; j++)
         MINDISTS[j] = FLT_MAX;
     // END
     COUNT_INPUT_TIME_START
@@ -526,7 +513,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
 
         mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
                                                         current_root_node->isax_cardinalities,
-                                                        index->settings);
+                                                        index->settings, 0);
         mindist_result->node = current_root_node;
         pqueue_insert(pq, mindist_result);
         current_root_node = current_root_node->next;
@@ -586,7 +573,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
                                                                         n->node->left_child->isax_cardinalities,
-                                                                        index->settings);
+                                                                        index->settings, 0);
                         mindist_result->node = n->node->left_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -604,7 +591,7 @@ query_result refine_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
                                                                         n->node->right_child->isax_cardinalities,
-                                                                        index->settings);
+                                                                        index->settings, 0);
                         mindist_result->node = n->node->right_child;
                         pqueue_insert(pq, mindist_result);
                     }
@@ -629,7 +616,7 @@ float calculate_minimum_distance_inmemory(isax_index *index, isax_node *node, ts
     //printf("Calculating minimum distance...\n");
     float bsfLeaf = minidist_paa_to_isax(query, node->isax_values,
                                          node->isax_cardinalities,
-                                         index->settings);
+                                         index->settings, 0);
     float bsfRecord = FLT_MAX;
     //printf("---> Distance: %lf\n", bsfLeaf);
     //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
@@ -731,7 +718,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
         query_result *mindist_result = malloc(sizeof(query_result));
         mindist_result->distance = minidist_paa_to_isax(paa, current_root_node->isax_values,
                                                         current_root_node->isax_cardinalities,
-                                                        index->settings);
+                                                        index->settings, 0);
         mindist_result->node = current_root_node;
         COUNT_QUEUE_TIME_START
         pqueue_insert(pq, mindist_result);
@@ -756,7 +743,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue
 
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
@@ -803,7 +790,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = minidist_paa_to_isax(paa, n->node->left_child->isax_values,
                                                                         n->node->left_child->isax_cardinalities,
-                                                                        index->settings);
+                                                                        index->settings, 0);
                         mindist_result->node = n->node->left_child;
                         COUNT_QUEUE_TIME_START
                         pqueue_insert(pq, mindist_result);
@@ -825,7 +812,7 @@ query_result exact_search_inmemory(ts_type *ts, ts_type *paa, isax_index *index,
                         query_result *mindist_result = malloc(sizeof(query_result));
                         mindist_result->distance = minidist_paa_to_isax(paa, n->node->right_child->isax_values,
                                                                         n->node->right_child->isax_cardinalities,
-                                                                        index->settings);
+                                                                        index->settings, 0);
                         mindist_result->node = n->node->right_child;
                         COUNT_QUEUE_TIME_START
                         pqueue_insert(pq, mindist_result);
@@ -916,7 +903,7 @@ query_result exact_search_inmemory2(ts_type *ts, ts_type *paa, isax_index *index
                 if (!n->node->has_full_data_file &&
                     (n->node->leaf_size > index->settings->min_leaf_size)) {
                     // Split and push again in the queue                    
-                    split_node(index, n->node, 1);
+                    split_node(index, n->node, 1, 1);
                     COUNT_QUEUE_TIME_START
                     pqueue_insert(pq, n);
                     COUNT_QUEUE_TIME_END
@@ -974,7 +961,7 @@ void insert_tree_node(float *paa, isax_node *node, isax_index *index, float bsf,
     //COUNT_CAL_TIME_START
     float distance = minidist_paa_to_isax(paa, node->isax_values,
                                           node->isax_cardinalities,
-                                          index->settings);
+                                          index->settings, 0);
     //COUNT_CAL_TIME_END
 
     if (distance < bsf) {
