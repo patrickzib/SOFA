@@ -47,6 +47,32 @@ print_command() {
     printf '\n'
 }
 
+# MESSI's legacy SIGINT handler is interactive and would otherwise prompt once
+# for every command in a suite.  Run MESSI with SIGINT ignored and let this
+# script own cancellation: one Ctrl-C terminates the active child and prevents
+# subsequent methods from starting.
+ACTIVE_MESSI_PID=
+stop_active_messi() {
+    trap - INT TERM
+    if [[ -n ${ACTIVE_MESSI_PID:-} ]]; then
+        kill -TERM "$ACTIVE_MESSI_PID" 2>/dev/null || true
+        wait "$ACTIVE_MESSI_PID" 2>/dev/null || true
+        ACTIVE_MESSI_PID=
+    fi
+    printf '\nInterrupted; no further experiments will be started.\n' >&2
+    exit 130
+}
+run_messi() {
+    # The wrapper execs MESSI, retaining SIGINT=ignore in the final process.
+    bash -c 'trap "" INT; exec "$@"' messi "$@" &
+    ACTIVE_MESSI_PID=$!
+    wait "$ACTIVE_MESSI_PID"
+    local status=$?
+    ACTIVE_MESSI_PID=
+    return "$status"
+}
+trap stop_active_messi INT TERM
+
 [[ $# -ge 2 ]] || { usage >&2; exit 2; }
 DATASET_ARG=$1
 PROFILE=$2
@@ -223,7 +249,7 @@ run_method() {
         [[ -x $MESSI_EXECUTABLE ]] || die "MESSI executable is not executable: $MESSI_EXECUTABLE"
         [[ -f $DATASET_PATH ]] || die "dataset file does not exist: $DATASET_PATH"
         [[ -f $QUERY_PATH ]] || die "query file does not exist: $QUERY_PATH"
-        "$MESSI_EXECUTABLE" "${args[@]}"
+        run_messi "$MESSI_EXECUTABLE" "${args[@]}"
     fi
 }
 

@@ -1232,21 +1232,12 @@ int main(int argc, char **argv) {
 }
 
 void INThandler(int sig) {
-    char c;
+    static const char message[] = "\nInterrupted.\n";
 
-    signal(sig, SIG_IGN);
-    fprintf(stderr, "Do you really want to quit? [y/n] ");
-    c = getchar();
-    if (c == 'y' || c == 'Y') {
-        c = getchar();
-        fprintf(stderr, "Do you want to save the index? [y/n] ");
-        c = getchar();
-        if (c == 'y' || c == 'Y') {
-            flush_fbl(idx->fbl, idx);
-            index_write(idx);
-        }
-        exit(0);
-    } else
-        signal(SIGINT, INThandler);
-    getchar(); // Get new line character
+    (void)sig;
+    /* write(2) and _exit(2) are safe in a signal handler.  In particular, do
+     * not prompt, acquire index locks, or attempt to save a partial index
+     * while a worker may be modifying it. */
+    (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(130);
 }
