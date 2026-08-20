@@ -108,7 +108,7 @@ if(NOT MESSI_FFTW_TARGET)
   endif()
 endif()
 
-add_executable(MESSI src/utils/MESSI.c)
+add_executable(MESSI src/cli/MESSI.c)
 target_include_directories(MESSI
   PRIVATE
     ${PROJECT_SOURCE_DIR}
