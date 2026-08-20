@@ -80,6 +80,22 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                                 char is_norm, int histogram_type, int sample_type, int n_coefficients)
 {
     int i;
+    if (function_type == 4 || function_type == 6) {
+        if (n_segments <= 0 || n_segments % 2 != 0) {
+            fprintf(stderr, "error: SFA/PISA n-segments must be a positive even number.\n");
+            return NULL;
+        }
+        if (n_coefficients != 0 &&
+            (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
+             n_coefficients > timeseries_size / 2)) {
+            fprintf(stderr,
+                    "error: SFA/PISA coefficient count must be even and between n-segments (%d) "
+                    "and timeseries-size/2 (%d).\n",
+                    n_segments, timeseries_size / 2);
+            return NULL;
+        }
+    }
+
     isax_index_settings *settings = malloc(sizeof(isax_index_settings));
     if(settings == NULL) {
         fprintf(stderr,"error: could not allocate memory for index settings.\n");

@@ -582,14 +582,17 @@ int main(int argc, char **argv) {
                     "is not divisible by n-segments (%d).\n",
                     time_series_size % n_segments, time_series_size, n_segments);
         }
-        // check is n_coefficients is between n_segments/2 and timeseries_size/2
-        if (n_coefficients != 0 && (n_coefficients < n_segments / 2 || n_coefficients > time_series_size / 2)) {
-            if (n_coefficients < n_segments || n_coefficients > time_series_size) {
-                fprintf(stderr, "ERROR: coeff number must be between %d and %d!\n", n_segments, time_series_size);
+        if (function_type == 4 || function_type == 6) {
+            if (n_segments <= 0 || n_segments % 2 != 0) {
+                fprintf(stderr, "ERROR: SFA/PISA n-segments must be a positive even number!\n");
                 return -1;
             }
-            if (n_coefficients % 2 != 0) {
-                fprintf(stderr, "ERROR: coeff number must be divisible by 2!\n");
+            if (n_coefficients != 0 &&
+                (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
+                 n_coefficients > time_series_size / 2)) {
+                fprintf(stderr,
+                        "ERROR: SFA/PISA coeff number must be even and between %d and %d!\n",
+                        n_segments, time_series_size / 2);
                 return -1;
             }
         }

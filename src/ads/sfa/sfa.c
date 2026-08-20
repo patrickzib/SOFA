@@ -152,8 +152,8 @@ void sfa_set_bins(
                 break;
 
             case 3: /* random sampling */
-                data->start_number = 0;
-                data->stop_number = ts_num;
+                data->start_number = i * ts_chunk;
+                data->stop_number = (i + 1) * ts_chunk;
                 break;
         }
 
@@ -168,7 +168,7 @@ void sfa_set_bins(
 
     if (index->settings->sample_type == 1) {
         input_data[worker_threads - 1].stop_number = sample_size;
-    } else if (index->settings->sample_type == 2) {
+    } else if (index->settings->sample_type == 2 || index->settings->sample_type == 3) {
         input_data[worker_threads - 1].stop_number = ts_num;
     }
 
@@ -368,6 +368,9 @@ void *set_bins_worker_dft(void *transferdata) {
         }
         skip_elements = (span / (unsigned long) records) - 1;
     }
+    if (index->settings->sample_type == 3 && stop_number <= start_number) {
+        return NULL;
+    }
 
     unsigned long start_index = start_number * ts_length * sizeof(ts_type);
     int filetype_int = bins_data->filetype_int;
@@ -400,7 +403,9 @@ void *set_bins_worker_dft(void *transferdata) {
     for (int i = 0; i < records; ++i) {
         //choose random position for random sampling
         if (index->settings->sample_type == 3) {
-            long int position = start_number + random_at_most(records);
+            unsigned long span = stop_number - start_number;
+            unsigned long position = start_number +
+                                     (unsigned long) random_at_most((long int) span - 1);
             fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
         }
 
@@ -421,10 +426,13 @@ void *set_bins_worker_dft(void *transferdata) {
         }
 
         int use_best = index->settings->n_coefficients != 0;
-        if (use_best) {
-            fft_from_ts(index, index->settings->n_coefficients, 0, fftw);
-        } else {
-            fft_from_ts(index, index->settings->n_segments, 0, fftw);
+        int transform_size = use_best ? index->settings->n_coefficients
+                                      : index->settings->n_segments;
+        if (fft_from_ts(index, transform_size, 0, fftw) != SUCCESS) {
+            free(ts_orig1);
+            free(ts_orig2);
+            fclose(ifile);
+            return NULL;
         }
 
         for (int j = 0; j < n_coefficients; ++j) {

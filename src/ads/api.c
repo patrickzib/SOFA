@@ -180,16 +180,24 @@ int messi_index_search(messi_index *index,
             memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
             int use_best = index->index->settings->n_coefficients != 0;
-            fft_from_ts(
-				index->index,
-				index->index->settings->n_segments,
-				use_best, &fftw);
+            if (fft_from_ts(index->index, index->index->settings->n_segments, use_best,
+                            &fftw) != SUCCESS) {
+                free(nlist.nlist);
+                fftw_workspace_destroy(&fftw);
+                free(paa_buffer);
+                return -5;
+            }
 
             memcpy(paa_buffer, fftw.transform, sizeof(ts_type) * index->index->settings->n_segments);
         } else if (index->index->settings->function_type == 5) {
             pca_from_ts(index->index, ts, paa_buffer);
         } else if (index->index->settings->function_type == 6) {
-            pisa_pca_from_ts(index->index, ts, paa_buffer, &fftw);
+            if (pisa_pca_from_ts(index->index, ts, paa_buffer, &fftw) != SUCCESS) {
+                free(nlist.nlist);
+                fftw_workspace_destroy(&fftw);
+                free(paa_buffer);
+                return -5;
+            }
         } else {
             paa_from_ts(ts,
                         paa_buffer,

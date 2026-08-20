@@ -21,10 +21,17 @@
 /*
     This function calculates the FFT coefficients for a given time series
 */
-void fft_from_ts(
+enum response fft_from_ts(
         isax_index *index,
         int n_coefficients, int best_only,
         fftw_workspace *fftw) {
+    if (index == NULL || index->settings == NULL || fftw == NULL || fftw->plan_forward == NULL ||
+        fftw->ts_out == NULL || fftw->transform == NULL || n_coefficients <= 0 ||
+        n_coefficients % 2 != 0 || n_coefficients > index->settings->timeseries_size ||
+        (best_only && index->coefficients == NULL)) {
+        return FAILURE;
+    }
+
     fftwf_execute(fftw->plan_forward);
 
     // Image part of first (DC) coefficient
@@ -53,6 +60,7 @@ void fft_from_ts(
     for (int i = 0; i < n_coefficients; ++i) {
         fftw->transform[i] *= norm_factor;
     }
+    return SUCCESS;
 }
 
 /*
@@ -80,7 +88,9 @@ enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_ou
 
     int use_best = index->settings->n_coefficients != 0;
     memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
-    fft_from_ts(index, index->settings->n_segments, use_best, fftw);
+    if (fft_from_ts(index, index->settings->n_segments, use_best, fftw) != SUCCESS) {
+        return FAILURE;
+    }
 
     ts_type *cur_coeff_line = calloc(index->settings->n_segments, sizeof(ts_type));
     memcpy(cur_coeff_line, fftw->transform, sizeof(ts_type) * index->settings->n_segments);
@@ -93,4 +103,5 @@ enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_ou
     else {
         fprintf(stderr, "SFA error");
     }
+    return FAILURE;
 }

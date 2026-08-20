@@ -41,7 +41,9 @@ enum response pisa_pca_from_ts(isax_index *index, const ts_type *ts, ts_type *ou
         return FAILURE;
     }
     memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
-    fft_from_ts(index, fft_dim, 0, fftw);
+    if (fft_from_ts(index, fft_dim, 0, fftw) != SUCCESS) {
+        return FAILURE;
+    }
     return pca_from_ts(index, fftw->transform, out);
 }
 
@@ -111,6 +113,8 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     }
 
     fftw_workspace fftw = {0};
+    const long sample_chunk = sample_size / worker_threads;
+    const long ts_chunk = ts_num / worker_threads;
     for (int i = 0; i < worker_threads; i++) {
         fftw_workspace_init(&fftw, ts_length);
 
@@ -118,18 +122,18 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
         input_data[i].dft_mem_array = dft_mem_array;
         input_data[i].filename = ifilename;
         input_data[i].workernumber = i;
-        input_data[i].records = sample_size / worker_threads;
-        input_data[i].records_offset = sample_size / worker_threads;
+        input_data[i].records = sample_chunk;
+        input_data[i].records_offset = sample_chunk;
 
         if (index->settings->sample_type == 1) {
-            input_data[i].start_number = i * (sample_size / worker_threads);
-            input_data[i].stop_number = (i + 1) * (sample_size / worker_threads);
+            input_data[i].start_number = i * sample_chunk;
+            input_data[i].stop_number = (i + 1) * sample_chunk;
         } else if (index->settings->sample_type == 2) {
-            input_data[i].start_number = i * (ts_num / worker_threads);
-            input_data[i].stop_number = (i + 1) * (ts_num / worker_threads);
+            input_data[i].start_number = i * ts_chunk;
+            input_data[i].stop_number = (i + 1) * ts_chunk;
         } else if (index->settings->sample_type == 3) {
-            input_data[i].start_number = 0;
-            input_data[i].stop_number = ts_num;
+            input_data[i].start_number = i * ts_chunk;
+            input_data[i].stop_number = (i + 1) * ts_chunk;
         }
 
         input_data[i].filetype_int = filetype_int;
@@ -138,11 +142,11 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     }
 
     input_data[worker_threads - 1].records =
-        sample_size - (worker_threads - 1) * (sample_size / worker_threads);
+        sample_size - (worker_threads - 1) * sample_chunk;
 
     if (index->settings->sample_type == 1) {
         input_data[worker_threads - 1].stop_number = sample_size;
-    } else if (index->settings->sample_type == 2) {
+    } else if (index->settings->sample_type == 2 || index->settings->sample_type == 3) {
         input_data[worker_threads - 1].stop_number = ts_num;
     }
 

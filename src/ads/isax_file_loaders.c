@@ -75,7 +75,10 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         if (index->settings->function_type == 4) {
             memcpy(fftw.ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
             int use_best = index->settings->n_coefficients != 0;
-            fft_from_ts(index, index->settings->n_segments, use_best, &fftw);
+            if (fft_from_ts(index, index->settings->n_segments, use_best, &fftw) != SUCCESS) {
+                fprintf(stderr, "error: failed to calculate SFA query coefficients.\n");
+                break;
+            }
 
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {
@@ -202,10 +205,10 @@ void isax_query_binary_file_traditional(
             memcpy(fftw.ts, ts, sizeof(ts_type) * ts_length);
 
             int use_best = index->settings->n_coefficients != 0;
-            fft_from_ts(
-				index,
-				index->settings->n_segments,
-				use_best, &fftw);
+            if (fft_from_ts(index, index->settings->n_segments, use_best, &fftw) != SUCCESS) {
+                fprintf(stderr, "error: failed to calculate SFA query coefficients.\n");
+                break;
+            }
 
             memcpy(paa, fftw.transform, sizeof(ts_type) * index->settings->n_segments);
         } else if (index->settings->function_type == 5) {

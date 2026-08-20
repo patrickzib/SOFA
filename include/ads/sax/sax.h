@@ -17,7 +17,6 @@ enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, isax_index_sett
 void sax_print(sax_type *sax, int segments, int cardinality);
 void printbin(unsigned long long n, int size);
 void serial_printbin (unsigned long long n, int size);
-int compare(const void *a, const void *b);
 float minidist_paa_to_isax(float *paa, sax_type *sax, sax_type *sax_cardinalities,
                                   const isax_index_settings *settings, int use_raw);
 #if ADS_HAVE_AVX2
