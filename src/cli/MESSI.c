@@ -1240,12 +1240,28 @@ int main(int argc, char **argv) {
         }
         SAVE_STATS_TOTAL(logfile_query, queries_size)
         if (queries_size > 0 && query_wall_seconds > 0.0) {
+            const double avg_checked_nodes = (double) checked_nodes_all / queries_size;
+            const double avg_lower_bounds = (double) LBDcalculationnumber_all / queries_size;
+            const double avg_exact_distances = (double) RDcalculationnumber_all / queries_size;
+            const double checked_node_percent = total_tree_nodes > 0
+                                                ? 100.0 * avg_checked_nodes / total_tree_nodes
+                                                : 0.0;
+            const double lower_bound_percent = dataset_size > 0
+                                               ? 100.0 * avg_lower_bounds / dataset_size
+                                               : 0.0;
+            const double exact_distance_percent = dataset_size > 0
+                                                  ? 100.0 * avg_exact_distances / dataset_size
+                                                  : 0.0;
             printf("summary: queries=%d wall_time_s=%.6f avg_checked_nodes=%.2f "
                    "avg_lower_bounds=%.2f avg_exact_distances=%.2f\n",
                    queries_size, query_wall_seconds,
-                   (double) checked_nodes_all / queries_size,
-                   (double) LBDcalculationnumber_all / queries_size,
-                   (double) RDcalculationnumber_all / queries_size);
+                   avg_checked_nodes, avg_lower_bounds, avg_exact_distances);
+            printf("coverage: checked_nodes=%.4f%% of %d index nodes "
+                   "lower_bounds=%.4f%% of %ld indexed series "
+                   "exact_distances=%.4f%% of %ld indexed series\n",
+                   checked_node_percent, total_tree_nodes,
+                   lower_bound_percent, dataset_size,
+                   exact_distance_percent, dataset_size);
         }
 
         /* Do not store index for now

@@ -199,23 +199,18 @@ void* LOGFILE;
                             stats_header_printed = 0;
         #define PRINT_STATS(result_distance) do { \
             if (!stats_header_printed) { \
-                printf("%4s %10s %10s %6s %13s %14s %12s %12s %20s %12s %12s\n", \
-                       "idx:", "input", "output", "nodes", "checked_nodes", "bytes_accessed", \
-                       "loaded_nodes", "loaded_records", "approximate_distance", "distance", "total"); \
+                printf("%4s %8s %13s %20s %12s %12s\n", \
+                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "total_us"); \
                 stats_header_printed = 1; \
             } \
-            printf("%10.0f %10.0f %6d %13d %14ld %12d %12lld %20.3f %12.3f %12.0f\n", \
-                   total_input_time, total_output_time, \
-                   total_tree_nodes, checked_nodes, \
-                   BYTES_ACCESSED, loaded_nodes, \
-                   loaded_records, APPROXIMATE, \
+            printf("%8d %13d %20.3f %12.3f %12.0f\n", \
+                   total_tree_nodes, checked_nodes, APPROXIMATE, \
                    result_distance, total_time); \
         } while (0);
         #define PRINT_STATS_HEADER() do { \
             if (!stats_header_printed) { \
-                printf("%4s %10s %10s %6s %13s %12s %12s %12s %14s %12s %12s\n", \
-                       "idx:", "input", "output", "nodes", "checked_nodes", "bytes_accessed", \
-                       "loaded_nodes", "loaded_records", "approximate_distance", "distance", "total"); \
+                printf("%4s %8s %13s %20s %12s %12s\n", \
+                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "total_us"); \
                 stats_header_printed = 1; \
             } \
         } while (0);

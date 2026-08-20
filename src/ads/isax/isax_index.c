@@ -2818,7 +2818,11 @@ void print_settings(isax_index_settings *settings) {
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     fprintf(stderr, "  leaf capacity : %d (minimum %d)\n",
             settings->max_leaf_size, settings->min_leaf_size);
-    fprintf(stderr, "  split policy  : %s\n", split_name);
+    if (settings->index_type == MESSI_INDEX_TRIE) {
+        fprintf(stderr, "  split policy  : symbolic entropy × variance\n");
+    } else {
+        fprintf(stderr, "  split policy  : %s\n", split_name);
+    }
     fprintf(stderr, "  SIMD          : %s\n", settings->SIMD_flag ? "enabled" : "disabled");
 
     if (settings->function_type == 3) {
@@ -2850,10 +2854,14 @@ void print_settings(isax_index_settings *settings) {
         fprintf(stderr, "  binning       : %s; sampling: %s (%u records)\n",
                 binning, sampling != NULL ? sampling : "unspecified", settings->sample_size);
     }
-    fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
-            settings->tight_bound ? "on" : "off",
-            settings->aggressive_check ? "on" : "off",
-            settings->total_loaded_leaves);
+    if (settings->index_type == MESSI_INDEX_TRIE) {
+        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds\n");
+    } else {
+        fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
+                settings->tight_bound ? "on" : "off",
+                settings->aggressive_check ? "on" : "off",
+                settings->total_loaded_leaves);
+    }
     fprintf(stderr, "===================================\n");
 
 	fflush(stderr);
