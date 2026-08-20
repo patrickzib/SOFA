@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <limits.h>
 #include <pthread.h>
 #include <time.h>
 #ifdef _OPENMP
@@ -42,6 +43,13 @@ struct symbolic_trie_index {
     unsigned long split_exhausted_leaves;
     unsigned long node_count;
 };
+
+/* A full entropy pass over every dimension of a very large root is
+ * prohibitively expensive (64 complete scans at the current maximum word
+ * length).  A deterministic, evenly-spaced sample retains the distribution
+ * information needed for split selection while keeping the expensive full
+ * pass to the one partition pass that cannot be avoided. */
+#define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
 
 /* The index settings describe the full split word (normally 64 dimensions).
  * Lower bounds intentionally see only the configured bound prefix.  A local
@@ -203,6 +211,177 @@ static int trie_split_leaf(struct symbolic_trie_index *trie, isax_index *index, 
     return 1;
 }
 
+/* Return 1 after a successful split, 0 if no usable dimension remains, and
+ * -1 on allocation failure.  This is intentionally used only for the root:
+ * after it has been partitioned, ordinary task-parallel subtree construction
+ * handles the much smaller leaves with the exact entropy routine above. */
+static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
+                                            isax_index *index,
+                                            symbolic_trie_node *node) {
+    const long sample_size = node->size < TRIE_ROOT_SPLIT_SAMPLE_SIZE
+                                 ? node->size : TRIE_ROOT_SPLIT_SAMPLE_SIZE;
+    const int dimensions = trie->dimensions;
+    const int workers = maxquerythread > 0 ? maxquerythread : 1;
+    unsigned long *histograms = calloc((size_t) workers * dimensions * 8,
+                                       sizeof(*histograms));
+    if (histograms == NULL) return -1;
+
+    const double selection_start = messi_monotonic_seconds();
+#ifdef _OPENMP
+#pragma omp parallel num_threads(workers)
+#endif
+    {
+        int worker = 0;
+#ifdef _OPENMP
+        worker = omp_get_thread_num();
+#endif
+        unsigned long *local = histograms + (size_t) worker * dimensions * 8;
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+        for (long sample = 0; sample < sample_size; ++sample) {
+            long record = (long) (((unsigned long long) sample * node->size) / sample_size);
+            const sax_type *word = node->words[record];
+            for (int d = 0; d < dimensions; ++d) ++local[d * 8 + (word[d] >> 5)];
+        }
+    }
+
+    int dimension = -1;
+    double best_score = -1.0;
+    for (int d = 0; d < dimensions; ++d) {
+        if (node->used_dimensions & (UINT64_C(1) << d)) continue;
+        unsigned long counts[8] = {0};
+        for (int worker = 0; worker < workers; ++worker) {
+            const unsigned long *local = histograms + (size_t) worker * dimensions * 8 + d * 8;
+            for (int bucket = 0; bucket < 8; ++bucket) counts[bucket] += local[bucket];
+        }
+        double entropy = 0.0;
+        int occupied = 0;
+        for (int bucket = 0; bucket < 8; ++bucket) if (counts[bucket] != 0) {
+            double p = (double) counts[bucket] / sample_size;
+            entropy -= p * log(p);
+            ++occupied;
+        }
+        if (occupied < 2) continue;
+        double score = entropy / log(8.0);
+        if (index->settings->symbolic_variances != NULL) score *= index->settings->symbolic_variances[d];
+        if (score > best_score) { best_score = score; dimension = d; }
+    }
+    free(histograms);
+    const double selection_end = messi_monotonic_seconds();
+    if (dimension < 0) {
+        node->split_exhausted = 1;
+        ++trie->split_exhausted_leaves;
+        return 0;
+    }
+
+    unsigned long *counts = calloc((size_t) workers * 8, sizeof(*counts));
+    unsigned long *offsets = calloc((size_t) workers * 8, sizeof(*offsets));
+    sax_type *local_min = malloc((size_t) workers * 8 * dimensions);
+    sax_type *local_max = calloc((size_t) workers * 8 * dimensions, sizeof(*local_max));
+    if (counts == NULL || offsets == NULL || local_min == NULL || local_max == NULL) {
+        free(counts); free(offsets); free(local_min); free(local_max);
+        return -1;
+    }
+    memset(local_min, UCHAR_MAX, (size_t) workers * 8 * dimensions);
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(workers)
+#endif
+    {
+        int worker = 0;
+#ifdef _OPENMP
+        worker = omp_get_thread_num();
+#endif
+        unsigned long *local = counts + (size_t) worker * 8;
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+        for (int i = 0; i < node->size; ++i) ++local[node->words[i][dimension] >> 5];
+    }
+
+    unsigned long bucket_sizes[8] = {0};
+    for (int bucket = 0; bucket < 8; ++bucket) {
+        unsigned long offset = 0;
+        for (int worker = 0; worker < workers; ++worker) {
+            offsets[(size_t) worker * 8 + bucket] = offset;
+            offset += counts[(size_t) worker * 8 + bucket];
+        }
+        bucket_sizes[bucket] = offset;
+    }
+
+    symbolic_trie_node *children[8] = {0};
+    const uint64_t used = node->used_dimensions | (UINT64_C(1) << dimension);
+    for (int bucket = 0; bucket < 8; ++bucket) if (bucket_sizes[bucket] != 0) {
+        children[bucket] = trie_node_create(dimensions, node, used);
+        if (children[bucket] == NULL ||
+            (children[bucket]->words = malloc(sizeof(*children[bucket]->words) * bucket_sizes[bucket])) == NULL ||
+            (children[bucket]->positions = malloc(sizeof(*children[bucket]->positions) * bucket_sizes[bucket])) == NULL) {
+            for (int b = 0; b < 8; ++b) if (children[b] != NULL) {
+                free(children[b]->words); free(children[b]->positions);
+                free(children[b]->min_word); free(children[b]->max_word); free(children[b]);
+            }
+            free(counts); free(offsets); free(local_min); free(local_max);
+            return -1;
+        }
+        children[bucket]->capacity = children[bucket]->size = (int) bucket_sizes[bucket];
+    }
+
+#ifdef _OPENMP
+#pragma omp parallel num_threads(workers)
+#endif
+    {
+        int worker = 0;
+#ifdef _OPENMP
+        worker = omp_get_thread_num();
+#endif
+        unsigned long *local_offsets = offsets + (size_t) worker * 8;
+        sax_type *min_word = local_min + (size_t) worker * 8 * dimensions;
+        sax_type *max_word = local_max + (size_t) worker * 8 * dimensions;
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+        for (int i = 0; i < node->size; ++i) {
+            sax_type *word = node->words[i];
+            int bucket = word[dimension] >> 5;
+            unsigned long position = local_offsets[bucket]++;
+            children[bucket]->words[position] = word;
+            children[bucket]->positions[position] = node->positions[i];
+            sax_type *min = min_word + bucket * dimensions;
+            sax_type *max = max_word + bucket * dimensions;
+            for (int d = 0; d < dimensions; ++d) {
+                if (word[d] < min[d]) min[d] = word[d];
+                if (word[d] > max[d]) max[d] = word[d];
+            }
+        }
+    }
+
+    for (int bucket = 0; bucket < 8; ++bucket) if (children[bucket] != NULL) {
+        for (int d = 0; d < dimensions; ++d) {
+            sax_type min = UCHAR_MAX, max = 0;
+            for (int worker = 0; worker < workers; ++worker) {
+                const sax_type local_low = local_min[((size_t) worker * 8 + bucket) * dimensions + d];
+                const sax_type local_high = local_max[((size_t) worker * 8 + bucket) * dimensions + d];
+                if (local_low < min) min = local_low;
+                if (local_high > max) max = local_high;
+            }
+            children[bucket]->min_word[d] = min;
+            children[bucket]->max_word[d] = max;
+        }
+        children[bucket]->mbb_valid = 1;
+    }
+    free(counts); free(offsets); free(local_min); free(local_max);
+    free(node->words); free(node->positions);
+    node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
+    node->leaf = 0; node->split_dimension = dimension;
+    memcpy(node->children, children, sizeof(children));
+    const double partition_end = messi_monotonic_seconds();
+    fprintf(stderr,
+            ">>> trie root split timing: sample=%ld selection=%.3fs partition=%.3fs dimension=%d\n",
+            sample_size, selection_end - selection_start, partition_end - selection_end, dimension);
+    return 1;
+}
+
 static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax_type *word,
                                        ts_type *transform, fftw_workspace *fftw) {
     int d = index->settings->n_segments;
@@ -318,11 +497,33 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double transform_end = messi_monotonic_seconds();
     for (long i = 0; i < ts_num; ++i) trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
     double root_mbb_end = messi_monotonic_seconds();
+
+    /* Split the initially enormous root before entering the task region.  The
+     * sampled splitter uses OpenMP worksharing itself; nested worksharing from
+     * inside the later omp single region would otherwise be serialized. */
+    if (trie->root->size > index->settings->max_leaf_size) {
+        int root_split = trie_split_root_sampled_parallel(trie, index, trie->root);
+        if (root_split < 0) {
+            trie_node_destroy(trie->root); free(trie); free(rawfile); rawfile = NULL;
+            return FAILURE;
+        }
+    }
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
 #pragma omp single
 #endif
-    trie_build_subtree(trie, index, trie->root, 0);
+    {
+        if (trie->root->leaf) {
+            trie_build_subtree(trie, index, trie->root, 0);
+        } else {
+            for (int i = 0; i < 8; ++i) if (trie->root->children[i] != NULL) {
+#ifdef _OPENMP
+#pragma omp task firstprivate(i)
+#endif
+                trie_build_subtree(trie, index, trie->root->children[i], 1);
+            }
+        }
+    }
     trie->node_count = trie_node_count(trie->root);
     double split_end = messi_monotonic_seconds();
     index->trie = trie;
