@@ -44,7 +44,7 @@
 #endif
 
 #include "config.h"
-#include "../../globals.h"
+#include "../../../globals.h"
 	
 #include <stdio.h>
 #include <stdlib.h>
@@ -239,6 +239,9 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
     settings->node_split_criterion = 1;
+    settings->index_type = MESSI_INDEX_ISAX;
+    settings->symbolic_trie_dimensions = 0;
+    settings->symbolic_variances = NULL;
     settings->dynamic_root_split_variance = 0;
     settings->root_bit_cardinalities = NULL;
 
@@ -295,6 +298,7 @@ isax_index * isax_index_init(isax_index_settings *settings)
     index->pca_components = NULL;
     index->pca_components_count = 0;
     index->pca_dim = 0;
+    index->trie = NULL;
 
     return index;
 }
@@ -471,6 +475,7 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
         free(index->settings->raw_filename);
         free(index->settings->max_sax_cardinalities);
         free(index->settings->root_bit_cardinalities);
+        free(index->settings->symbolic_variances);
         free(index->settings);
 
         // TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
@@ -482,7 +487,9 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
             isax_index_destroy(index, subtree_root);
             subtree_root = next;
         }
-        destroy_pRecBuf((parallel_first_buffer_layer*)(index->fbl),prewokernumber);
+        if (index->fbl != NULL) {
+            destroy_pRecBuf((parallel_first_buffer_layer*)(index->fbl),prewokernumber);
+        }
         #ifdef CLUSTERED
             free(index->locations);
         #endif

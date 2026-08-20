@@ -4,7 +4,7 @@
 
 #include <float.h>
 #include "config.h"
-#include "../../globals.h"
+#include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

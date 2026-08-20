@@ -51,6 +51,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/trie/trie.h"
 #include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
@@ -74,6 +75,12 @@ static FILE *open_logfile_or_tmp(const char *path) {
         perror("tmpfile");
     }
     return file;
+}
+
+static double monotonic_seconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
 #ifndef __linux__
@@ -236,6 +243,11 @@ int main(int argc, char **argv) {
     static int dynamic_root_split_variance = 0;
     static int dynamic_root_split_uniform_set = 0;
     static int node_split_criterion = 1;
+    static messi_index_type index_type = MESSI_INDEX_ISAX;
+    static int symbolic_trie_dimensions = 0;
+    /* Trie queries are independent and batch scheduling preserves each
+     * query's private best-so-far, unlike speculative subtree parallelism. */
+    static int trie_query_batch = 1;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -300,6 +312,9 @@ int main(int argc, char **argv) {
                 {"dynamic-index",       required_argument, 0,   'H'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
+                {"index-type", required_argument, 0, 1000},
+                {"symbolic-trie-dimensions", required_argument, 0, 1001},
+                {"trie-query-parallel", no_argument, 0, 1002},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -310,6 +325,17 @@ int main(int argc, char **argv) {
         if (c == -1)
             break;
         switch (c) {
+            case 1000:
+                if (strcmp(optarg, "isax") == 0) index_type = MESSI_INDEX_ISAX;
+                else if (strcmp(optarg, "trie") == 0) index_type = MESSI_INDEX_TRIE;
+                else { fprintf(stderr, "error: index-type must be isax or trie.\n"); return EXIT_FAILURE; }
+                break;
+            case 1001:
+                symbolic_trie_dimensions = atoi(optarg);
+                break;
+            case 1002:
+                trie_query_batch = 0;
+                break;
             case 'j':
                 serial_scan = 1;
                 break;
@@ -508,6 +534,9 @@ int main(int argc, char **argv) {
                 \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
                 \t--dynamic-root-split-uniform XX\tUniform root split (alias for --dynamic-index)\n\
                 \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
+                \t--index-type isax|trie\tIndex layout (default: isax)\n\
+                \t--symbolic-trie-dimensions N\tTrie symbolic dimensions, 16--64 (default: 64)\n\
+                \t--trie-query-parallel\tParallelize each trie query across subtrees (default: batch queries)\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -589,6 +618,21 @@ int main(int argc, char **argv) {
     if (dynamic_root_split_variance && dynamic_root_split_uniform_set) {
         fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
         return EXIT_FAILURE;
+    }
+    if (index_type == MESSI_INDEX_TRIE) {
+        if (function_type < 4 || function_type > 6) {
+            fprintf(stderr, "error: --index-type trie supports function types 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
+            return EXIT_FAILURE;
+        }
+        if (dynamic_root_split_uniform_set || dynamic_root_split_variance) {
+            fprintf(stderr, "error: dynamic root split options are iSAX-only.\n");
+            return EXIT_FAILURE;
+        }
+        if (symbolic_trie_dimensions == 0) symbolic_trie_dimensions = 64;
+        if (symbolic_trie_dimensions < 16 || symbolic_trie_dimensions > 64) {
+            fprintf(stderr, "error: symbolic-trie-dimensions must be between 16 and 64.\n");
+            return EXIT_FAILURE;
+        }
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
         fprintf(stderr, "error: uniform root split must be between 1 and sax-cardinality (%d).\n",
@@ -738,6 +782,7 @@ int main(int argc, char **argv) {
         isax_index_destroy(idx, NULL);
     } else {
         char rm_command[256];
+        int index_segments = index_type == MESSI_INDEX_TRIE ? symbolic_trie_dimensions : n_segments;
 
 
         if (!inmemory_flag) {
@@ -745,27 +790,35 @@ int main(int argc, char **argv) {
             system(rm_command);
         }
         // check if n_segments size is at most timeseries_size
-        if (n_segments > time_series_size) {
+        if (index_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        if (time_series_size % n_segments != 0) {
+        if (index_type == MESSI_INDEX_ISAX && time_series_size % n_segments != 0) {
             fprintf(stderr,
                     "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
                     "is not divisible by n-segments (%d).\n",
                     time_series_size % n_segments, time_series_size, n_segments);
         }
         if (function_type == 4 || function_type == 6) {
-            if (n_segments <= 0 || n_segments % 2 != 0) {
+            if (index_segments <= 0 || index_segments % 2 != 0) {
                 fprintf(stderr, "ERROR: SFA/PISA n-segments must be a positive even number!\n");
                 return -1;
             }
             if (n_coefficients != 0 &&
-                (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
+                (n_coefficients % 2 != 0 || n_coefficients < index_segments ||
                  n_coefficients > time_series_size / 2)) {
                 fprintf(stderr,
                         "ERROR: SFA/PISA coeff number must be even and between %d and %d!\n",
-                        n_segments, time_series_size / 2);
+                        index_segments, time_series_size / 2);
+                return -1;
+            }
+            if (index_type == MESSI_INDEX_TRIE &&
+                (n_coefficients == 0 || n_coefficients < index_segments ||
+                 index_segments > time_series_size / 2)) {
+                fprintf(stderr,
+                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size/2.\n",
+                        index_segments);
                 return -1;
             }
         }
@@ -865,7 +918,7 @@ int main(int argc, char **argv) {
 
         isax_index_settings *index_settings = isax_index_settings_init(index_path,         // INDEX DIRECTORY
                                                                        time_series_size,   // TIME SERIES SIZE
-                                                                       n_segments,         // PAA SEGMENTS
+                                                                       index_segments,     // symbolic dimensions
                                                                        sax_cardinality,    // SAX CARDINALITY IN BITS
                                                                        leaf_size,          // LEAF SIZE
                                                                        min_leaf_size,      // MIN LEAF SIZE
@@ -892,6 +945,8 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->index_type = index_type;
+        index_settings->symbolic_trie_dimensions = symbolic_trie_dimensions;
         index_settings->dynamic_root_split_variance = dynamic_root_split_variance;
 
 
@@ -935,15 +990,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -954,8 +1013,12 @@ int main(int argc, char **argv) {
             //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
             //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
             // } else {
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            fprintf(stderr, ">>> query wall time: %.6f s\n", monotonic_seconds() - query_wall_start);
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -969,15 +1032,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -988,8 +1055,12 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            fprintf(stderr, ">>> query wall time: %.6f s\n", monotonic_seconds() - query_wall_start);
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -1003,15 +1074,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -1022,8 +1097,12 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            fprintf(stderr, ">>> query wall time: %.6f s\n", monotonic_seconds() - query_wall_start);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
@@ -1169,6 +1248,8 @@ int main(int argc, char **argv) {
 
         } else {
             free(rawfile);
+            rawfile = NULL;
+            if (index_type == MESSI_INDEX_TRIE) symbolic_trie_destroy(idx);
 
             if (function_type == 4) {
                 sfa_free_bins(idx);

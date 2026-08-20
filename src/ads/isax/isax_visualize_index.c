@@ -5,7 +5,7 @@
 //  Created by Kostas Zoumpatianos and Botao Peng, March 2020
 //
 #include "config.h"
-#include "../../globals.h"
+#include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -172,4 +172,3 @@ void traverse_tree(isax_node *node, unsigned int parent_depth, unsigned int *tot
     *node_count +=1;
     return;
 }
-

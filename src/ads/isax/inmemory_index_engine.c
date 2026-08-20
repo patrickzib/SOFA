@@ -4,7 +4,7 @@
 
 #include <float.h>
 #include "config.h"
-#include "../../globals.h"
+#include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2161,10 +2161,13 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
 
     index->settings = settings;
     index->first_node = NULL;
-    index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
-                                pow(2, settings->n_segments),
-                                settings->max_total_buffer_size +
-                                DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1), index);
+    index->fbl = NULL;
+    if (settings->index_type == MESSI_INDEX_ISAX) {
+        index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
+                                    pow(2, settings->n_segments),
+                                    settings->max_total_buffer_size +
+                                    DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1), index);
+    }
 
 
     index->sax_cache = NULL;
@@ -2184,6 +2187,7 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
     index->pca_components = NULL;
     index->pca_components_count = 0;
     index->pca_dim = 0;
+    index->trie = NULL;
 
     return index;
 }

@@ -27,6 +27,11 @@ typedef struct {
     unsigned long disk_data_partial;
 } meminfo;
 
+typedef enum {
+    MESSI_INDEX_ISAX = 0,
+    MESSI_INDEX_TRIE = 1
+} messi_index_type;
+
 
 typedef struct {
     char new_index;
@@ -78,6 +83,9 @@ typedef struct {
     int sample_type;
     int n_coefficients;
     int node_split_criterion;
+    messi_index_type index_type;
+    int symbolic_trie_dimensions;
+    double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,
      * this contains the number of leading SAX bits used per dimension. */
@@ -119,6 +127,8 @@ typedef struct {
     ts_type *pca_components;
     int pca_components_count;
     int pca_dim;
+
+    struct symbolic_trie_index *trie;
 
 } isax_index;
 
