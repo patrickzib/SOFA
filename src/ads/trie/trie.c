@@ -750,18 +750,188 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     }
 }
 
+/* The single-query engine deliberately mirrors the iSAX MESSI engine: first
+ * distribute independent top-level work, then process low-bound leaves from
+ * several locked priority queues.  A trie has one physical root, so it first
+ * expands that root into a small frontier; thereafter its workers have the
+ * same work-unit granularity as iSAX's many first-buffer-layer roots. */
+typedef struct {
+    const symbolic_trie_node *node;
+    float lower_bound;
+} trie_leaf_work;
+
+typedef struct {
+    trie_leaf_work *items;
+    int size;
+    int capacity;
+    pthread_mutex_t lock;
+} trie_leaf_queue;
+
+static void trie_leaf_queue_sift_down(trie_leaf_work *items, int size, int position) {
+    while (1) {
+        int left = 2 * position + 1, right = left + 1, smallest = position;
+        if (left < size && items[left].lower_bound < items[smallest].lower_bound) smallest = left;
+        if (right < size && items[right].lower_bound < items[smallest].lower_bound) smallest = right;
+        if (smallest == position) return;
+        trie_leaf_work tmp = items[position]; items[position] = items[smallest]; items[smallest] = tmp;
+        position = smallest;
+    }
+}
+
+static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item) {
+    int ok = 1;
+    pthread_mutex_lock(&queue->lock);
+    if (queue->size == queue->capacity) {
+        int capacity = queue->capacity == 0 ? 128 : queue->capacity * 2;
+        trie_leaf_work *items = realloc(queue->items, (size_t) capacity * sizeof(*items));
+        if (items == NULL) ok = 0;
+        else { queue->items = items; queue->capacity = capacity; }
+    }
+    if (ok) {
+        int position = queue->size++;
+        queue->items[position] = item;
+        while (position > 0) {
+            int parent = (position - 1) / 2;
+            if (queue->items[parent].lower_bound <= queue->items[position].lower_bound) break;
+            trie_leaf_work tmp = queue->items[parent]; queue->items[parent] = queue->items[position];
+            queue->items[position] = tmp; position = parent;
+        }
+    }
+    pthread_mutex_unlock(&queue->lock);
+    return ok;
+}
+
+static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item) {
+    pthread_mutex_lock(&queue->lock);
+    if (queue->size == 0) { pthread_mutex_unlock(&queue->lock); return 0; }
+    *item = queue->items[0];
+    queue->items[0] = queue->items[--queue->size];
+    trie_leaf_queue_sift_down(queue->items, queue->size, 0);
+    pthread_mutex_unlock(&queue->lock);
+    return 1;
+}
+
+static symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int target, int *count) {
+    int capacity = target > 8 ? target * 2 : 16;
+    symbolic_trie_node **frontier = malloc((size_t) capacity * sizeof(*frontier));
+    if (frontier == NULL) return NULL;
+    *count = 1; frontier[0] = root;
+    for (int current = 0; current < *count && *count < target; ) {
+        symbolic_trie_node *node = frontier[current];
+        if (node->leaf) { ++current; continue; }
+        int children = 0;
+        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) ++children;
+        if (children == 0) { ++current; continue; }
+        if (*count - 1 + children > capacity) {
+            int new_capacity = capacity * 2;
+            while (new_capacity < *count - 1 + children) new_capacity *= 2;
+            symbolic_trie_node **expanded = realloc(frontier, (size_t) new_capacity * sizeof(*frontier));
+            if (expanded == NULL) { free(frontier); return NULL; }
+            frontier = expanded; capacity = new_capacity;
+        }
+        frontier[current] = frontier[--*count];
+        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL)
+            frontier[(*count)++] = node->children[i];
+    }
+    return frontier;
+}
+
+static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_node *node,
+                                         const ts_type *transform, float bsf,
+                                         const symbolic_trie_node *skip_leaf,
+                                         trie_leaf_queue *queues, int queue_count,
+                                         int *next_queue, trie_query_stats *stats, int *failed) {
+    if (node == skip_leaf || __atomic_load_n(failed, __ATOMIC_RELAXED)) return;
+    ++stats->checked_nodes;
+    float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
+                                   index->trie->dimensions, bsf);
+    if (lower >= bsf) return;
+    if (node->leaf) {
+        int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;
+        if (!trie_leaf_queue_push(&queues[queue_number], (trie_leaf_work) {node, lower}))
+            __atomic_store_n(failed, 1, __ATOMIC_RELAXED);
+        return;
+    }
+    for (int i = 0; i < 8; ++i) if (node->children[i] != NULL)
+        trie_parallel_collect_leaves(index, node->children[i], transform, bsf, skip_leaf,
+                                     queues, queue_count, next_queue, stats, failed);
+}
+
 static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
                                         const ts_type *transform, float bsf,
-                                        const symbolic_trie_node *skip_leaf) {
-    pthread_mutex_t bsf_lock = PTHREAD_MUTEX_INITIALIZER;
+                                        const symbolic_trie_node *skip_leaf,
+                                        trie_query_stats *result_stats) {
+    if (result_stats != NULL) memset(result_stats, 0, sizeof(*result_stats));
+#ifndef _OPENMP
+    trie_query_scratch scratch = {0};
+    float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
+                                      result_stats, skip_leaf, &scratch);
+    free(scratch.candidates);
+    return distance;
+#else
+    const int workers = maxquerythread > 0 ? maxquerythread : 1;
+    const int queue_count = workers < 8 ? workers : 8;
+    int frontier_count = 0;
+    symbolic_trie_node **frontier = trie_parallel_frontier(index->trie->root, workers * 4, &frontier_count);
+    trie_leaf_queue *queues = calloc((size_t) queue_count, sizeof(*queues));
+    trie_query_stats *worker_stats = calloc((size_t) workers, sizeof(*worker_stats));
+    trie_query_scratch *worker_scratch = calloc((size_t) workers, sizeof(*worker_scratch));
+    if (frontier == NULL || queues == NULL || worker_stats == NULL || worker_scratch == NULL) {
+        free(frontier); free(queues); free(worker_stats); free(worker_scratch);
+        trie_query_scratch scratch = {0};
+        float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
+                                          result_stats, skip_leaf, &scratch);
+        free(scratch.candidates); return distance;
+    }
+    for (int i = 0; i < queue_count; ++i) pthread_mutex_init(&queues[i].lock, NULL);
+    pthread_rwlock_t bsf_lock = PTHREAD_RWLOCK_INITIALIZER;
     float shared_bsf = bsf;
-#ifdef _OPENMP
-#pragma omp parallel num_threads(maxquerythread)
-#pragma omp single
+    int next_queue = 0, failed = 0;
+#pragma omp parallel num_threads(workers)
+    {
+        int worker = omp_get_thread_num();
+        trie_query_stats *stats = &worker_stats[worker];
+        float traversal_bsf;
+        pthread_rwlock_rdlock(&bsf_lock); traversal_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
+#pragma omp for schedule(dynamic, 1)
+        for (int i = 0; i < frontier_count; ++i)
+            trie_parallel_collect_leaves(index, frontier[i], transform, traversal_bsf, skip_leaf,
+                                         queues, queue_count, &next_queue, stats, &failed);
+#pragma omp barrier
+        for (int offset = 0; offset < queue_count && !__atomic_load_n(&failed, __ATOMIC_RELAXED); ++offset) {
+            int queue_number = (worker + offset) % queue_count;
+            trie_leaf_work work;
+            while (trie_leaf_queue_pop(&queues[queue_number], &work)) {
+                float current_bsf;
+                pthread_rwlock_rdlock(&bsf_lock); current_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
+                if (work.lower_bound >= current_bsf) continue;
+                float distance = trie_scan_leaf_best_first(index, work.node, query, transform,
+                                                            current_bsf, stats, &worker_scratch[worker]);
+                if (distance < current_bsf) {
+                    pthread_rwlock_wrlock(&bsf_lock);
+                    if (distance < shared_bsf) shared_bsf = distance;
+                    pthread_rwlock_unlock(&bsf_lock);
+                }
+            }
+        }
+    }
+    if (result_stats != NULL) for (int i = 0; i < workers; ++i) {
+        result_stats->checked_nodes += worker_stats[i].checked_nodes;
+        result_stats->lower_bounds += worker_stats[i].lower_bounds;
+        result_stats->exact_distances += worker_stats[i].exact_distances;
+    }
+    for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
+    for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
+    pthread_rwlock_destroy(&bsf_lock);
+    free(frontier); free(queues); free(worker_stats); free(worker_scratch);
+    if (!__atomic_load_n(&failed, __ATOMIC_RELAXED)) return shared_bsf;
+    /* Queue allocation failed mid-search.  Re-run serially rather than ever
+     * returning a partial result. */
+    trie_query_scratch scratch = {0};
+    float distance = trie_search_node(index, index->trie->root, query, transform, shared_bsf,
+                                      result_stats, skip_leaf, &scratch);
+    free(scratch.candidates); return distance;
 #endif
-    trie_search_task(index, index->trie->root, query, transform, &shared_bsf, &bsf_lock, 0, skip_leaf);
-    pthread_mutex_destroy(&bsf_lock);
-    return shared_bsf;
 }
 
 enum response symbolic_trie_query_file(isax_index *index, const char *path, int query_count,
@@ -801,15 +971,12 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         stats.approximate_distance = bsf;
         float distance;
         if (maxquerythread > 1) {
-            LBDcalculationnumber = RDcalculationnumber = 0;
-            checked_nodes = 0;
             if (minimum_distance < bsf) bsf = minimum_distance;
-            distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf);
-            stats.checked_nodes += checked_nodes;
-            stats.lower_bounds += LBDcalculationnumber;
-            stats.exact_distances += RDcalculationnumber;
-            LBDcalculationnumber = RDcalculationnumber = 0;
-            checked_nodes = 0;
+            trie_query_stats parallel_stats = {0};
+            distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf, &parallel_stats);
+            stats.checked_nodes += parallel_stats.checked_nodes;
+            stats.lower_bounds += parallel_stats.lower_bounds;
+            stats.exact_distances += parallel_stats.exact_distances;
         } else {
             distance = trie_search_node(index, index->trie->root, query, transform,
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch);
@@ -914,7 +1081,7 @@ query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
                                            NULL, NULL, &scratch);
         free(scratch.candidates);
     }
-    else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL);
+    else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL, NULL);
     return result;
 }
 
