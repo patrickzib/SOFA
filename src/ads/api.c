@@ -21,11 +21,11 @@ struct messi_index {
 };
 
 static void populate_root_nodes(isax_index *index, node_list *list);
-static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
+static enum response prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_sfa_bins_if_needed(isax_index *index);
-static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
+static enum response prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_spartan_bins_if_needed(isax_index *index);
-static void prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
+static enum response prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_pisa_bins_if_needed(isax_index *index);
 
 static messi_index *messi_alloc(void) {
@@ -133,9 +133,11 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num, int 
     int apply_znorm = index->index->settings ? !index->index->settings->is_norm : 0;
     fprintf(stderr, ">>> API apply_znorm: %d (is_norm: %d)\n",
             apply_znorm, index->index->settings ? index->index->settings->is_norm : -1);
-    prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
-    prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int);
-    prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int);
+    if (prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS ||
+        prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS ||
+        prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS) {
+        return -3;
+    }
     index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index, dynamic_index);
     fprintf(stderr, ">>> dynamic_index=%d root_nodes=%lu\n",
             dynamic_index, index->index->root_nodes);
@@ -272,15 +274,15 @@ static void populate_root_nodes(isax_index *index, node_list *list) {
     }
 }
 
-static void prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
+static enum response prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
     if (index == NULL || index->settings->function_type != 4) {
-        return;
+        return SUCCESS;
     }
     if (sfa_bins_init(index) != SUCCESS) {
-        fprintf(stderr, "warning: failed to initialize SFA bins.\n");
-        return;
+        fprintf(stderr, "error: failed to initialize SFA bins.\n");
+        return FAILURE;
     }
-    sfa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
+    return sfa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
 }
 
 static void finalize_sfa_bins_if_needed(isax_index *index) {
@@ -297,15 +299,15 @@ static void finalize_sfa_bins_if_needed(isax_index *index) {
     }
 }
 
-static void prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
+static enum response prepare_spartan_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
     if (index == NULL || index->settings->function_type != 5) {
-        return;
+        return SUCCESS;
     }
     if (spartan_bins_init(index) != SUCCESS) {
-        fprintf(stderr, "warning: failed to initialize SPARTAN bins.\n");
-        return;
+        fprintf(stderr, "error: failed to initialize SPARTAN bins.\n");
+        return FAILURE;
     }
-    spartan_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
+    return spartan_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
 }
 
 static void finalize_spartan_bins_if_needed(isax_index *index) {
@@ -322,15 +324,15 @@ static void finalize_spartan_bins_if_needed(isax_index *index) {
     }
 }
 
-static void prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
+static enum response prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
     if (index == NULL || index->settings->function_type != 6) {
-        return;
+        return SUCCESS;
     }
     if (pisa_bins_init(index) != SUCCESS) {
-        fprintf(stderr, "warning: failed to initialize PISA bins.\n");
-        return;
+        fprintf(stderr, "error: failed to initialize PISA bins.\n");
+        return FAILURE;
     }
-    pisa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
+    return pisa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
 }
 
 static void finalize_pisa_bins_if_needed(isax_index *index) {

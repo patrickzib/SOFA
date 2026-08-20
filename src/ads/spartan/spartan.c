@@ -212,11 +212,26 @@ static void *spartan_order_divide_worker(void *transferdata) {
     return NULL;
 }
 
-void spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
-                      int filetype_int, int apply_znorm) {
+enum response spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
+                               int maxquerythread, int filetype_int, int apply_znorm) {
+    if (index == NULL || index->settings == NULL) {
+        return FAILURE;
+    }
     int dim = index->settings->n_segments;
     int ts_length = index->settings->timeseries_size;
     unsigned int sample_size = index->settings->sample_size;
+    if (dim <= 0 || sample_size == 0 || ts_num <= 0 || sample_size > (unsigned long) ts_num) {
+        fprintf(stderr, "error: invalid SPARTAN sampling settings.\n");
+        return FAILURE;
+    }
+
+    int worker_threads = maxquerythread;
+    if (worker_threads < 1) {
+        worker_threads = 1;
+    }
+    if (worker_threads > dim) {
+        worker_threads = dim;
+    }
 
     fprintf(stderr, ">>> SPARTAN binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
@@ -224,28 +239,61 @@ void spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
     ts_type *samples = calloc((size_t) sample_size * ts_length, sizeof(ts_type));
     if (samples == NULL) {
         fprintf(stderr, "error: failed to allocate SPARTAN sample buffer.\n");
-        return;
+        return FAILURE;
     }
 
     if (spartan_collect_samples(index, ifilename, ts_num, filetype_int, apply_znorm, samples, sample_size) != SUCCESS) {
         free(samples);
-        return;
+        return FAILURE;
     }
 
+    pca_free(index);
     if (pca_fit(index, samples, sample_size, ts_length) != SUCCESS) {
         free(samples);
-        return;
+        return FAILURE;
     }
 
     ts_type **coeff_mem_array = (ts_type **) calloc(dim, sizeof(ts_type *));
+    if (coeff_mem_array == NULL) {
+        free(samples);
+        pca_free(index);
+        return FAILURE;
+    }
     for (int k = 0; k < dim; ++k) {
         coeff_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
+        if (coeff_mem_array[k] == NULL) {
+            for (int j = 0; j < k; ++j) {
+                free(coeff_mem_array[j]);
+            }
+            free(coeff_mem_array);
+            free(samples);
+            pca_free(index);
+            return FAILURE;
+        }
     }
 
     ts_type *projection = calloc(dim, sizeof(ts_type));
+    if (projection == NULL) {
+        for (int k = 0; k < dim; ++k) {
+            free(coeff_mem_array[k]);
+        }
+        free(coeff_mem_array);
+        free(samples);
+        pca_free(index);
+        return FAILURE;
+    }
     for (unsigned int i = 0; i < sample_size; ++i) {
         const ts_type *row = samples + (i * ts_length);
-        pca_from_ts(index, row, projection);
+        if (pca_from_ts(index, row, projection) != SUCCESS) {
+            free(projection);
+            for (int k = 0; k < dim; ++k) {
+                free(coeff_mem_array[k]);
+            }
+            free(coeff_mem_array);
+            free(samples);
+            pca_free(index);
+            return FAILURE;
+        }
         for (int k = 0; k < dim; ++k) {
             coeff_mem_array[k][i] = projection[k];
         }
@@ -253,24 +301,32 @@ void spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
     free(projection);
     free(samples);
 
-    pthread_t threadid[maxquerythread];
-    spartan_bins_data *input_data = malloc(sizeof(spartan_bins_data) * (size_t) maxquerythread);
-
-    for (int i = 0; i < maxquerythread; i++) {
-        input_data[i].index = index;
-        input_data[i].coeff_mem_array = coeff_mem_array;
-        input_data[i].start_number = i * (dim / maxquerythread);
-        input_data[i].stop_number = (i + 1) * (dim / maxquerythread);
+    pthread_t threadid[worker_threads];
+    spartan_bins_data *input_data = malloc(sizeof(spartan_bins_data) * (size_t) worker_threads);
+    if (input_data == NULL) {
+        for (int k = 0; k < dim; ++k) {
+            free(coeff_mem_array[k]);
+        }
+        free(coeff_mem_array);
+        pca_free(index);
+        return FAILURE;
     }
 
-    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (dim / maxquerythread);
-    input_data[maxquerythread - 1].stop_number = dim;
+    for (int i = 0; i < worker_threads; i++) {
+        input_data[i].index = index;
+        input_data[i].coeff_mem_array = coeff_mem_array;
+        input_data[i].start_number = i * (dim / worker_threads);
+        input_data[i].stop_number = (i + 1) * (dim / worker_threads);
+    }
 
-    for (int i = 0; i < maxquerythread; i++) {
+    input_data[worker_threads - 1].start_number = (worker_threads - 1) * (dim / worker_threads);
+    input_data[worker_threads - 1].stop_number = dim;
+
+    for (int i = 0; i < worker_threads; i++) {
         pthread_create(&(threadid[i]), NULL, spartan_order_divide_worker, (void *) &(input_data[i]));
     }
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         pthread_join(threadid[i], NULL);
     }
 
@@ -284,6 +340,7 @@ void spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
 
     spartan_print_bins(index);
     fprintf(stderr, ">>> Finished SPARTAN binning\n");
+    return SUCCESS;
 }
 
 void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out) {
