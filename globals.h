@@ -217,13 +217,19 @@ void* LOGFILE;
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
         #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%.0f,%.0f,%ld,%ld,%.0f,", total_binning_time, total_indexing_time,\
         TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));
-        /* Query logs deliberately contain only measurements with the same
-         * meaning for iSAX and the in-memory trie.  In particular, node
-         * counts and legacy I/O timings are layout-specific and omitted. */
-        #define INIT_SAVE_FILE(ifile) fprintf(ifile, "query_time_us,cumulative_time_us,record_lower_bounds,exact_distance_calls,approximate_distance,distance\n");
-        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%.0f,%.0f,%lu,%lu,%.6f,%.6f\n", \
-        total_querying_time, total_time, LBDcalculationnumber, RDcalculationnumber, \
-        APPROXIMATE, result_distance);\
+        /* Preserve the established iSAX CSV layout: existing notebooks use
+         * these column names.  Trie populates the common query metrics and
+         * leaves unavailable disk-engine timings at zero. */
+        #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, init time, tree pass time, pq insert time, pq remove time, lb dist time, real dist time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
+        #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%.0f, %.0f, %.0f, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %.0f\n", \
+        total_querying_time, total_init_time, \
+        total_tree_pass_time, TOTAL_PQ_INSERT_TIME, TOTAL_PQ_REMOVE_TIME,\
+        TOTAL_LB_DIST_CALC_TIME, TOTAL_REAL_DIST_CALC_TIME,\
+        total_tree_nodes, checked_nodes, \
+        BYTES_ACCESSED, loaded_nodes, \
+        loaded_records, RDcalculationnumber, \
+        LBDcalculationnumber, APPROXIMATE, \
+        result_distance, total_time);\
         total_querying_time_all += total_querying_time;\
         total_time_all = total_time;\
         bytes_accessed_all += BYTES_ACCESSED;\
@@ -249,7 +255,15 @@ void* LOGFILE;
         TOTAL_LB_DIST_CALC_TIME=0;\
         total_real_dist_calc_time_all += TOTAL_REAL_DIST_CALC_TIME;\
         TOTAL_REAL_DIST_CALC_TIME=0;
-        #define SAVE_STATS_TOTAL(ifile, queries_size) do { } while (0);
+        #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
+        (total_querying_time_all / queries_size), (total_init_time_all / queries_size),\
+        (total_tree_pass_time_all / queries_size), (total_pq_insert_time_all / queries_size),(total_pq_remove_time_all / queries_size),\
+        (total_lb_dist_calc_time_all / queries_size), (total_real_dist_calc_time_all / queries_size),\
+        total_tree_nodes, ((double)checked_nodes_all / queries_size), \
+        ((double)bytes_accessed_all / queries_size), ((double)loaded_nodes_all / queries_size), \
+        ((double)loaded_records / queries_size), ((double)RDcalculationnumber_all / queries_size), \
+        ((double)LBDcalculationnumber_all / queries_size), (approximate_all / queries_size),\
+        (result_distance_all / queries_size), total_time_all);
         #define min(x,y)  ( x<y?x:y )
         #define COUNT_NEW_NODE() __sync_fetch_and_add(&total_tree_nodes,1);
         #define COUNT_LOADED_NODE() loaded_nodes++;
