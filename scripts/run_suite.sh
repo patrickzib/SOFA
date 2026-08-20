@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=lib/datasets.sh
+source "$SCRIPT_DIR/lib/datasets.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage: run_suite.sh SUITE [OPTIONS]
+
+Suites:
+  standard, high-frequency, knn, sampling
+  generated-queries, hard-queries, noise-workloads
+
+Options:
+  --threads LIST          Comma-separated CPU/queue counts (default: 36)
+  --k-values LIST         K values for knn (default: 20,50)
+  --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
+  --datasets LIST         Limit regular suites to dataset IDs
+  --dry-run               Print commands without running or archiving
+  -h, --help              Show this help
+
+Path-related environment variables and runner options are documented in
+scripts/README.md.
+USAGE
+}
+
+die() { printf 'Error: %s\n' "$*" >&2; exit 2; }
+split_csv() { local value=$1; IFS=',' read -r -a SPLIT_RESULT <<< "$value"; }
+dataset_label() {
+    case "$1" in
+        bigann) printf 'BIGANN' ;; sald) printf 'SALD' ;; sift1b) printf 'SIFT1b' ;;
+        deep1b) printf 'DEEP1b' ;; scedc) printf 'SCEDC' ;; astro) printf 'ASTRO' ;;
+        ethc) printf 'ETHC' ;; isc_ehb_depthphases) printf 'ISC_EHB_DepthPhases' ;;
+        lendb) printf 'LenDB' ;; iquique) printf 'Iquique' ;; neic) printf 'NEIC' ;;
+        obs) printf 'OBS' ;; obst2024) printf 'OBST2024' ;; pnw) printf 'PNW' ;;
+        meier2019jgr) printf 'Meier2019JGR' ;; stead) printf 'STEAD' ;; txed) printf 'TXED' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+[[ $# -ge 1 ]] || { usage >&2; exit 2; }
+SUITE=$1
+shift
+
+THREADS_CSV=36
+THREADS_SET=false
+K_VALUES_CSV=20,50
+SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
+DATASETS_CSV=
+DRY_RUN=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS_CSV=$2; THREADS_SET=true; shift 2 ;;
+        --k-values) [[ $# -ge 2 ]] || die "$1 requires a value"; K_VALUES_CSV=$2; shift 2 ;;
+        --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
+        --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
+        --dry-run) DRY_RUN=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) die "unknown option '$1'" ;;
+    esac
+done
+
+if [[ $SUITE == noise-workloads && $THREADS_SET == false ]]; then THREADS_CSV=9,18,36; fi
+
+case "$SUITE" in
+    standard|high-frequency|knn|sampling|generated-queries|hard-queries|noise-workloads) ;;
+    *) die "unknown suite '$SUITE'" ;;
+esac
+
+split_csv "$THREADS_CSV"; THREADS=("${SPLIT_RESULT[@]}")
+split_csv "$K_VALUES_CSV"; K_VALUES=("${SPLIT_RESULT[@]}")
+split_csv "$SAMPLE_FACTORS_CSV"; SAMPLE_FACTORS=("${SPLIT_RESULT[@]}")
+
+if [[ -n $DATASETS_CSV ]]; then
+    split_csv "$DATASETS_CSV"; DATASETS=("${SPLIT_RESULT[@]}")
+else
+    mapfile -t DATASETS < <({ active_datasets; seisbench_datasets; })
+fi
+
+run_one() {
+    local dataset=$1 profile=$2 threads=$3 result_value=$4
+    shift 4
+    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --cpu-type "$threads" --queue-number "$threads" "$@")
+    $DRY_RUN && command+=(--dry-run)
+    "${command[@]}"
+    if [[ $DRY_RUN == false && $profile != high-frequency ]]; then
+        "$SCRIPT_DIR/archive_results.sh" "$(dataset_label "$dataset")" "$result_value"
+    fi
+}
+
+run_regular_suite() {
+    local profile=$1 threads dataset value
+    for threads in "${THREADS[@]}"; do
+        case "$profile" in
+            standard|high-frequency)
+                for dataset in "${DATASETS[@]}"; do run_one "$dataset" "$profile" "$threads" "$threads"; done
+                ;;
+            knn)
+                for value in "${K_VALUES[@]}"; do
+                    for dataset in "${DATASETS[@]}"; do run_one "$dataset" knn "$threads" "$value" --k "$value"; done
+                done
+                ;;
+            sampling)
+                for value in "${SAMPLE_FACTORS[@]}"; do
+                    for dataset in "${DATASETS[@]}"; do run_one "$dataset" sampling "$threads" "$value" --sample-factor "$value"; done
+                done
+                ;;
+        esac
+    done
+}
+
+run_query_suite() {
+    local threads dataset query label entry
+    local -a entries=()
+    case "$SUITE" in
+        generated-queries)
+            entries=(
+                'spacev1b|generated/spacev1B_noise_025.bin|SPACEV1B_ne_025'
+                'spacev1b|generated/spacev1B_noise_05.bin|SPACEV1B_ne_05'
+                'spacev1b|generated/spacev1B_noise_1.bin|SPACEV1B_ne_1'
+                'text-to-image|generated/text-to-image_noise_005.bin|TEXTTOIMAGE_ne_005'
+                'text-to-image|generated/text-to-image_noise_01.bin|TEXTTOIMAGE_ne_01'
+                'text-to-image|generated/text-to-image_noise_025.bin|TEXTTOIMAGE_ne_025'
+                'turinganns|generated/turingANNs_noise_01.bin|turingANNs_ne_01'
+                'turinganns|generated/turingANNs_noise_025.bin|turingANNs_ne_025'
+                'turinganns|generated/turingANNs_noise_05.bin|turingANNs_ne_05'
+            )
+            ;;
+        hard-queries)
+            entries=(
+                'seismic|seismic_queries.bin|SEISMIC'
+                'seismic|other_queries/queries_hard1p_seismic_len256_znorm.bin|queries_hard1p_seismic_len256_znorm'
+                'seismic|other_queries/queries_hard2p_seismic_len256_znorm.bin|queries_hard2p_seismic_len256_znorm'
+                'seismic|other_queries/queries_hard5p_seismic_len256_znorm.bin|queries_hard5p_seismic_len256_znorm'
+                'seismic|other_queries/queries_hard10p_seismic_len256_znorm.bin|queries_hard10p_seismic_len256_znorm'
+                'seismic|other_queries/queries_size100_seismic_len256_znorm.bin|queries_size100_seismic_len256_znorm'
+                'deep1b|deep1b_queries.bin|DEEP1b'
+                'deep1b|other_queries/queries_hard1p_deep1b_len96_znorm.bin|queries_hard1p_deep1b_len96_znorm'
+                'deep1b|other_queries/queries_hard2p_deep1b_len96_znorm.bin|queries_hard2p_deep1b_len96_znorm'
+                'deep1b|other_queries/queries_hard5p_deep1b_len96_znorm.bin|queries_hard5p_deep1b_len96_znorm'
+                'deep1b|other_queries/queries_hard10p_deep1b_len96_znorm.bin|queries_hard10p_deep1b_len96_znorm'
+                'deep1b|other_queries/queries_orig100_deep1b_len96_znorm.bin|queries_orig100_deep1b_len96_znorm'
+                'sald|SALD_queries.bin|SALD'
+                'sald|other_queries/queries_hard1p_sald_len128_znorm.bin|queries_hard1p_sald_len128_znorm'
+                'sald|other_queries/queries_hard2p_sald_len128_znorm.bin|queries_hard2p_sald_len128_znorm'
+                'sald|other_queries/queries_hard5p_sald_len128_znorm.bin|queries_hard5p_sald_len128_znorm'
+                'sald|other_queries/queries_hard10p_sald_len128_znorm.bin|queries_hard10p_sald_len128_znorm'
+                'sald|other_queries/queries_size100_sald_len128_znorm.bin|queries_size100_sald_len128_znorm'
+            )
+            ;;
+        noise-workloads)
+            entries=(
+                'seismic|noiseSeismic001.bin|SEISMIC001' 'seismic|noiseSeismic002.bin|SEISMIC002'
+                'seismic|noiseSeismic005.bin|SEISMIC005' 'seismic|noiseSeismic01.bin|SEISMIC01'
+                'sald|noiseSALD001.bin|SALD001' 'sald|noiseSALD002.bin|SALD002'
+                'sald|noiseSALD005.bin|SALD005' 'sald|noiseSALD01.bin|SALD01'
+            )
+            ;;
+    esac
+
+    for threads in "${THREADS[@]}"; do
+        for entry in "${entries[@]}"; do
+            IFS='|' read -r dataset query label <<< "$entry"
+            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --cpu-type "$threads" --queue-number "$threads" --query-file "$query" --methods sax,sfa-depth,sfa-width --no-tight-bound)
+            $DRY_RUN && command+=(--dry-run)
+            "${command[@]}"
+            if [[ $DRY_RUN == false ]]; then "$SCRIPT_DIR/archive_results.sh" "$label" "$threads"; fi
+        done
+    done
+}
+
+case "$SUITE" in
+    standard|high-frequency|knn|sampling) run_regular_suite "$SUITE" ;;
+    *) run_query_suite ;;
+esac
