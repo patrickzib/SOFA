@@ -576,6 +576,12 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
+        if (time_series_size % n_segments != 0) {
+            fprintf(stderr,
+                    "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
+                    "is not divisible by n-segments (%d).\n",
+                    time_series_size % n_segments, time_series_size, n_segments);
+        }
         // check is n_coefficients is between n_segments/2 and timeseries_size/2
         if (n_coefficients != 0 && (n_coefficients < n_segments / 2 || n_coefficients > time_series_size / 2)) {
             if (n_coefficients < n_segments || n_coefficients > time_series_size) {
