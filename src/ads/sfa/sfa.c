@@ -83,7 +83,7 @@ void sfa_free_bins(isax_index *index) {
   The coefficients with the highest variance or the first ones are chosen and
   these values are saved to bins
 */
-void sfa_set_bins(
+enum response sfa_set_bins(
     isax_index *index, const char *ifilename,
     long int ts_num, int maxquerythread,
     int filetype_int, int apply_znorm) {
@@ -96,7 +96,7 @@ void sfa_set_bins(
                                    : n_segments;
     if (sample_size == 0 || ts_num <= 0 || sample_size > (unsigned long) ts_num) {
         fprintf(stderr, "error: SFA sample size must be between 1 and the dataset size.\n");
-        return;
+        return FAILURE;
     }
 
     int worker_threads = maxquerythread;
@@ -111,13 +111,24 @@ void sfa_set_bins(
     COUNT_BINNING_TIME_START
 
     ts_type **dft_mem_array = calloc(n_coefficients, sizeof(*dft_mem_array));
+    if (dft_mem_array == NULL) {
+        return FAILURE;
+    }
     for (int i = 0; i < n_coefficients; ++i) {
         dft_mem_array[i] = calloc(sample_size, sizeof(**dft_mem_array));
+        if (dft_mem_array[i] == NULL) {
+            free_dft_memory(index, i, dft_mem_array);
+            return FAILURE;
+        }
     }
 
     pthread_t threadid[worker_threads];
     bins_data_inmemory *input_data =
             malloc(worker_threads * sizeof(*input_data));
+    if (input_data == NULL) {
+        free_dft_memory(index, n_coefficients, dft_mem_array);
+        return FAILURE;
+    }
 
     /*
      * Phase 1:
@@ -159,6 +170,7 @@ void sfa_set_bins(
 
         data->filetype_int = filetype_int;
         data->apply_znorm = apply_znorm;
+        data->status = SUCCESS;
         data->fftw = fftw;
     }
 
@@ -182,6 +194,17 @@ void sfa_set_bins(
 
     for (int i = 0; i < worker_threads; ++i) {
         pthread_join(threadid[i], NULL);
+    }
+
+    for (int i = 0; i < worker_threads; ++i) {
+        if (input_data[i].status != SUCCESS) {
+            for (int j = 0; j < worker_threads; ++j) {
+                fftw_workspace_destroy(&input_data[j].fftw);
+            }
+            free(input_data);
+            free_dft_memory(index, n_coefficients, dft_mem_array);
+            return FAILURE;
+        }
     }
 
     /*
@@ -240,8 +263,9 @@ void sfa_set_bins(
 
     COUNT_BINNING_TIME_END
 
-            sfa_print_bins(index);
+    sfa_print_bins(index);
     fprintf(stderr, ">>> Finished binning\n");
+    return SUCCESS;
 }
 
 /*
@@ -347,6 +371,7 @@ void *set_bins_worker_dft(void *transferdata) {
     unsigned long ts_length = index->settings->timeseries_size;
     long records = bins_data->records;
     if (records <= 0) {
+        bins_data->status = FAILURE;
         return NULL;
     }
 
@@ -364,11 +389,13 @@ void *set_bins_worker_dft(void *transferdata) {
     if (index->settings->sample_type == 2) {
         unsigned long span = stop_number - start_number;
         if (stop_number <= start_number || (unsigned long) records > span) {
+            bins_data->status = FAILURE;
             return NULL;
         }
         skip_elements = (span / (unsigned long) records) - 1;
     }
     if (index->settings->sample_type == 3 && stop_number <= start_number) {
+        bins_data->status = FAILURE;
         return NULL;
     }
 
@@ -379,6 +406,7 @@ void *set_bins_worker_dft(void *transferdata) {
     FILE *ifile;
     ifile = fopen(bins_data->filename, "rb");
     if (ifile == NULL) {
+        bins_data->status = FAILURE;
         return NULL;
     }
     fseek(ifile, start_index, SEEK_SET);
@@ -399,6 +427,13 @@ void *set_bins_worker_dft(void *transferdata) {
         ts_orig2 = (ts_type *)
                 calloc(index->settings->timeseries_size, sizeof(ts_type));
     }
+    if ((filetype_int && ts_orig1 == NULL) || (!filetype_int && ts_orig2 == NULL)) {
+        bins_data->status = FAILURE;
+        free(ts_orig1);
+        free(ts_orig2);
+        fclose(ifile);
+        return NULL;
+    }
 
     for (int i = 0; i < records; ++i) {
         //choose random position for random sampling
@@ -410,12 +445,18 @@ void *set_bins_worker_dft(void *transferdata) {
         }
 
         if (filetype_int) {
-            fread(ts_orig1, sizeof(file_type), ts_length, ifile);
+            if (fread(ts_orig1, sizeof(file_type), ts_length, ifile) != ts_length) {
+                bins_data->status = FAILURE;
+                break;
+            }
             for (int j = 0; j < ts_length; ++j) {
                 ts[j] = (ts_type) ts_orig1[j];
             }
         } else {
-            fread(ts_orig2, sizeof(ts_type), ts_length, ifile);
+            if (fread(ts_orig2, sizeof(ts_type), ts_length, ifile) != ts_length) {
+                bins_data->status = FAILURE;
+                break;
+            }
             for (int j = 0; j < ts_length; ++j) {
                 ts[j] = ts_orig2[j];
             }
@@ -429,6 +470,7 @@ void *set_bins_worker_dft(void *transferdata) {
         int transform_size = use_best ? index->settings->n_coefficients
                                       : index->settings->n_segments;
         if (fft_from_ts(index, transform_size, 0, fftw) != SUCCESS) {
+            bins_data->status = FAILURE;
             free(ts_orig1);
             free(ts_orig2);
             fclose(ifile);

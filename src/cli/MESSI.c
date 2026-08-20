@@ -750,7 +750,11 @@ int main(int argc, char **argv) {
             sfa_bins_init(idx);
 
             //set bins
-            sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
+            if (sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+                             apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: SFA bin preparation failed; aborting index creation.\n");
+                return EXIT_FAILURE;
+            }
 
             //build index
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
@@ -780,7 +784,11 @@ int main(int argc, char **argv) {
             spartan_bins_init(idx);
 
             //set bins
-            spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
+            if (spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+                                 apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: SPARTAN bin preparation failed; aborting index creation.\n");
+                return EXIT_FAILURE;
+            }
 
             //build index
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
@@ -810,7 +818,11 @@ int main(int argc, char **argv) {
             pisa_bins_init(idx);
 
             //set bins
-            pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int, apply_znorm);
+            if (pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+                              apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: PISA bin preparation failed; aborting index creation.\n");
+                return EXIT_FAILURE;
+            }
 
             //build index
             index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);

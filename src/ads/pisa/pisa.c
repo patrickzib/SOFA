@@ -65,10 +65,10 @@ enum response pisa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_o
     return SUCCESS;
 }
 
-void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
-                   int filetype_int, int apply_znorm) {
+enum response pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num,
+                            int maxquerythread, int filetype_int, int apply_znorm) {
     if (index == NULL || index->settings == NULL) {
-        return;
+        return FAILURE;
     }
     int n_segments = index->settings->n_segments;
     int ts_length = index->settings->timeseries_size;
@@ -77,7 +77,7 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     if (fft_dim <= 0 || n_segments <= 0 || sample_size == 0 || ts_num <= 0 ||
         sample_size > (unsigned long) ts_num) {
         fprintf(stderr, "warning: invalid PISA settings.\n");
-        return;
+        return FAILURE;
     }
 
     int worker_threads = maxquerythread;
@@ -94,14 +94,14 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     ts_type **dft_mem_array = (ts_type **) calloc(fft_dim, sizeof(ts_type *));
     if (dft_mem_array == NULL) {
         fprintf(stderr, "error: failed to allocate PISA FFT samples.\n");
-        return;
+        return FAILURE;
     }
     for (int k = 0; k < fft_dim; ++k) {
         dft_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
         if (dft_mem_array[k] == NULL) {
             fprintf(stderr, "error: failed to allocate PISA FFT sample buffer.\n");
             free_dft_memory(index, k, dft_mem_array);
-            return;
+            return FAILURE;
         }
     }
 
@@ -109,7 +109,7 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     bins_data_inmemory *input_data = malloc(sizeof(bins_data_inmemory) * (size_t) worker_threads);
     if (input_data == NULL) {
         free_dft_memory(index, fft_dim, dft_mem_array);
-        return;
+        return FAILURE;
     }
 
     fftw_workspace fftw = {0};
@@ -138,6 +138,7 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
 
         input_data[i].filetype_int = filetype_int;
         input_data[i].apply_znorm = apply_znorm;
+        input_data[i].status = SUCCESS;
         input_data[i].fftw = fftw;
     }
 
@@ -162,12 +163,20 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
         fftw_workspace_destroy(&input_data[i].fftw);
     }
 
+    for (int i = 0; i < worker_threads; ++i) {
+        if (input_data[i].status != SUCCESS) {
+            free(input_data);
+            free_dft_memory(index, fft_dim, dft_mem_array);
+            return FAILURE;
+        }
+    }
+
     ts_type *samples = calloc((size_t) sample_size * (size_t) fft_dim, sizeof(ts_type));
     if (samples == NULL) {
         fprintf(stderr, "error: failed to allocate PISA PCA samples.\n");
         free(input_data);
         free_dft_memory(index, fft_dim, dft_mem_array);
-        return;
+        return FAILURE;
     }
     for (unsigned int i = 0; i < sample_size; ++i) {
         for (int k = 0; k < fft_dim; ++k) {
@@ -181,14 +190,14 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     if (pca_fit(index, samples, sample_size, fft_dim) != SUCCESS) {
         free(samples);
         free(input_data);
-        return;
+        return FAILURE;
     }
 
     ts_type **coeff_mem_array = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     if (coeff_mem_array == NULL) {
         free(samples);
         free(input_data);
-        return;
+        return FAILURE;
     }
     for (int k = 0; k < n_segments; ++k) {
         coeff_mem_array[k] = (ts_type *) calloc(sample_size, sizeof(ts_type));
@@ -200,7 +209,7 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
             free(coeff_mem_array);
             free(samples);
             free(input_data);
-            return;
+            return FAILURE;
         }
     }
 
@@ -212,7 +221,7 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
         free(coeff_mem_array);
         free(samples);
         free(input_data);
-        return;
+        return FAILURE;
     }
 
     for (unsigned int i = 0; i < sample_size; ++i) {
@@ -254,4 +263,5 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
 
     sfa_print_bins(index);
     fprintf(stderr, ">>> Finished PISA binning\n");
+    return SUCCESS;
 }
