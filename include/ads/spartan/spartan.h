@@ -7,8 +7,8 @@
 
 enum response spartan_bins_init(isax_index *index);
 void spartan_free_bins(isax_index *index);
-void spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread,
-                      int filetype_int, int apply_znorm);
+enum response spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
+                               int maxquerythread, int filetype_int, int apply_znorm);
 void spartan_print_bins(isax_index *index);
 
 enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out);

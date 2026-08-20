@@ -16,7 +16,8 @@
 
 enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
-void sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num, int maxquerythread, int filetype_int, int apply_znorm);
+enum response sfa_set_bins(isax_index *index, const char *ifilename, long int ts_num,
+                           int maxquerythread, int filetype_int, int apply_znorm);
 
 ts_type** calculate_variance_coeff(isax_index *index, ts_type ** dft_mem_array);
 void* set_bins_worker_dft(void *transferdata);
@@ -57,6 +58,7 @@ typedef struct bins_data_inmemory
 	fftw_workspace fftw;
     int filetype_int;
     int apply_znorm;
+    enum response status;
 }bins_data_inmemory;
 
 typedef struct variance_coeff_index
