@@ -83,6 +83,43 @@ static double monotonic_seconds(void) {
     return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
+/* Keep every query engine, including the trie engines, from discovering a
+ * short query file only after an expensive index build. */
+static int clamp_query_count_to_file(const char *path, int timeseries_size,
+                                     int *query_count) {
+    FILE *file;
+    long file_size;
+    unsigned long long available;
+    size_t record_size;
+
+    if (path == NULL || query_count == NULL || *query_count <= 0) return 1;
+    if (timeseries_size <= 0) return 0;
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        fprintf(stderr, "error: cannot open query file: %s\n", path);
+        return 0;
+    }
+    if (fseek(file, 0L, SEEK_END) != 0 || (file_size = ftell(file)) < 0) {
+        fprintf(stderr, "error: cannot determine size of query file: %s\n", path);
+        fclose(file);
+        return 0;
+    }
+    fclose(file);
+    record_size = (size_t) timeseries_size * sizeof(ts_type);
+    available = (unsigned long long) file_size / record_size;
+    if (available == 0) {
+        fprintf(stderr, "error: query file contains no complete records: %s\n", path);
+        return 0;
+    }
+    if ((unsigned long long) *query_count > available) {
+        fprintf(stderr,
+                "warning: query file %s contains only %llu records; reducing --queries-size from %d to %llu.\n",
+                path, available, *query_count, available);
+        *query_count = available > INT_MAX ? INT_MAX : (int) available;
+    }
+    return 1;
+}
+
 #ifndef __linux__
 typedef int cpu_set_t;
 static inline void CPU_ZERO(cpu_set_t *set) { (void) set; }
@@ -610,6 +647,9 @@ int main(int argc, char **argv) {
     if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE &&
         function_type != 4 && function_type != 5 && function_type != 6) {
         fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
+        return EXIT_FAILURE;
+    }
+    if (!clamp_query_count_to_file(queries, time_series_size, &queries_size)) {
         return EXIT_FAILURE;
     }
 

@@ -2170,7 +2170,13 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
     }
 
 
+    /* The in-memory constructor does not open a SAX file.  Initialise every
+     * optional ownership field because the shared teardown routine checks and
+     * frees them, including for the trie layout. */
+    index->sax_file = NULL;
     index->sax_cache = NULL;
+    index->sax_cache_size = 0;
+    index->locations = NULL;
 
     index->total_records = 0;
     index->loaded_records = 0;
@@ -2182,7 +2188,10 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
 
     index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
 
+    index->bins = NULL;
+    index->binsv = NULL;
     index->norm_factor = ((ts_type) 1) / (sqrtf(settings->timeseries_size));
+    index->coefficients = NULL;
     index->pca_mean = NULL;
     index->pca_components = NULL;
     index->pca_components_count = 0;
