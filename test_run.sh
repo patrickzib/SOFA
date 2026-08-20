@@ -8,7 +8,7 @@ QUERY_SIZE=10
 DATASET_SIZE=10000
 SAMPLE_SIZE=10000
 
-CPU_TYPE=${1:-81}
+THREADS=${1:-auto}
 QUEUE_NUMBER=${2:-8}
 
 ./bin/MESSI \
@@ -18,7 +18,7 @@ QUEUE_NUMBER=${2:-8}
   --queries-size $QUERY_SIZE \
   --timeseries-size $TS_SIZE \
   --sample-size $SAMPLE_SIZE \
-  --cpu-type $CPU_TYPE \
+  --threads $THREADS \
   --queue-number $QUEUE_NUMBER \
   --function-type 6 \
   --histogram-type 2 \
@@ -27,4 +27,3 @@ QUEUE_NUMBER=${2:-8}
   --is-norm \
   --dynamic-index 4
   # --node-split-criterion 4 \
-
