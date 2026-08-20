@@ -29,6 +29,10 @@ assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
 pass 'trie standard profile excludes SAX from its method matrix'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dynamic-root-split-variance --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'variance root split should apply to each learned iSAX method'
+pass 'iSAX variance root split is forwarded only to learned transforms'
+
 if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --queue-number 1 --index-type trie --methods sax --dry-run >/dev/null 2>&1; then
     fail 'trie benchmark accepted SAX explicitly'
 fi

@@ -23,6 +23,8 @@ Options:
   --sample-size N           Override the sample size directly
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
+  --dynamic-root-split-variance
+                            Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
   --trie-query-parallel     Parallelize each trie query rather than batching queries
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
@@ -105,6 +107,7 @@ SAMPLE_SIZE_OVERRIDE=
 METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
+DYNAMIC_ROOT_SPLIT_VARIANCE=false
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
@@ -132,6 +135,7 @@ while [[ $# -gt 0 ]]; do
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
+        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
@@ -160,6 +164,7 @@ is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive in
 is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive integer'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
+[[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
 [[ $PROFILE == high-frequency ]] && QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-1}
@@ -255,6 +260,11 @@ run_method() {
     fi
 
     args+=(--function-type "$function_type")
+    # SAX has no learned transform variance.  Keep its legacy uniform root
+    # split while applying the learned root-bit allocation to SFA/PISA/SPARTAN.
+    if [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true && $function_type != 3 ]]; then
+        args+=(--dynamic-root-split-variance)
+    fi
     if [[ -n $histogram_type ]]; then
         args+=(--sample-size "$SAMPLE_SIZE" --sample-type 3 --is-norm --histogram-type "$histogram_type")
         [[ $function_type == 4 || $function_type == 6 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
