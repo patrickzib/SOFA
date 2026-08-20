@@ -1,6 +1,5 @@
 //
-//  main.c
-//  isaxlib
+//  MESSI CLI entrypoint
 //
 //  Created by Botao Peng, March 2020.
 //  
