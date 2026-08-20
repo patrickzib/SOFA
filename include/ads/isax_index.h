@@ -84,6 +84,9 @@ typedef struct {
     int n_coefficients;
     int node_split_criterion;
     messi_index_type index_type;
+    /* Trie-only: public --n-segments remains the lower-bound dimensionality,
+     * while the trie may materialize a wider symbolic word for splitting. */
+    int trie_bound_dimensions;
     double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,

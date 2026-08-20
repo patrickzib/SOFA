@@ -779,6 +779,19 @@ int main(int argc, char **argv) {
     } else {
         char rm_command[256];
         int index_segments = n_segments;
+        int trie_bound_dimensions = 0;
+
+        /* Trie words have extra dimensions available solely for partitioning.
+         * The public n-segments value remains the lower-bound prefix. */
+        if (index_type == MESSI_INDEX_TRIE) {
+            trie_bound_dimensions = index_segments;
+            index_segments = time_series_size / 2 < 64 ? time_series_size / 2 : 64;
+            if (function_type == 4 || function_type == 6) {
+                if (n_coefficients == 0 || n_coefficients < index_segments) {
+                    n_coefficients = index_segments;
+                }
+            }
+        }
 
 
         if (!inmemory_flag) {
@@ -942,6 +955,7 @@ int main(int argc, char **argv) {
 
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
+        index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 

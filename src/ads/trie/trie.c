@@ -38,9 +38,25 @@ typedef struct symbolic_trie_node {
 struct symbolic_trie_index {
     symbolic_trie_node *root;
     int dimensions;
+    int bound_dimensions;
     unsigned long split_exhausted_leaves;
     unsigned long node_count;
 };
+
+/* The index settings describe the full split word (normally 64 dimensions).
+ * Lower bounds intentionally see only the configured bound prefix.  A local
+ * shallow copy is safe for concurrent queries and reuses the representation-
+ * specific SFA/SPARTAN/PISA/SAX bound implementations unchanged. */
+static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index *index,
+                              const ts_type *transform, sax_type *sax_min,
+                              sax_type *sax_max, int dimensions, float bsf) {
+    isax_index shadow_index = *index;
+    isax_index_settings shadow_settings = *index->settings;
+    shadow_settings.n_segments = dimensions;
+    shadow_index.settings = &shadow_settings;
+    return messi_minidist_range_raw(&shadow_index, (float *) transform, sax_min, sax_max,
+                                    shadow_settings.max_sax_cardinalities, bsf);
+}
 
 typedef struct {
     unsigned long checked_nodes;
@@ -254,6 +270,9 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         free(trie); free(rawfile); rawfile = NULL; return FAILURE;
     }
     trie->dimensions = index->settings->n_segments;
+    trie->bound_dimensions = index->settings->trie_bound_dimensions > 0
+                                 ? index->settings->trie_bound_dimensions
+                                 : trie->dimensions;
     /* Materialize all full words in parallel.  Subsequent splits move only
      * these word pointers and positions, never raw time series. */
     trie->root->words = calloc((size_t) ts_num, sizeof(*trie->root->words));
@@ -311,8 +330,8 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
                               const symbolic_trie_node *skip_leaf) {
     if (node == skip_leaf) return bsf;
     if (stats != NULL) ++stats->checked_nodes;
-    float lower = messi_minidist_range_raw(index, (float *) transform, node->min_word, node->max_word,
-                                           index->settings->max_sax_cardinalities, bsf);
+    float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
+                                   index->trie->dimensions, bsf);
     if (lower >= bsf) return bsf;
     if (!node->leaf) {
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
@@ -320,9 +339,9 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
         int n = 0;
         for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
             ordered[n].node = node->children[i];
-            ordered[n++].bound = messi_minidist_range_raw(index, (float *) transform,
+            ordered[n++].bound = trie_lower_bound(index->trie, index, transform,
                 node->children[i]->min_word, node->children[i]->max_word,
-                index->settings->max_sax_cardinalities, bsf);
+                index->trie->dimensions, bsf);
         }
         for (int i = 1; i < n; ++i) {
             trie_child_bound current = ordered[i]; int j = i - 1;
@@ -336,7 +355,8 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     for (int i = 0; i < node->size; ++i) {
         if (stats != NULL) ++stats->lower_bounds;
         else __sync_fetch_and_add(&LBDcalculationnumber, 1);
-        if (messi_minidist_raw(index, (float *) transform, node->words[i], index->settings->max_sax_cardinalities, bsf) < bsf) {
+        if (trie_lower_bound(index->trie, index, transform, node->words[i], node->words[i],
+                             index->trie->bound_dimensions, bsf) < bsf) {
             if (stats != NULL) ++stats->exact_distances;
             else __sync_fetch_and_add(&RDcalculationnumber, 1);
             float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
@@ -355,11 +375,10 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
         if (next == NULL) {
             float best_bound = FLT_MAX;
             for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
-                float bound = messi_minidist_range_raw(index, (float *) transform,
-                                                        node->children[i]->min_word,
-                                                        node->children[i]->max_word,
-                                                        index->settings->max_sax_cardinalities,
-                                                        best_bound);
+                float bound = trie_lower_bound(index->trie, index, transform,
+                                                node->children[i]->min_word,
+                                                node->children[i]->max_word,
+                                                index->trie->dimensions, best_bound);
                 if (bound < best_bound) {
                     best_bound = bound;
                     next = node->children[i];
@@ -379,8 +398,8 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     __sync_fetch_and_add(&checked_nodes, 1);
     float bsf;
     pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
-    if (messi_minidist_range_raw(index, (float *) transform, node->min_word, node->max_word,
-                                 index->settings->max_sax_cardinalities, bsf) >= bsf) return;
+    if (trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
+                         index->trie->dimensions, bsf) >= bsf) return;
     if (!node->leaf) {
         for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
 #ifdef _OPENMP
@@ -394,7 +413,8 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     for (int i = 0; i < node->size; ++i) {
         pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
         __sync_fetch_and_add(&LBDcalculationnumber, 1);
-        if (messi_minidist_raw(index, (float *) transform, node->words[i], index->settings->max_sax_cardinalities, bsf) < bsf) {
+        if (trie_lower_bound(index->trie, index, transform, node->words[i], node->words[i],
+                             index->trie->bound_dimensions, bsf) < bsf) {
             __sync_fetch_and_add(&RDcalculationnumber, 1);
             float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
             if (d < bsf) { pthread_mutex_lock(bsf_lock); if (d < *shared_bsf) *shared_bsf = d; pthread_mutex_unlock(bsf_lock); }

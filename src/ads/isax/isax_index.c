@@ -240,6 +240,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->n_coefficients = n_coefficients;
     settings->node_split_criterion = 1;
     settings->index_type = MESSI_INDEX_ISAX;
+    settings->trie_bound_dimensions = 0;
     settings->symbolic_variances = NULL;
     settings->dynamic_root_split_variance = 0;
     settings->root_bit_cardinalities = NULL;
@@ -2810,6 +2811,10 @@ void print_settings(isax_index_settings *settings) {
     }
     fprintf(stderr, "  index root    : %s\n", settings->root_directory);
     fprintf(stderr, "  layout        : %s\n", layout);
+    if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
+        fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
+                settings->trie_bound_dimensions, settings->n_segments);
+    }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     fprintf(stderr, "  leaf capacity : %d (minimum %d)\n",
             settings->max_leaf_size, settings->min_leaf_size);
