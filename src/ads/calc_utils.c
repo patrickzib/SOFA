@@ -296,7 +296,7 @@ ts_type messi_minidist_range_raw(isax_index *index,
             float diff = paa_or_fft[i] - breakpoint_upper;
             distance += diff * diff;
         }
-        // if (distance > bsf) {
+        // if (ratio_sqrt * distance > bsf) {
         //     return ratio_sqrt * distance;
         // }
     }
