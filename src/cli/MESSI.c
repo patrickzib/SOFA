@@ -1116,6 +1116,15 @@ int main(int argc, char **argv) {
         }
 
         //save querying stats
+        if (inmemory_flag && (function_type == 4 || function_type == 5 || function_type == 6) &&
+            queries_size > 0) {
+            fprintf(stderr,
+                    ">>> distance calculations: lower-bound=%lu (%.2f/query), exact=%lu (%.2f/query)\n",
+                    LBDcalculationnumber_all,
+                    (double) LBDcalculationnumber_all / queries_size,
+                    RDcalculationnumber_all,
+                    (double) RDcalculationnumber_all / queries_size);
+        }
         SAVE_STATS_TOTAL(logfile_query, queries_size)
         PRINT_STATS(0.00f)
 
