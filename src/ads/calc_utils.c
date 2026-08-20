@@ -4,10 +4,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
+#include <time.h>
 #include "math.h"
 
 #include "ads/calc_utils.h"
 #include "ads/sax/sax_breakpoints.h"
+
+double messi_monotonic_seconds(void) {
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    return (double) time.tv_sec + (double) time.tv_nsec / 1000000000.0;
+}
 
 
 ////// Utility functions ////

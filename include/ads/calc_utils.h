@@ -8,6 +8,9 @@
 #include "sfa/sfa.h"
 #include "spartan/spartan.h"
 
+/* Monotonic wall-clock time for concise construction/query phase reporting. */
+double messi_monotonic_seconds(void);
+
 ////// Utility functions ////
 // Function to calculate mean of an array of floats
 float calculateMean(ts_type *data, int n);

@@ -109,6 +109,7 @@ enum response sfa_set_bins(
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
+    double binning_start = messi_monotonic_seconds();
 
     ts_type **dft_mem_array = calloc(n_coefficients, sizeof(*dft_mem_array));
     if (dft_mem_array == NULL) {
@@ -206,6 +207,7 @@ enum response sfa_set_bins(
             return FAILURE;
         }
     }
+    double sampling_end = messi_monotonic_seconds();
 
     /*
      * Optional variance-based coefficient selection
@@ -231,6 +233,7 @@ enum response sfa_set_bins(
         free_dft_memory(index, n_segments, root_split_coefficients);
         return FAILURE;
     }
+    double selection_end = messi_monotonic_seconds();
 
     /*
      * Phase 2:
@@ -266,6 +269,7 @@ enum response sfa_set_bins(
     for (int i = 0; i < worker_threads; ++i) {
         pthread_join(threadid[i], NULL);
     }
+    double bins_end = messi_monotonic_seconds();
 
     free(input_data);
 
@@ -274,6 +278,11 @@ enum response sfa_set_bins(
     COUNT_BINNING_TIME_END
 
     sfa_print_bins(index);
+    fprintf(stderr,
+            ">>> SFA binning timing: sample+DFT=%.3fs variance+root-split=%.3fs "
+            "bin-sort=%.3fs total=%.3fs\n",
+            sampling_end - binning_start, selection_end - sampling_end,
+            bins_end - selection_end, bins_end - binning_start);
     fprintf(stderr, ">>> Finished binning\n");
     return SUCCESS;
 }

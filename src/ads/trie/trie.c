@@ -258,6 +258,7 @@ static void trie_build_subtree(struct symbolic_trie_index *trie, isax_index *ind
 enum response symbolic_trie_build(isax_index *index, const char *path, long ts_num,
                                   int filetype_int, int apply_znorm) {
     if (index == NULL || index->settings == NULL || ts_num <= 0 || filetype_int) return FAILURE;
+    double build_start = messi_monotonic_seconds();
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
     rawfile = malloc((size_t) ts_num * index->settings->timeseries_size * sizeof(*rawfile));
@@ -265,6 +266,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         (size_t) ts_num * index->settings->timeseries_size, file) !=
         (size_t) ts_num * index->settings->timeseries_size) { fclose(file); free(rawfile); rawfile = NULL; return FAILURE; }
     fclose(file);
+    double read_end = messi_monotonic_seconds();
     struct symbolic_trie_index *trie = calloc(1, sizeof(*trie));
     if (trie == NULL || (trie->root = trie_node_create(index->settings->n_segments, NULL, 0)) == NULL) {
         free(trie); free(rawfile); rawfile = NULL; return FAILURE;
@@ -313,15 +315,24 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     if (failed) { trie_node_destroy(trie->root); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
+    double transform_end = messi_monotonic_seconds();
     for (long i = 0; i < ts_num; ++i) trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
+    double root_mbb_end = messi_monotonic_seconds();
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
 #pragma omp single
 #endif
     trie_build_subtree(trie, index, trie->root, 0);
     trie->node_count = trie_node_count(trie->root);
+    double split_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
+    fprintf(stderr,
+            ">>> trie build timing: read=%.3fs transform=%.3fs root-mbb=%.3fs "
+            "split=%.3fs total=%.3fs\n",
+            read_end - build_start, transform_end - read_end,
+            root_mbb_end - transform_end, split_end - root_mbb_end,
+            split_end - build_start);
     return SUCCESS;
 }
 

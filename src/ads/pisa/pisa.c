@@ -85,6 +85,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
 
     fprintf(stderr, ">>> PISA binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
+    double binning_start = messi_monotonic_seconds();
 
     ts_type **dft_mem_array = (ts_type **) calloc(fft_dim, sizeof(ts_type *));
     if (dft_mem_array == NULL) {
@@ -165,6 +166,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
             return FAILURE;
         }
     }
+    double sampling_end = messi_monotonic_seconds();
 
     ts_type *samples = calloc((size_t) sample_size * (size_t) fft_dim, sizeof(ts_type));
     if (samples == NULL) {
@@ -187,6 +189,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
         free(input_data);
         return FAILURE;
     }
+    double pca_end = messi_monotonic_seconds();
 
     ts_type **coeff_mem_array = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     if (coeff_mem_array == NULL) {
@@ -230,6 +233,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
 
     free(projection);
     free(samples);
+    double projection_end = messi_monotonic_seconds();
 
     if (isax_configure_variance_root_split(index, coeff_mem_array,
                                            sample_size) != SUCCESS) {
@@ -257,6 +261,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
     for (int i = 0; i < worker_threads; i++) {
         pthread_join(threadid[i], NULL);
     }
+    double bins_end = messi_monotonic_seconds();
 
     for (int k = 0; k < n_segments; ++k) {
         free(coeff_mem_array[k]);
@@ -267,6 +272,12 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
     COUNT_BINNING_TIME_END
 
     sfa_print_bins(index);
+    fprintf(stderr,
+            ">>> PISA binning timing: sample+DFT=%.3fs PCA=%.3fs projection=%.3fs "
+            "bin-sort=%.3fs total=%.3fs\n",
+            sampling_end - binning_start, pca_end - sampling_end,
+            projection_end - pca_end, bins_end - projection_end,
+            bins_end - binning_start);
     fprintf(stderr, ">>> Finished PISA binning\n");
     return SUCCESS;
 }

@@ -775,6 +775,7 @@ void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isa
 void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
                             isax_index *index, int kn) {
     fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+    double build_start = messi_monotonic_seconds();
     if (kn <= 0) {
         fprintf(stderr, "warning: dynamic_index=%d is invalid; defaulting to 1\n", kn);
         kn = 1;
@@ -786,6 +787,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     ifile = fopen(ifilename, "rb");
     COUNT_INPUT_TIME_END
+    double load_end = messi_monotonic_seconds();
     if (ifile == NULL) {
         fprintf(stderr, "File %s not found!\n", ifilename);
         exit(-1);
@@ -887,6 +889,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     for (i = 0; i < maxquerythread; i++) {
         pthread_join(threadid[i], NULL);
     }
+    double build_end = messi_monotonic_seconds();
     __sync_fetch_and_add(&(index->total_records), ts_num);
     index->sax_cache_size = index->total_records;
     fclose(ifile);
@@ -900,6 +903,10 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     fprintf(stderr, ">>> dynamic_index=%d root_nodes=%lu\n",
             kn, index->root_nodes);
+    fprintf(stderr,
+            ">>> iSAX build timing: load%s=%.3fs transform+insert+flush=%.3fs total=%.3fs\n",
+            apply_znorm ? "+znorm" : "", load_end - build_start,
+            build_end - load_end, build_end - build_start);
     fprintf(stderr, ">>> Finished indexing\n");
     COUNT_OUTPUT_TIME_END
 }
