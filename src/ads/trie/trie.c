@@ -140,14 +140,16 @@ static unsigned long long trie_monotonic_microseconds(void) {
 }
 
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
-                                   const trie_query_stats *stats, float distance) {
+                                   const trie_query_stats *stats, float distance,
+                                   unsigned long long cumulative_microseconds) {
     printf("%3d: %8lu %13lu %20.3f %12.3f %12llu\n",
            query_index, trie->node_count, stats->checked_nodes,
-           stats->approximate_distance, distance, stats->total_microseconds);
+           stats->approximate_distance, distance, cumulative_microseconds);
 }
 
 static void trie_save_query_stats(const struct symbolic_trie_index *trie,
-                                  const trie_query_stats *stats, float distance) {
+                                  const trie_query_stats *stats, float distance,
+                                  unsigned long long cumulative_microseconds) {
     total_tree_nodes = (int) trie->node_count;
     checked_nodes = (int) stats->checked_nodes;
     BYTES_ACCESSED = 0;
@@ -161,7 +163,7 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     TOTAL_PQ_REMOVE_TIME = 0;
     TOTAL_LB_DIST_CALC_TIME = 0;
     TOTAL_REAL_DIST_CALC_TIME = 0;
-    total_time = (double) stats->total_microseconds;
+    total_time = (double) cumulative_microseconds;
     LBDcalculationnumber = stats->lower_bounds;
     RDcalculationnumber = stats->exact_distances;
     SAVE_STATS(distance)
@@ -949,6 +951,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     if (query == NULL || (filetype_int && query_int == NULL) || transform == NULL || word == NULL) {
         fclose(file); free(query); free(query_int); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
     }
+    unsigned long long cumulative_microseconds = 0;
     for (int i = 0; i < query_count; ++i) {
         int read_ok;
         if (filetype_int) {
@@ -957,14 +960,17 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         } else {
             read_ok = fread(query, sizeof(*query), (size_t) ts_length, file) == (size_t) ts_length;
         }
-        if (!read_ok || (apply_znorm && (znorm(query, ts_length), 0)) ||
-            trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
+        if (!read_ok || (apply_znorm && (znorm(query, ts_length), 0))) {
+            fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+            fftw_workspace_destroy(&fftw); return FAILURE;
+        }
+        unsigned long long query_start = trie_monotonic_microseconds();
+        if (trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
             fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
-        unsigned long long query_start = trie_monotonic_microseconds();
         const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform);
         float bsf = seed_leaf == NULL ? FLT_MAX :
                 trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats, NULL, &scratch);
@@ -982,9 +988,10 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch);
         }
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
-        trie_save_query_stats(index->trie, &stats, distance);
+        cumulative_microseconds += stats.total_microseconds;
+        trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
         if (i == 0) PRINT_STATS_HEADER();
-        trie_print_query_stats(i, index->trie, &stats, distance);
+        trie_print_query_stats(i, index->trie, &stats, distance, cumulative_microseconds);
     }
     fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
     fftw_workspace_destroy(&fftw); return SUCCESS;
@@ -1036,6 +1043,7 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
 #endif
         for (int i = 0; i < query_count; ++i) {
             ts_type *query = queries + (size_t) i * length;
+            unsigned long long query_start = trie_monotonic_microseconds();
             if (apply_znorm) znorm(query, length);
             if (transform == NULL || word == NULL || trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
 #ifdef _OPENMP
@@ -1044,7 +1052,6 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                 failed = 1;
             } else {
                 /* One worker owns one query: avoid nested per-query tasks. */
-                unsigned long long query_start = trie_monotonic_microseconds();
                 const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform);
                 float bsf = seed_leaf == NULL ? FLT_MAX :
                         trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats[i], NULL, &scratch);
@@ -1062,9 +1069,11 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
     }
     if (!failed) {
         if (query_count > 0) PRINT_STATS_HEADER();
+        unsigned long long cumulative_microseconds = 0;
         for (int i = 0; i < query_count; ++i) {
-            trie_save_query_stats(index->trie, &stats[i], distances[i]);
-            trie_print_query_stats(i, index->trie, &stats[i], distances[i]);
+            cumulative_microseconds += stats[i].total_microseconds;
+            trie_save_query_stats(index->trie, &stats[i], distances[i], cumulative_microseconds);
+            trie_print_query_stats(i, index->trie, &stats[i], distances[i], cumulative_microseconds);
         }
         fflush(stdout);
     }
