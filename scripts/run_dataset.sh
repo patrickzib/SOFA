@@ -21,6 +21,7 @@ Options:
   --sample-size N           Override the sample size directly
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
+  --trie-query-parallel     Parallelize each trie query rather than batching queries
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
   --data-root PATH          Main dataset root
@@ -95,6 +96,7 @@ SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
 METHODS_OVERRIDE=
 INDEX_TYPE=isax
+TRIE_QUERY_PARALLEL=false
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
@@ -119,6 +121,7 @@ while [[ $# -gt 0 ]]; do
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
@@ -146,6 +149,7 @@ is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive in
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive integer'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+[[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
 [[ $PROFILE == high-frequency ]] && QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-1}
@@ -207,6 +211,9 @@ COMMON_ARGS+=(
     --initial-lbl-size 20000
     --SIMD
 )
+if [[ $TRIE_QUERY_PARALLEL == true ]]; then
+    COMMON_ARGS+=(--trie-query-parallel)
+fi
 
 run_method() {
     local method=$1 function_type histogram_type=

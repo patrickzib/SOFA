@@ -29,6 +29,10 @@ assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
 pass 'trie standard profile emits the complete method matrix'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --queue-number 36 --index-type trie --trie-query-parallel --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-query-parallel'
+pass 'trie query-parallel option is forwarded'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
