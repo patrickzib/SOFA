@@ -48,6 +48,113 @@ void znorm(ts_type *data, int n) {
     }
 }
 
+root_mask_type isax_root_mask_from_sax(const isax_index *index,
+                                       const sax_type *sax,
+                                       int uniform_kn) {
+    const isax_index_settings *settings = index->settings;
+    root_mask_type mask = 0;
+
+    if (settings->root_bit_cardinalities != NULL) {
+        int bit = settings->n_segments - 1;
+        for (int i = 0; i < settings->n_segments && bit >= 0; ++i) {
+            int count = settings->root_bit_cardinalities[i];
+            if (count > settings->sax_bit_cardinality) {
+                count = settings->sax_bit_cardinality;
+            }
+            for (int j = 0; j < count && bit >= 0; ++j, --bit) {
+                if (sax[i] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
+                    mask |= ((root_mask_type) 1 << bit);
+                }
+            }
+        }
+        return mask;
+    }
+
+    if (uniform_kn < 1) {
+        uniform_kn = 1;
+    }
+    for (int i = 0; i < settings->n_segments / uniform_kn; ++i) {
+        for (int j = 0; j < uniform_kn; ++j) {
+            if (sax[i] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
+                mask |= ((root_mask_type) 1 << (settings->n_segments - i * uniform_kn - j - 1));
+            }
+        }
+    }
+    return mask;
+}
+
+enum response isax_configure_variance_root_split(isax_index *index,
+                                                 ts_type *const *coefficients,
+                                                 unsigned int sample_size) {
+    isax_index_settings *settings = index->settings;
+    if (!settings->dynamic_root_split_variance) {
+        return SUCCESS;
+    }
+    if (coefficients == NULL || sample_size == 0) {
+        return FAILURE;
+    }
+
+    const int dimensions = settings->n_segments;
+    const int budget = dimensions < (int) (sizeof(root_mask_type) * 8)
+                           ? dimensions
+                           : (int) (sizeof(root_mask_type) * 8);
+    sax_type *bits = calloc((size_t) dimensions, sizeof(*bits));
+    double *variance = calloc((size_t) dimensions, sizeof(*variance));
+    if (bits == NULL || variance == NULL) {
+        free(bits);
+        free(variance);
+        return FAILURE;
+    }
+
+    for (int i = 0; i < dimensions; ++i) {
+        double mean = 0.0;
+        for (unsigned int j = 0; j < sample_size; ++j) {
+            mean += coefficients[i][j];
+        }
+        mean /= sample_size;
+        for (unsigned int j = 0; j < sample_size; ++j) {
+            double delta = coefficients[i][j] - mean;
+            variance[i] += delta * delta;
+        }
+        variance[i] /= sample_size;
+        if (!isfinite(variance[i]) || variance[i] < 0.0) {
+            variance[i] = 0.0;
+        }
+    }
+
+    for (int assigned = 0; assigned < budget; ++assigned) {
+        int best = -1;
+        double best_gain = -1.0;
+        for (int i = 0; i < dimensions; ++i) {
+            if (bits[i] >= settings->sax_bit_cardinality) {
+                continue;
+            }
+            double gain = ldexp(variance[i], -(int) bits[i] - 1);
+            if (gain > best_gain) {
+                best_gain = gain;
+                best = i;
+            }
+        }
+        if (best < 0) {
+            free(bits);
+            free(variance);
+            return FAILURE;
+        }
+        ++bits[best];
+    }
+
+    free(settings->root_bit_cardinalities);
+    settings->root_bit_cardinalities = bits;
+    free(variance);
+
+    fprintf(stderr, ">>> variance root split (%d bits):", budget);
+    for (int i = 0; i < dimensions; ++i) {
+        fprintf(stderr, " %u", (unsigned int) bits[i]);
+    }
+    fprintf(stderr, "\n");
+    return SUCCESS;
+}
+
 void isax_node_mbb_sax_update(isax_node *node, const sax_type *sax, int size) {
     if (node == NULL || sax == NULL || size <= 0) {
         return;

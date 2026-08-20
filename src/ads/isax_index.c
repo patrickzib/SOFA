@@ -239,6 +239,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
     settings->node_split_criterion = 1;
+    settings->dynamic_root_split_variance = 0;
+    settings->root_bit_cardinalities = NULL;
 
     return settings;
 }
@@ -310,6 +312,7 @@ void isax_index_destroy(isax_index *index, isax_node *node)
     	free(index->settings->bit_masks);
     	free(index->settings->raw_filename);
     	free(index->settings->max_sax_cardinalities);
+		free(index->settings->root_bit_cardinalities);
     	free(index->settings);
 
 		// TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
@@ -390,6 +393,7 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
     	free(index->settings->bit_masks);
     	free(index->settings->raw_filename);
     	free(index->settings->max_sax_cardinalities);
+		free(index->settings->root_bit_cardinalities);
     	free(index->settings);
 
 		// TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
@@ -466,6 +470,7 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
         free(index->settings->bit_masks);
         free(index->settings->raw_filename);
         free(index->settings->max_sax_cardinalities);
+        free(index->settings->root_bit_cardinalities);
         free(index->settings);
 
         // TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!

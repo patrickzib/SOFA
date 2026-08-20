@@ -19,6 +19,12 @@ float calculateStdDev(ts_type *data, int n, ts_type mean);
 void znorm(ts_type *data, int n);
 
 void isax_node_mbb_sax_update(isax_node *node, const sax_type *sax, int size);
+enum response isax_configure_variance_root_split(isax_index *index,
+                                                 ts_type *const *coefficients,
+                                                 unsigned int sample_size);
+root_mask_type isax_root_mask_from_sax(const isax_index *index,
+                                       const sax_type *sax,
+                                       int uniform_kn);
 ts_type messi_minidist_range_raw(isax_index *index,
                                  float *paa_or_fft,
                                  sax_type *sax_min,

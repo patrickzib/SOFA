@@ -1734,7 +1734,7 @@ root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
         kn = 1;
     }
 
-    CREATE_MASK_SFAD(first_bit_mask, index, sax, kn);
+    first_bit_mask = isax_root_mask_from_sax(index, sax, kn);
 
 
     //insert_to_fbl_m(index->fbl, sax, pos,first_bit_mask, index,lock_firstnode,lock_fbl);

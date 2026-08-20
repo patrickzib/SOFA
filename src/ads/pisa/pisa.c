@@ -6,6 +6,7 @@
 #include "config.h"
 #include "globals.h"
 #include "ads/pisa/pisa.h"
+#include "ads/calc_utils.h"
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
@@ -229,6 +230,16 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
 
     free(projection);
     free(samples);
+
+    if (isax_configure_variance_root_split(index, coeff_mem_array,
+                                           sample_size) != SUCCESS) {
+        for (int k = 0; k < n_segments; ++k) {
+            free(coeff_mem_array[k]);
+        }
+        free(coeff_mem_array);
+        free(input_data);
+        return FAILURE;
+    }
 
     for (int i = 0; i < worker_threads; i++) {
         input_data[i].index = index;

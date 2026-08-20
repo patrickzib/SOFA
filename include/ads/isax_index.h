@@ -79,6 +79,11 @@ typedef struct {
     int n_coefficients;
     int node_split_criterion;
 
+    /* Root-only partitioning for in-memory symbolic indexes.  When enabled,
+     * this contains the number of leading SAX bits used per dimension. */
+    char dynamic_root_split_variance;
+    sax_type *root_bit_cardinalities;
+
     // int filetype_int;
 
 } isax_index_settings;

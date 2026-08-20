@@ -217,6 +217,19 @@ enum response sfa_set_bins(
                 calculate_variance_coeff(index, dft_mem_array);
 
         free_dft_memory(index, n_coefficients, dft_mem_array);
+        if (dft_mem_array_coeff == NULL) {
+            free(input_data);
+            return FAILURE;
+        }
+    }
+
+    ts_type **root_split_coefficients =
+            use_variance ? dft_mem_array_coeff : dft_mem_array;
+    if (isax_configure_variance_root_split(index, root_split_coefficients,
+                                           sample_size) != SUCCESS) {
+        free(input_data);
+        free_dft_memory(index, n_segments, root_split_coefficients);
+        return FAILURE;
     }
 
     /*
@@ -256,10 +269,7 @@ enum response sfa_set_bins(
 
     free(input_data);
 
-    free_dft_memory(
-        index,
-        n_segments,
-        use_variance ? dft_mem_array_coeff : dft_mem_array);
+    free_dft_memory(index, n_segments, root_split_coefficients);
 
     COUNT_BINNING_TIME_END
 

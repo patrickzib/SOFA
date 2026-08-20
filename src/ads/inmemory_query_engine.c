@@ -151,7 +151,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
     }
 
     root_mask_type root_mask = 0;
-    CREATE_MASK_SFAD(root_mask, index, sax, kn);
+    root_mask = isax_root_mask_from_sax(index, sax, kn);
 
     COUNT_INIT_TIME_END
 

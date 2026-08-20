@@ -301,6 +301,16 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
     free(projection);
     free(samples);
 
+    if (isax_configure_variance_root_split(index, coeff_mem_array,
+                                           sample_size) != SUCCESS) {
+        for (int k = 0; k < dim; ++k) {
+            free(coeff_mem_array[k]);
+        }
+        free(coeff_mem_array);
+        pca_free(index);
+        return FAILURE;
+    }
+
     pthread_t threadid[worker_threads];
     spartan_bins_data *input_data = malloc(sizeof(spartan_bins_data) * (size_t) worker_threads);
     if (input_data == NULL) {

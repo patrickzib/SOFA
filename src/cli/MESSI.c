@@ -62,6 +62,20 @@ isax_index *idx;
 
 void INThandler(int);
 
+static FILE *open_logfile_or_tmp(const char *path) {
+    FILE *file = fopen(path, "w");
+    if (file != NULL) {
+        return file;
+    }
+
+    fprintf(stderr, "warning: cannot open log file %s; using a temporary log.\n", path);
+    file = tmpfile();
+    if (file == NULL) {
+        perror("tmpfile");
+    }
+    return file;
+}
+
 #ifndef __linux__
 typedef int cpu_set_t;
 static inline void CPU_ZERO(cpu_set_t *set) { (void) set; }
@@ -219,6 +233,8 @@ int main(int argc, char **argv) {
     static int filetype_int = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
+    static int dynamic_root_split_variance = 0;
+    static int dynamic_root_split_uniform_set = 0;
     static int node_split_criterion = 1;
 
     int calculate_thread = 8;
@@ -282,6 +298,8 @@ int main(int argc, char **argv) {
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
                 {"dynamic-index",       required_argument, 0,   'H'},
+                {"dynamic-root-split-uniform", required_argument, 0, 'K'},
+                {"dynamic-root-split-variance", no_argument,     0, 'L'},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -456,6 +474,14 @@ int main(int argc, char **argv) {
                 break;
             case 'H':
                 dynamic_index = atoi(optarg);
+                dynamic_root_split_uniform_set = 1;
+                break;
+            case 'K':
+                dynamic_index = atoi(optarg);
+                dynamic_root_split_uniform_set = 1;
+                break;
+            case 'L':
+                dynamic_root_split_variance = 1;
                 break;
 
             case 'h':
@@ -480,6 +506,8 @@ int main(int argc, char **argv) {
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
                 \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
                 \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
+                \t--dynamic-root-split-uniform XX\tUniform root split (alias for --dynamic-index)\n\
+                \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -558,6 +586,21 @@ int main(int argc, char **argv) {
     /* --cpu-type is retained for existing invocations.  Its historical
      * encoding is cores * 10 + NUMA nodes, so 81 means 8 workers on one
      * node--not 81 workers.  --threads/--numa take precedence when supplied. */
+    if (dynamic_root_split_variance && dynamic_root_split_uniform_set) {
+        fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+        return EXIT_FAILURE;
+    }
+    if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
+        fprintf(stderr, "error: uniform root split must be between 1 and sax-cardinality (%d).\n",
+                sax_cardinality);
+        return EXIT_FAILURE;
+    }
+    if (dynamic_root_split_variance &&
+        function_type != 4 && function_type != 5 && function_type != 6) {
+        fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
+        return EXIT_FAILURE;
+    }
+
     if (cpu_control_type > 0 && !threads_option_set) {
         if (cpu_control_type >= 10 &&
             (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
@@ -696,6 +739,7 @@ int main(int argc, char **argv) {
     } else {
         char rm_command[256];
 
+
         if (!inmemory_flag) {
             sprintf(rm_command, "rm -rf %s", index_path);
             system(rm_command);
@@ -791,16 +835,20 @@ int main(int argc, char **argv) {
 
         //create logfiles
         FILE *logfile;
-        logfile = fopen(log_filename, "w");
+        logfile = open_logfile_or_tmp(log_filename);
 
         FILE *logfile_tree;
-        logfile_tree = fopen(log_filename_tree, "w");
+        logfile_tree = open_logfile_or_tmp(log_filename_tree);
 
         FILE *logfile_index;
-        logfile_index = fopen(log_filename_index, "w");
+        logfile_index = open_logfile_or_tmp(log_filename_index);
 
         FILE *logfile_query;
-        logfile_query = fopen(log_filename_query, "w");
+        logfile_query = open_logfile_or_tmp(log_filename_query);
+        if (logfile == NULL || logfile_tree == NULL || logfile_index == NULL || logfile_query == NULL) {
+            fprintf(stderr, "error: could not create required log streams.\n");
+            return EXIT_FAILURE;
+        }
 
         SET_LOGFILE(logfile_query);
 
@@ -844,6 +892,7 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->dynamic_root_split_variance = dynamic_root_split_variance;
 
 
         if (!inmemory_flag) {
