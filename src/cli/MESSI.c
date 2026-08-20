@@ -180,6 +180,11 @@ static int select_numa_cpus(cpu_set_t *selected, const cpu_set_t *allowed, int r
 #endif
 
 int main(int argc, char **argv) {
+    typedef enum {
+        MESSI_ROOT_SPLIT_DEFAULT,
+        MESSI_ROOT_SPLIT_UNIFORM,
+        MESSI_ROOT_SPLIT_VARIANCE
+    } messi_root_split_mode;
     signal(SIGINT, INThandler);
 
 #ifndef BENCHMARK
@@ -226,11 +231,8 @@ int main(int argc, char **argv) {
     static int serial_scan = 0;
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
-    static int cpu_control_type = 0;
     static int requested_threads = 0;
     static int requested_numa_nodes = -1;
-    static int threads_option_set = 0;
-    static int numa_option_set = 0;
     static char inmemory_flag = 0;
     static char SIMD_flag = 0;
     static char is_norm = 0;
@@ -240,11 +242,9 @@ int main(int argc, char **argv) {
     static int filetype_int = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
-    static int dynamic_root_split_variance = 0;
-    static int dynamic_root_split_uniform_set = 0;
+    static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
     static int node_split_criterion = 1;
     static messi_index_type index_type = MESSI_INDEX_ISAX;
-    static int symbolic_trie_dimensions = 0;
     /* Trie queries are independent and batch scheduling preserves each
      * query's private best-so-far, unlike speculative subtree parallelism. */
     static int trie_query_batch = 1;
@@ -286,7 +286,6 @@ int main(int argc, char **argv) {
                 {"timeseries-size",     required_argument, 0,    't'},
                 {"min-checked-leaves",  required_argument, 0,    'u'},
                 {"in-memory",           no_argument,       0,    'v'},
-                {"cpu-type",            required_argument, 0,    'w'},
                 {"threads",             required_argument, 0,    'I'},
                 {"numa",                required_argument, 0,    'J'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
@@ -309,12 +308,10 @@ int main(int argc, char **argv) {
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
-                {"dynamic-index",       required_argument, 0,   'H'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
                 {"index-type", required_argument, 0, 1000},
-                {"symbolic-trie-dimensions", required_argument, 0, 1001},
-                {"trie-query-parallel", no_argument, 0, 1002},
+                {"trie-query-parallel", no_argument, 0, 1001},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -331,9 +328,6 @@ int main(int argc, char **argv) {
                 else { fprintf(stderr, "error: index-type must be isax or trie.\n"); return EXIT_FAILURE; }
                 break;
             case 1001:
-                symbolic_trie_dimensions = atoi(optarg);
-                break;
-            case 1002:
                 trie_query_batch = 0;
                 break;
             case 'j':
@@ -410,11 +404,7 @@ int main(int argc, char **argv) {
             case 'u':
                 min_checked_leaves = atoi(optarg);
                 break;
-            case 'w':
-                cpu_control_type = atoi(optarg);
-                break;
             case 'I':
-                threads_option_set = 1;
                 if (strcmp(optarg, "auto") == 0) {
                     requested_threads = 0;
                 } else {
@@ -426,7 +416,6 @@ int main(int argc, char **argv) {
                 }
                 break;
             case 'J':
-                numa_option_set = 1;
                 if (strcmp(optarg, "auto") == 0) {
                     requested_numa_nodes = -1;
                 } else if (strcmp(optarg, "none") == 0) {
@@ -460,6 +449,7 @@ int main(int argc, char **argv) {
                 break;
             case '2':
                 labelsize = atoi(optarg);
+                break;
             case '3':
                 knnlabel = 1;
                 break;
@@ -498,16 +488,20 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
                 break;
-            case 'H':
-                dynamic_index = atoi(optarg);
-                dynamic_root_split_uniform_set = 1;
-                break;
             case 'K':
+                if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE) {
+                    fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+                    return EXIT_FAILURE;
+                }
                 dynamic_index = atoi(optarg);
-                dynamic_root_split_uniform_set = 1;
+                root_split_mode = MESSI_ROOT_SPLIT_UNIFORM;
                 break;
             case 'L':
-                dynamic_root_split_variance = 1;
+                if (root_split_mode == MESSI_ROOT_SPLIT_UNIFORM) {
+                    fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+                    return EXIT_FAILURE;
+                }
+                root_split_mode = MESSI_ROOT_SPLIT_VARIANCE;
                 break;
 
             case 'h':
@@ -524,18 +518,16 @@ int main(int argc, char **argv) {
                 \t--index-path XX \t\tThe path of the output folder\n\
                 \t--timeseries-size XX\t\tThe size of each time series\n\
                 \t--sax-cardinality XX\t\tThe maximum sax cardinality in number of bits (power of two).\n\
-                \t--n-segments XX\t\tThe number of segments to divide the time series.\n\
+                \t--n-segments XX\t\tSymbolic dimensions (trie: 16--64; default: 16).\n\
                 \t--leaf-size XX\t\t\tThe maximum size of each leaf\n\
                 \t--min-leaf-size XX\t\tThe minimum size of each leaf\n\
                 \t--initial-lbl-size XX\t\tThe initial lbl buffer size for each buffer.\n\
                 \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
                 \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
-                \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
-                \t--dynamic-root-split-uniform XX\tUniform root split (alias for --dynamic-index)\n\
+                \t--dynamic-root-split-uniform XX\tUniform root split in bits per symbolic dimension\n\
                 \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
-                \t--symbolic-trie-dimensions N\tTrie symbolic dimensions, 16--64 (default: 64)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default: batch queries)\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
@@ -573,23 +565,7 @@ int main(int argc, char **argv) {
                 \t\t\tequi-width splitting: 2\n\
                 \t--threads N|auto\t\tWorker threads (default: all CPUs available to this process)\n\
                 \t--numa auto|none|N\tCPU affinity: all available NUMA nodes, disabled, or first N nodes\n\
-                \t--cpu-type\t\t\tDeprecated compatibility option; use --threads and --numa\n\
                 \t--help\n\n\
-                \tLegacy CPU type code:\t\tValues ending in 1 or 2 mean cores * 10 + NUMA nodes\n\
-                \t\t\t\t\t22 : 2 core in 2 CPUs\n\
-                \t\t\t\t\t41 : 4 core in 1 CPU\n\
-                \t\t\t\t\t42 : 4 core in 2 CPUs\n\
-                \t\t\t\t\t61 : 6 core in 1 CPU\n\
-                \t\t\t\t\t62 : 6 core in 2 CPUs\n\
-                \t\t\t\t\t81 : 8 core in 1 CPU\n\
-                \t\t\t\t\t82 : 8 core in 2 CPUs\n\
-                \t\t\t\t\t101: 10 core in 1 CPU\n\
-                \t\t\t\t\t102: 10 core in 2 CPUs\n\
-                \t\t\t\t\t121: 12 core in 1 CPU\n\
-                \t\t\t\t\t122: 12 core in 2 CPUs\n\
-                \t\t\t\t\t181: 18 core in 1 CPU\n\
-                \t\t\t\t\t182: 18 core in 2 CPUs\n\
-                \t\t\t\t\t242: 24 core in 2 CPUs\n\
                 ");
                 return 0;
                 break;
@@ -612,25 +588,17 @@ int main(int argc, char **argv) {
     }
     INIT_STATS();
 
-    /* --cpu-type is retained for existing invocations.  Its historical
-     * encoding is cores * 10 + NUMA nodes, so 81 means 8 workers on one
-     * node--not 81 workers.  --threads/--numa take precedence when supplied. */
-    if (dynamic_root_split_variance && dynamic_root_split_uniform_set) {
-        fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
-        return EXIT_FAILURE;
-    }
     if (index_type == MESSI_INDEX_TRIE) {
         if (function_type < 4 || function_type > 6) {
             fprintf(stderr, "error: --index-type trie supports function types 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
             return EXIT_FAILURE;
         }
-        if (dynamic_root_split_uniform_set || dynamic_root_split_variance) {
+        if (root_split_mode != MESSI_ROOT_SPLIT_DEFAULT) {
             fprintf(stderr, "error: dynamic root split options are iSAX-only.\n");
             return EXIT_FAILURE;
         }
-        if (symbolic_trie_dimensions == 0) symbolic_trie_dimensions = 64;
-        if (symbolic_trie_dimensions < 16 || symbolic_trie_dimensions > 64) {
-            fprintf(stderr, "error: symbolic-trie-dimensions must be between 16 and 64.\n");
+        if (n_segments < 16 || n_segments > 64) {
+            fprintf(stderr, "error: trie n-segments must be between 16 and 64.\n");
             return EXIT_FAILURE;
         }
     }
@@ -639,22 +607,10 @@ int main(int argc, char **argv) {
                 sax_cardinality);
         return EXIT_FAILURE;
     }
-    if (dynamic_root_split_variance &&
+    if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE &&
         function_type != 4 && function_type != 5 && function_type != 6) {
         fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
         return EXIT_FAILURE;
-    }
-
-    if (cpu_control_type > 0 && !threads_option_set) {
-        if (cpu_control_type >= 10 &&
-            (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
-            requested_threads = cpu_control_type / 10;
-            if (!numa_option_set) {
-                requested_numa_nodes = cpu_control_type % 10;
-            }
-        } else {
-            requested_threads = cpu_control_type;
-        }
     }
 
 #ifdef __linux__
@@ -782,7 +738,7 @@ int main(int argc, char **argv) {
         isax_index_destroy(idx, NULL);
     } else {
         char rm_command[256];
-        int index_segments = index_type == MESSI_INDEX_TRIE ? symbolic_trie_dimensions : n_segments;
+        int index_segments = n_segments;
 
 
         if (!inmemory_flag) {
@@ -946,8 +902,8 @@ int main(int argc, char **argv) {
 
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
-        index_settings->symbolic_trie_dimensions = symbolic_trie_dimensions;
-        index_settings->dynamic_root_split_variance = dynamic_root_split_variance;
+        index_settings->dynamic_root_split_variance =
+                root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 
 
         if (!inmemory_flag) {

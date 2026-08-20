@@ -84,7 +84,6 @@ typedef struct {
     int n_coefficients;
     int node_split_criterion;
     messi_index_type index_type;
-    int symbolic_trie_dimensions;
     double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,

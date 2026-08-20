@@ -240,7 +240,6 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->n_coefficients = n_coefficients;
     settings->node_split_criterion = 1;
     settings->index_type = MESSI_INDEX_ISAX;
-    settings->symbolic_trie_dimensions = 0;
     settings->symbolic_variances = NULL;
     settings->dynamic_root_split_variance = 0;
     settings->root_bit_cardinalities = NULL;
@@ -2786,6 +2785,13 @@ void print_settings(isax_index_settings *settings) {
     }
 	fprintf(stderr,"## root_directory:\t%s\n",settings->root_directory);
     // fprintf(stderr,"## Dataset is int8:\t%s\n", settings->filetype_int);
+
+    fprintf(stderr,"## \n## [INDEX SETTINGS]\n");
+    if (settings->index_type == MESSI_INDEX_TRIE) {
+        fprintf(stderr,"## index_layout:\tSymbolic trie (8-way fanout)\n");
+    } else {
+        fprintf(stderr,"## index_layout:\tiSAX\n");
+    }
 
     fprintf(stderr,"## \n## [DATA TYPE SETTINGS]\n");
 	fprintf(stderr,"## timeseries_size:    \t%d\n",settings->timeseries_size);

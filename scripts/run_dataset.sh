@@ -79,7 +79,7 @@ SEISBENCH_QUERY_ROOT=${MESSI_SEISBENCH_QUERY_ROOT:-}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --threads|--cpu-type) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS=$2; shift 2 ;;
+        --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS=$2; shift 2 ;;
         --numa) [[ $# -ge 2 ]] || die "$1 requires a value"; NUMA_MODE=$2; shift 2 ;;
         --queue-number) [[ $# -ge 2 ]] || die "$1 requires a value"; QUEUE_NUMBER=$2; shift 2 ;;
         --dataset-file) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_OVERRIDE=$2; shift 2 ;;

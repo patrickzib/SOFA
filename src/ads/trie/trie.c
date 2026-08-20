@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <pthread.h>
+#include <time.h>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -37,7 +38,16 @@ struct symbolic_trie_index {
     symbolic_trie_node *root;
     int dimensions;
     unsigned long split_exhausted_leaves;
+    unsigned long node_count;
 };
+
+typedef struct {
+    unsigned long checked_nodes;
+    unsigned long lower_bounds;
+    unsigned long exact_distances;
+    unsigned long long total_microseconds;
+    float approximate_distance;
+} trie_query_stats;
 
 /* FFTW plan creation is not thread-safe on all supported builds. */
 static pthread_mutex_t trie_fftw_plan_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -63,6 +73,47 @@ static void trie_node_destroy(symbolic_trie_node *node) {
     for (int i = 0; i < 8; ++i) trie_node_destroy(node->children[i]);
     for (int i = 0; i < node->size; ++i) free(node->words[i]);
     free(node->words); free(node->positions); free(node->min_word); free(node->max_word); free(node);
+}
+
+static unsigned long trie_node_count(const symbolic_trie_node *node) {
+    if (node == NULL) return 0;
+    unsigned long count = 1;
+    for (int i = 0; i < 8; ++i) count += trie_node_count(node->children[i]);
+    return count;
+}
+
+static unsigned long long trie_monotonic_microseconds(void) {
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    return (unsigned long long) time.tv_sec * 1000000ULL + (unsigned long long) time.tv_nsec / 1000ULL;
+}
+
+static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
+                                   const trie_query_stats *stats, float distance) {
+    printf("%3d: %10d %10d %6lu %13lu %14d %12d %12d %20.3f %12.3f %12llu\n",
+           query_index, 0, 0, trie->node_count, stats->checked_nodes, 0, 0, 0,
+           stats->approximate_distance, distance, stats->total_microseconds);
+}
+
+static void trie_save_query_stats(const struct symbolic_trie_index *trie,
+                                  const trie_query_stats *stats, float distance) {
+    total_tree_nodes = (int) trie->node_count;
+    checked_nodes = (int) stats->checked_nodes;
+    BYTES_ACCESSED = 0;
+    loaded_nodes = 0;
+    loaded_records = 0;
+    APPROXIMATE = stats->approximate_distance;
+    total_querying_time = (double) stats->total_microseconds;
+    total_init_time = 0.0;
+    total_tree_pass_time = 0.0;
+    TOTAL_PQ_INSERT_TIME = 0;
+    TOTAL_PQ_REMOVE_TIME = 0;
+    TOTAL_LB_DIST_CALC_TIME = 0;
+    TOTAL_REAL_DIST_CALC_TIME = 0;
+    total_time = (double) stats->total_microseconds;
+    LBDcalculationnumber = stats->lower_bounds;
+    RDcalculationnumber = stats->exact_distances;
+    SAVE_STATS(distance)
 }
 
 static void trie_node_update_mbb(symbolic_trie_node *node, const sax_type *word, int dimensions) {
@@ -245,13 +296,17 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 #pragma omp single
 #endif
     trie_build_subtree(trie, index, trie->root, 0);
+    trie->node_count = trie_node_count(trie->root);
     index->trie = trie;
     index->total_records = ts_num;
     return SUCCESS;
 }
 
 static float trie_search_node(isax_index *index, const symbolic_trie_node *node, const ts_type *query,
-                              const ts_type *transform, float bsf) {
+                              const ts_type *transform, float bsf, trie_query_stats *stats,
+                              const symbolic_trie_node *skip_leaf) {
+    if (node == skip_leaf) return bsf;
+    if (stats != NULL) ++stats->checked_nodes;
     float lower = messi_minidist_range_raw(index, (float *) transform, node->min_word, node->max_word,
                                            index->settings->max_sax_cardinalities, bsf);
     if (lower >= bsf) return bsf;
@@ -271,13 +326,15 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
             ordered[j + 1] = current;
         }
         for (int i = 0; i < n; ++i) if (ordered[i].bound < bsf)
-            bsf = trie_search_node(index, ordered[i].node, query, transform, bsf);
+            bsf = trie_search_node(index, ordered[i].node, query, transform, bsf, stats, skip_leaf);
         return bsf;
     }
     for (int i = 0; i < node->size; ++i) {
-        __sync_fetch_and_add(&LBDcalculationnumber, 1);
+        if (stats != NULL) ++stats->lower_bounds;
+        else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         if (messi_minidist_raw(index, (float *) transform, node->words[i], index->settings->max_sax_cardinalities, bsf) < bsf) {
-            __sync_fetch_and_add(&RDcalculationnumber, 1);
+            if (stats != NULL) ++stats->exact_distances;
+            else __sync_fetch_and_add(&RDcalculationnumber, 1);
             float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
             if (d < bsf) bsf = d;
         }
@@ -285,9 +342,37 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     return bsf;
 }
 
+static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_type *query_word,
+                                                 const ts_type *transform) {
+    const symbolic_trie_node *node = index->trie->root;
+    while (!node->leaf) {
+        int bucket = query_word[node->split_dimension] >> 5;
+        const symbolic_trie_node *next = node->children[bucket];
+        if (next == NULL) {
+            float best_bound = FLT_MAX;
+            for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
+                float bound = messi_minidist_range_raw(index, (float *) transform,
+                                                        node->children[i]->min_word,
+                                                        node->children[i]->max_word,
+                                                        index->settings->max_sax_cardinalities,
+                                                        best_bound);
+                if (bound < best_bound) {
+                    best_bound = bound;
+                    next = node->children[i];
+                }
+            }
+        }
+        if (next == NULL) return NULL;
+        node = next;
+    }
+    return node;
+}
+
 static void trie_search_task(isax_index *index, const symbolic_trie_node *node, const ts_type *query,
                              const ts_type *transform, float *shared_bsf, pthread_mutex_t *bsf_lock,
-                             int depth) {
+                             int depth, const symbolic_trie_node *skip_leaf) {
+    if (node == skip_leaf) return;
+    __sync_fetch_and_add(&checked_nodes, 1);
     float bsf;
     pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
     if (messi_minidist_range_raw(index, (float *) transform, node->min_word, node->max_word,
@@ -297,7 +382,8 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
 #ifdef _OPENMP
 #pragma omp task firstprivate(i) if (depth < 6)
 #endif
-            trie_search_task(index, node->children[i], query, transform, shared_bsf, bsf_lock, depth + 1);
+            trie_search_task(index, node->children[i], query, transform, shared_bsf, bsf_lock, depth + 1,
+                             skip_leaf);
         }
         return;
     }
@@ -310,6 +396,20 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
             if (d < bsf) { pthread_mutex_lock(bsf_lock); if (d < *shared_bsf) *shared_bsf = d; pthread_mutex_unlock(bsf_lock); }
         }
     }
+}
+
+static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
+                                        const ts_type *transform, float bsf,
+                                        const symbolic_trie_node *skip_leaf) {
+    pthread_mutex_t bsf_lock = PTHREAD_MUTEX_INITIALIZER;
+    float shared_bsf = bsf;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(maxquerythread)
+#pragma omp single
+#endif
+    trie_search_task(index, index->trie->root, query, transform, &shared_bsf, &bsf_lock, 0, skip_leaf);
+    pthread_mutex_destroy(&bsf_lock);
+    return shared_bsf;
 }
 
 enum response symbolic_trie_query_file(isax_index *index, const char *path, int query_count,
@@ -329,15 +429,32 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
             fclose(file); free(query); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
         }
-        /* The query word is not needed here: lower bounds use its transform. */
-        query_result r = symbolic_trie_exact_search(index, query, transform, minimum_distance);
-        /* Match the legacy query-file accounting: these counters describe
-         * per-record symbolic lower bounds and exact raw distances. */
-        LBDcalculationnumber_all += LBDcalculationnumber;
-        RDcalculationnumber_all += RDcalculationnumber;
-        LBDcalculationnumber = 0;
-        RDcalculationnumber = 0;
-        fprintf(stderr, "Query %d: distance %g\n", i, r.distance);
+        /* The transform drives lower bounds; the word selects the seed path. */
+        trie_query_stats stats = {0};
+        unsigned long long query_start = trie_monotonic_microseconds();
+        const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform);
+        float bsf = seed_leaf == NULL ? FLT_MAX :
+                trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats, NULL);
+        stats.approximate_distance = bsf;
+        float distance;
+        if (maxquerythread > 1) {
+            LBDcalculationnumber = RDcalculationnumber = 0;
+            checked_nodes = 0;
+            if (minimum_distance < bsf) bsf = minimum_distance;
+            distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf);
+            stats.checked_nodes += checked_nodes;
+            stats.lower_bounds += LBDcalculationnumber;
+            stats.exact_distances += RDcalculationnumber;
+            LBDcalculationnumber = RDcalculationnumber = 0;
+            checked_nodes = 0;
+        } else {
+            distance = trie_search_node(index, index->trie->root, query, transform,
+                                        minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf);
+        }
+        stats.total_microseconds = trie_monotonic_microseconds() - query_start;
+        trie_save_query_stats(index->trie, &stats, distance);
+        if (i == 0) PRINT_STATS_HEADER();
+        trie_print_query_stats(i, index->trie, &stats, distance);
     }
     fclose(file); free(query); free(transform); free(word); fftw_workspace_destroy(&fftw); return SUCCESS;
 }
@@ -349,9 +466,10 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
     int length = index->settings->timeseries_size, dimensions = index->settings->n_segments;
     ts_type *queries = malloc((size_t) query_count * length * sizeof(*queries));
     float *distances = malloc((size_t) query_count * sizeof(*distances));
-    if (file == NULL || queries == NULL || distances == NULL ||
+    trie_query_stats *stats = calloc((size_t) query_count, sizeof(*stats));
+    if (file == NULL || queries == NULL || distances == NULL || stats == NULL ||
         fread(queries, sizeof(*queries), (size_t) query_count * length, file) != (size_t) query_count * length) {
-        if (file) fclose(file); free(queries); free(distances); return FAILURE;
+        if (file) fclose(file); free(queries); free(distances); free(stats); return FAILURE;
     }
     fclose(file);
     int failed = 0;
@@ -378,7 +496,15 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                 failed = 1;
             } else {
                 /* One worker owns one query: avoid nested per-query tasks. */
-                distances[i] = trie_search_node(index, index->trie->root, query, transform, minimum_distance);
+                unsigned long long query_start = trie_monotonic_microseconds();
+                const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform);
+                float bsf = seed_leaf == NULL ? FLT_MAX :
+                        trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats[i], NULL);
+                stats[i].approximate_distance = bsf;
+                if (minimum_distance < bsf) bsf = minimum_distance;
+                distances[i] = trie_search_node(index, index->trie->root, query, transform, bsf,
+                                                &stats[i], seed_leaf);
+                stats[i].total_microseconds = trie_monotonic_microseconds() - query_start;
             }
         }
         free(transform); free(word);
@@ -386,29 +512,24 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
         fftw_workspace_destroy(&fftw);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
-    LBDcalculationnumber_all += LBDcalculationnumber;
-    RDcalculationnumber_all += RDcalculationnumber;
-    LBDcalculationnumber = RDcalculationnumber = 0;
-    if (!failed) for (int i = 0; i < query_count; ++i) fprintf(stderr, "Query %d: distance %g\n", i, distances[i]);
-    free(queries); free(distances); return failed ? FAILURE : SUCCESS;
+    if (!failed) {
+        if (query_count > 0) PRINT_STATS_HEADER();
+        for (int i = 0; i < query_count; ++i) {
+            trie_save_query_stats(index->trie, &stats[i], distances[i]);
+            trie_print_query_stats(i, index->trie, &stats[i], distances[i]);
+        }
+        fflush(stdout);
+    }
+    free(queries); free(distances); free(stats); return failed ? FAILURE : SUCCESS;
 }
 
 query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
                                         const ts_type *transform, float bsf) {
     query_result result = { FLT_MAX, NULL, 0 };
     if (index == NULL || index->trie == NULL) return result;
-    if (maxquerythread <= 1) result.distance = trie_search_node(index, index->trie->root, query, transform, bsf);
-    else {
-        pthread_mutex_t bsf_lock = PTHREAD_MUTEX_INITIALIZER;
-        float shared_bsf = bsf;
-#ifdef _OPENMP
-#pragma omp parallel num_threads(maxquerythread)
-#pragma omp single
-#endif
-        trie_search_task(index, index->trie->root, query, transform, &shared_bsf, &bsf_lock, 0);
-        pthread_mutex_destroy(&bsf_lock);
-        result.distance = shared_bsf;
-    }
+    if (maxquerythread <= 1) result.distance = trie_search_node(index, index->trie->root, query,
+                                                                  transform, bsf, NULL, NULL);
+    else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL);
     return result;
 }
 
