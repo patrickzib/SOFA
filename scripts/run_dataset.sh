@@ -20,6 +20,7 @@ Options:
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size directly
   --methods LIST            Comma-separated method names
+  --index-type TYPE         Index layout: isax (default) or trie
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
   --data-root PATH          Main dataset root
@@ -67,6 +68,7 @@ K_SIZE=
 SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
 METHODS_OVERRIDE=
+INDEX_TYPE=isax
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
@@ -90,6 +92,7 @@ while [[ $# -gt 0 ]]; do
         --sample-factor) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTOR=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
+        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
@@ -116,6 +119,7 @@ is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive in
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive integer'
+[[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
 [[ $PROFILE == high-frequency ]] && QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-1}
@@ -161,6 +165,7 @@ $APPLY_Z_NORM && COMMON_ARGS+=(--apply-z-norm)
 $FILETYPE_INT && COMMON_ARGS+=(--filetype-int)
 COMMON_ARGS+=(
     --in-memory
+    --index-type "$INDEX_TYPE"
     --timeseries-size "$TS_SIZE"
     --dataset-size "$DATASET_SIZE"
     --flush-limit 300000
