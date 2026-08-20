@@ -16,6 +16,8 @@ Options:
   --query-file PATH         Override the query filename/path
   --dataset-size N          Override the number of dataset records
   --query-size N            Number of queries (default: 100; high-frequency: 1)
+  --leaf-size N             Maximum records per leaf (default: 20000)
+  --min-leaf-size N         Minimum records per leaf (default: leaf size)
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size directly
@@ -91,6 +93,8 @@ DATASET_OVERRIDE=
 QUERY_OVERRIDE=
 DATASET_SIZE_OVERRIDE=
 QUERY_SIZE_OVERRIDE=
+LEAF_SIZE=20000
+MIN_LEAF_SIZE=
 K_SIZE=
 SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
@@ -116,6 +120,8 @@ while [[ $# -gt 0 ]]; do
         --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_OVERRIDE=$2; shift 2 ;;
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE_OVERRIDE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE_OVERRIDE=$2; shift 2 ;;
+        --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
+        --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --k) [[ $# -ge 2 ]] || die "$1 requires a value"; K_SIZE=$2; shift 2 ;;
         --sample-factor) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTOR=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
@@ -154,6 +160,10 @@ is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive in
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
 [[ $PROFILE == high-frequency ]] && QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-1}
 is_positive_integer "$QUERY_SIZE" || die '--query-size must be a positive integer'
+is_positive_integer "$LEAF_SIZE" || die '--leaf-size must be a positive integer'
+MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
+is_positive_integer "$MIN_LEAF_SIZE" || die '--min-leaf-size must be a positive integer'
+(( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 
 if [[ $PROFILE == knn ]]; then
     [[ -n $K_SIZE ]] || die '--k is required by the knn profile'
@@ -206,8 +216,8 @@ COMMON_ARGS+=(
     --queue-number "$QUEUE_NUMBER"
     --threads "$THREADS"
     --numa "$NUMA_MODE"
-    --leaf-size 20000
-    --min-leaf-size 20000
+    --leaf-size "$LEAF_SIZE"
+    --min-leaf-size "$MIN_LEAF_SIZE"
     --initial-lbl-size 20000
     --SIMD
 )
