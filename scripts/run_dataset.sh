@@ -36,6 +36,10 @@ Options:
 
 Methods: sax, sfa-depth, sfa-width, pisa-depth, pisa-width,
          spartan-depth, spartan-width
+
+Note: trie benchmarks exclude SAX.  The current trie/SAX record bound uses
+only a prefix of its 64-segment representation and is not comparable to the
+whole-series 16-segment iSAX/SAX bound.
 USAGE
 }
 
@@ -193,6 +197,12 @@ case "$PROFILE" in
     knn) DEFAULT_METHODS=sax,sfa-depth,sfa-width ;;
     sampling) DEFAULT_METHODS=sfa-depth,sfa-width ;;
 esac
+if [[ $INDEX_TYPE == trie ]]; then
+    case "$PROFILE" in
+        standard) DEFAULT_METHODS=sfa-depth,sfa-width,pisa-depth,pisa-width,spartan-depth,spartan-width ;;
+        knn) DEFAULT_METHODS=sfa-depth,sfa-width ;;
+    esac
+fi
 METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
 
 IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
@@ -239,6 +249,10 @@ run_method() {
         spartan-width) function_type=5; histogram_type=2 ;;
         *) die "unknown method '$method'" ;;
     esac
+
+    if [[ $INDEX_TYPE == trie && $method == sax ]]; then
+        die 'trie/SAX is excluded from benchmark runs because its current record bound is prefix-only'
+    fi
 
     args+=(--function-type "$function_type")
     if [[ -n $histogram_type ]]; then
