@@ -500,14 +500,33 @@ static void trie_build_subtree(struct symbolic_trie_index *trie, isax_index *ind
 
 enum response symbolic_trie_build(isax_index *index, const char *path, long ts_num,
                                   int filetype_int, int apply_znorm) {
-    if (index == NULL || index->settings == NULL || ts_num <= 0 || filetype_int) return FAILURE;
+    if (index == NULL || index->settings == NULL || ts_num <= 0) return FAILURE;
     double build_start = messi_monotonic_seconds();
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
-    rawfile = malloc((size_t) ts_num * index->settings->timeseries_size * sizeof(*rawfile));
-    if (rawfile == NULL || fread(rawfile, sizeof(*rawfile),
-        (size_t) ts_num * index->settings->timeseries_size, file) !=
-        (size_t) ts_num * index->settings->timeseries_size) { fclose(file); free(rawfile); rawfile = NULL; return FAILURE; }
+    const size_t values = (size_t) ts_num * index->settings->timeseries_size;
+    rawfile = malloc(values * sizeof(*rawfile));
+    if (rawfile == NULL) { fclose(file); return FAILURE; }
+    if (filetype_int) {
+        /* Convert in bounded chunks so integer input does not require a
+         * second dataset-sized allocation beside rawfile. */
+        const size_t chunk_values = 1U << 20;
+        file_type *input = malloc(chunk_values * sizeof(*input));
+        if (input == NULL) { fclose(file); free(rawfile); rawfile = NULL; return FAILURE; }
+        for (size_t offset = 0; offset < values; offset += chunk_values) {
+            size_t count = values - offset < chunk_values ? values - offset : chunk_values;
+            if (fread(input, sizeof(*input), count, file) != count) {
+                free(input); fclose(file); free(rawfile); rawfile = NULL; return FAILURE;
+            }
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+#endif
+            for (size_t i = 0; i < count; ++i) rawfile[offset + i] = (ts_type) input[i];
+        }
+        free(input);
+    } else if (fread(rawfile, sizeof(*rawfile), values, file) != values) {
+        fclose(file); free(rawfile); rawfile = NULL; return FAILURE;
+    }
     fclose(file);
     double read_end = messi_monotonic_seconds();
     struct symbolic_trie_index *trie = calloc(1, sizeof(*trie));
@@ -747,21 +766,31 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
 
 enum response symbolic_trie_query_file(isax_index *index, const char *path, int query_count,
                                        int filetype_int, int apply_znorm, float minimum_distance) {
-    if (index == NULL || path == NULL || query_count < 0 || filetype_int) return FAILURE;
+    if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
     int ts_length = index->settings->timeseries_size;
     ts_type *query = malloc(sizeof(*query) * (size_t) ts_length);
+    file_type *query_int = filetype_int ? malloc(sizeof(*query_int) * (size_t) ts_length) : NULL;
     ts_type *transform = malloc(sizeof(*transform) * (size_t) index->settings->n_segments);
     sax_type *word = malloc((size_t) index->settings->n_segments);
     trie_query_scratch scratch = {0};
     fftw_workspace fftw = {0}; fftw_workspace_init(&fftw, ts_length);
-    if (query == NULL || transform == NULL || word == NULL) { fclose(file); free(query); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE; }
+    if (query == NULL || (filetype_int && query_int == NULL) || transform == NULL || word == NULL) {
+        fclose(file); free(query); free(query_int); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
+    }
     for (int i = 0; i < query_count; ++i) {
-        if (fread(query, sizeof(*query), (size_t) ts_length, file) != (size_t) ts_length ||
-            (apply_znorm && (znorm(query, ts_length), 0)) ||
+        int read_ok;
+        if (filetype_int) {
+            read_ok = fread(query_int, sizeof(*query_int), (size_t) ts_length, file) == (size_t) ts_length;
+            for (int j = 0; read_ok && j < ts_length; ++j) query[j] = (ts_type) query_int[j];
+        } else {
+            read_ok = fread(query, sizeof(*query), (size_t) ts_length, file) == (size_t) ts_length;
+        }
+        if (!read_ok || (apply_znorm && (znorm(query, ts_length), 0)) ||
             trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
-            fclose(file); free(query); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
+            fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+            fftw_workspace_destroy(&fftw); return FAILURE;
         }
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
@@ -790,23 +819,39 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         if (i == 0) PRINT_STATS_HEADER();
         trie_print_query_stats(i, index->trie, &stats, distance);
     }
-    fclose(file); free(query); free(transform); free(word); free(scratch.candidates);
+    fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
     fftw_workspace_destroy(&fftw); return SUCCESS;
 }
 
 enum response symbolic_trie_query_file_batch(isax_index *index, const char *path, int query_count,
                                              int filetype_int, int apply_znorm, float minimum_distance) {
-    if (index == NULL || path == NULL || query_count < 0 || filetype_int) return FAILURE;
+    if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     int length = index->settings->timeseries_size, dimensions = index->settings->n_segments;
     ts_type *queries = malloc((size_t) query_count * length * sizeof(*queries));
     float *distances = malloc((size_t) query_count * sizeof(*distances));
     trie_query_stats *stats = calloc((size_t) query_count, sizeof(*stats));
-    if (file == NULL || queries == NULL || distances == NULL || stats == NULL ||
-        fread(queries, sizeof(*queries), (size_t) query_count * length, file) != (size_t) query_count * length) {
+    const size_t query_values = (size_t) query_count * length;
+    if (file == NULL || queries == NULL || distances == NULL || stats == NULL) {
         if (file) fclose(file); free(queries); free(distances); free(stats); return FAILURE;
     }
+    int read_ok = 1;
+    if (filetype_int) {
+        file_type *input = malloc(query_values * sizeof(*input));
+        if (input == NULL || fread(input, sizeof(*input), query_values, file) != query_values) {
+            read_ok = 0;
+        } else {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+#endif
+            for (size_t i = 0; i < query_values; ++i) queries[i] = (ts_type) input[i];
+        }
+        free(input);
+    } else if (fread(queries, sizeof(*queries), query_values, file) != query_values) {
+        read_ok = 0;
+    }
     fclose(file);
+    if (!read_ok) { free(queries); free(distances); free(stats); return FAILURE; }
     int failed = 0;
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
