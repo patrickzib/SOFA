@@ -22,12 +22,12 @@ assert_contains "$OUTPUT" '--tight-bound'
 pass 'standard profile emits the complete method matrix with quoted paths'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type trie --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 6 ]] || fail 'trie standard profile should omit SAX'
-assert_not_contains "$OUTPUT" '--function-type 3'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 7 ]] || fail 'trie standard profile should emit all supported methods'
+assert_contains "$OUTPUT" '--function-type 3'
 assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
-pass 'trie standard profile omits unsupported SAX'
+pass 'trie standard profile emits the complete method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'

@@ -20,7 +20,7 @@ Options:
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size directly
   --methods LIST            Comma-separated method names
-  --index-type TYPE         Index layout: isax (default) or trie (SFA/SPARTAN/PISA only)
+  --index-type TYPE         Index layout: isax (default) or trie
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
   --data-root PATH          Main dataset root
@@ -179,15 +179,7 @@ case "$PROFILE" in
     knn) DEFAULT_METHODS=sax,sfa-depth,sfa-width ;;
     sampling) DEFAULT_METHODS=sfa-depth,sfa-width ;;
 esac
-if [[ -n $METHODS_OVERRIDE ]]; then
-    METHODS=$METHODS_OVERRIDE
-elif [[ $INDEX_TYPE == trie ]]; then
-    # The trie index stores transformed SFA, SPARTAN, and PISA representations;
-    # SAX has no trie query/build implementation.
-    METHODS=${DEFAULT_METHODS//sax,/}
-else
-    METHODS=$DEFAULT_METHODS
-fi
+METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
 
 IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 [[ ${#METHOD_LIST[@]} -gt 0 ]] || die 'at least one method is required'
@@ -255,8 +247,5 @@ run_method() {
 
 for method in "${METHOD_LIST[@]}"; do
     [[ -n $method ]] || die 'method list contains an empty value'
-    if [[ $INDEX_TYPE == trie && $method == sax ]]; then
-        die "method 'sax' is not supported by --index-type trie"
-    fi
     run_method "$method"
 done

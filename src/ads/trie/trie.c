@@ -2,6 +2,7 @@
 #include "globals.h"
 #include "ads/trie/trie.h"
 #include "ads/calc_utils.h"
+#include "ads/sax/sax.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
@@ -189,7 +190,10 @@ static int trie_split_leaf(struct symbolic_trie_index *trie, isax_index *index, 
 static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax_type *word,
                                        ts_type *transform, fftw_workspace *fftw) {
     int d = index->settings->n_segments;
-    if (index->settings->function_type == 4) {
+    if (index->settings->function_type == 3) {
+        if (paa_from_ts((ts_type *) ts, transform, index->settings) != SUCCESS) return FAILURE;
+        sax_from_paa(transform, word, index->settings);
+    } else if (index->settings->function_type == 4) {
         memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
         if (fft_from_ts(index, d, index->settings->n_coefficients != 0, fftw) != SUCCESS) return FAILURE;
         memcpy(transform, fftw->transform, sizeof(ts_type) * d);

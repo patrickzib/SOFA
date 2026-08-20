@@ -626,8 +626,8 @@ int main(int argc, char **argv) {
     INIT_STATS();
 
     if (index_type == MESSI_INDEX_TRIE) {
-        if (function_type < 4 || function_type > 6) {
-            fprintf(stderr, "error: --index-type trie supports function types 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
+        if (function_type < 3 || function_type > 6) {
+            fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
             return EXIT_FAILURE;
         }
         if (root_split_mode != MESSI_ROOT_SPLIT_DEFAULT) {
@@ -973,8 +973,23 @@ int main(int argc, char **argv) {
         else {*/
         /// ########################################
 
+        if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+            if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: trie construction failed.\n");
+                return EXIT_FAILURE;
+            }
+            INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_SAVE_FILE(logfile_query);
+            double query_wall_start = monotonic_seconds();
+            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+                fprintf(stderr, "error: trie query processing failed.\n");
+                return EXIT_FAILURE;
+            }
+            fprintf(stderr, ">>> query wall time: %.6f s\n", monotonic_seconds() - query_wall_start);
+
         //MESSI-SFA: in-memory flag set with function-type 4
-        if (inmemory_flag && function_type == 4) {
+        } else if (inmemory_flag && function_type == 4) {
             //initialize bins
             sfa_bins_init(idx);
 
@@ -1191,7 +1206,8 @@ int main(int argc, char **argv) {
         }
 
         //save querying stats
-        if (inmemory_flag && (function_type == 4 || function_type == 5 || function_type == 6) &&
+        if (inmemory_flag && (function_type == 4 || function_type == 5 || function_type == 6 ||
+                              (index_type == MESSI_INDEX_TRIE && function_type == 3)) &&
             queries_size > 0) {
             fprintf(stderr,
                     ">>> distance calculations: lower-bound=%lu (%.2f/query), exact=%lu (%.2f/query)\n",
@@ -1201,7 +1217,16 @@ int main(int argc, char **argv) {
                     (double) RDcalculationnumber_all / queries_size);
         }
         SAVE_STATS_TOTAL(logfile_query, queries_size)
-        PRINT_STATS(0.00f)
+        if (index_type == MESSI_INDEX_TRIE && queries_size > 0) {
+            fprintf(stderr,
+                    ">>> query summary: queries=%d, avg checked nodes=%.2f, "
+                    "avg lower bounds=%.2f, avg exact distances=%.2f\n",
+                    queries_size, (double) checked_nodes_all / queries_size,
+                    (double) LBDcalculationnumber_all / queries_size,
+                    (double) RDcalculationnumber_all / queries_size);
+        } else {
+            PRINT_STATS(0.00f)
+        }
 
         /* Do not store index for now
         //save index and get size for analysis
