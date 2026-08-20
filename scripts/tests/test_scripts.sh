@@ -13,7 +13,7 @@ assert_not_contains() { [[ $1 != *"$2"* ]] || fail "expected output not to conta
 while IFS= read -r script; do bash -n "$script"; done < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
 pass 'all maintained scripts pass bash syntax validation'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --cpu-type 36 --queue-number 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 7 ]] || fail 'standard profile should emit seven commands'
 assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'
 assert_contains "$OUTPUT" '--function-type 6'
@@ -21,7 +21,7 @@ assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--tight-bound'
 pass 'standard profile emits the complete method matrix with quoted paths'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --cpu-type 36 --queue-number 36 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
 assert_contains "$OUTPUT" '--queries-size 1'
@@ -30,25 +30,25 @@ assert_contains "$OUTPUT" '--histogram-type 2'
 assert_not_contains "$OUTPUT" '--histogram-type 1'
 pass 'high-frequency profile preserves BigANN flags and coefficients'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sift1b knn --cpu-type 36 --queue-number 36 --k 20 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sift1b knn --threads 36 --queue-number 36 --k 20 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--topk --k-size 20'
 assert_contains "$OUTPUT" '--histogram-type 1'
 assert_contains "$OUTPUT" '--tight-bound'
 pass 'KNN profile emits top-K and SIFT-specific options'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seisbench sampling --cpu-type 36 --queue-number 36 --dataset-file sample.bin --query-file queries.bin --dataset-size 1000 --sample-factor 0.25 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seisbench sampling --threads 36 --queue-number 36 --dataset-file sample.bin --query-file queries.bin --dataset-size 1000 --sample-factor 0.25 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-size 250'
 pass 'SeisBench sampling factor is wired into sample-size calculation'
 
 OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true "$SCRIPT_DIR/run_astro.sh" 9 18 2>/dev/null)
-assert_contains "$OUTPUT" '--cpu-type 9'
+assert_contains "$OUTPUT" '--threads 9'
 assert_contains "$OUTPUT" '--queue-number 18'
 pass 'compatibility wrappers work outside the scripts directory'
 
-if "$SCRIPT_DIR/run_dataset.sh" astro knn --cpu-type 1 --queue-number 1 --dry-run >/dev/null 2>&1; then
+if "$SCRIPT_DIR/run_dataset.sh" astro knn --threads 1 --queue-number 1 --dry-run >/dev/null 2>&1; then
     fail 'knn profile accepted a missing K value'
 fi
-if "$SCRIPT_DIR/run_dataset.sh" astro sampling --cpu-type 1 --queue-number 1 --sample-factor 2 --dry-run >/dev/null 2>&1; then
+if "$SCRIPT_DIR/run_dataset.sh" astro sampling --threads 1 --queue-number 1 --sample-factor 2 --dry-run >/dev/null 2>&1; then
     fail 'sampling profile accepted an out-of-range factor'
 fi
 pass 'invalid profile parameters are rejected'
@@ -83,7 +83,7 @@ fi
 if [[ ${RUN_MESSI_INTEGRATION:-0} == 1 ]]; then
     mkdir -p "$TEMP_ROOT/home"
     HOME="$TEMP_ROOT/home" "$SCRIPT_DIR/run_dataset.sh" astro high-frequency \
-        --cpu-type 1 --queue-number 1 \
+        --threads 1 --queue-number 1 \
         --dataset-file "$REPO_ROOT/data_head/astro_head.bin" --dataset-size 1000 \
         --query-file "$REPO_ROOT/data_queries/astro_queries.bin" --query-size 1 \
         --sample-size 100 --binary "$REPO_ROOT/bin/MESSI"

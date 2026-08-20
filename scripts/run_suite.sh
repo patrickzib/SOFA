@@ -83,7 +83,7 @@ fi
 run_one() {
     local dataset=$1 profile=$2 threads=$3 result_value=$4
     shift 4
-    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --cpu-type "$threads" --queue-number "$threads" "$@")
+    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" "$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"
     if [[ $DRY_RUN == false && $profile != high-frequency ]]; then
@@ -164,7 +164,7 @@ run_query_suite() {
     for threads in "${THREADS[@]}"; do
         for entry in "${entries[@]}"; do
             IFS='|' read -r dataset query label <<< "$entry"
-            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --cpu-type "$threads" --queue-number "$threads" --query-file "$query" --methods sax,sfa-depth,sfa-width --no-tight-bound)
+            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --query-file "$query" --methods sax,sfa-depth,sfa-width --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)
             "${command[@]}"
             if [[ $DRY_RUN == false ]]; then "$SCRIPT_DIR/archive_results.sh" "$label" "$threads"; fi

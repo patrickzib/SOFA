@@ -4,10 +4,10 @@
 older `run_*.sh` names remain as compatibility wrappers.
 
 ```bash
-scripts/run_dataset.sh astro standard --cpu-type 36 --queue-number 36
-scripts/run_dataset.sh bigann knn --cpu-type 36 --queue-number 36 --k 20
-scripts/run_dataset.sh sald sampling --cpu-type 36 --queue-number 36 --sample-factor 0.2
-scripts/run_dataset.sh astro high-frequency --cpu-type 36 --queue-number 36 --dry-run
+scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
+scripts/run_dataset.sh bigann knn --threads 36 --queue-number 36 --k 20
+scripts/run_dataset.sh sald sampling --threads 36 --queue-number 36 --sample-factor 0.2
+scripts/run_dataset.sh astro high-frequency --threads 36 --queue-number 36 --dry-run
 ```
 
 The profiles preserve the existing experiment matrices:

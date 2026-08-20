@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/lib/datasets.sh"
 
 usage() {
     cat <<'USAGE'
-Usage: run_dataset.sh DATASET PROFILE --cpu-type N --queue-number N [OPTIONS]
+Usage: run_dataset.sh DATASET PROFILE --threads N|auto --queue-number N [OPTIONS]
 
 Profiles: standard, high-frequency, knn, sampling
 
@@ -26,6 +26,7 @@ Options:
   --query-root PATH         Main query root (default: data root)
   --seisbench-root PATH     SeisBench dataset root
   --seisbench-query-root P  SeisBench query root (default: dataset root)
+  --numa MODE               auto (default), none, or number of NUMA nodes to use
   --dry-run                 Print commands without executing them
   -h, --help                Show this help
 
@@ -55,7 +56,8 @@ case "$PROFILE" in
     *) die "unknown profile '$PROFILE'" ;;
 esac
 
-CPU_TYPE=
+THREADS=
+NUMA_MODE=auto
 QUEUE_NUMBER=
 DATASET_OVERRIDE=
 QUERY_OVERRIDE=
@@ -77,7 +79,8 @@ SEISBENCH_QUERY_ROOT=${MESSI_SEISBENCH_QUERY_ROOT:-}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --cpu-type) [[ $# -ge 2 ]] || die "$1 requires a value"; CPU_TYPE=$2; shift 2 ;;
+        --threads|--cpu-type) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS=$2; shift 2 ;;
+        --numa) [[ $# -ge 2 ]] || die "$1 requires a value"; NUMA_MODE=$2; shift 2 ;;
         --queue-number) [[ $# -ge 2 ]] || die "$1 requires a value"; QUEUE_NUMBER=$2; shift 2 ;;
         --dataset-file) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_OVERRIDE=$2; shift 2 ;;
         --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_OVERRIDE=$2; shift 2 ;;
@@ -105,9 +108,10 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
 
-[[ -n $CPU_TYPE ]] || die '--cpu-type is required'
+[[ -n $THREADS ]] || die '--threads is required'
 [[ -n $QUEUE_NUMBER ]] || die '--queue-number is required'
-is_positive_integer "$CPU_TYPE" || die '--cpu-type must be a positive integer'
+[[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
+[[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
@@ -165,7 +169,8 @@ COMMON_ARGS+=(
     --queries "$QUERY_PATH"
     --queries-size "$QUERY_SIZE"
     --queue-number "$QUEUE_NUMBER"
-    --cpu-type "$CPU_TYPE"
+    --threads "$THREADS"
+    --numa "$NUMA_MODE"
     --leaf-size 20000
     --min-leaf-size 20000
     --initial-lbl-size 20000

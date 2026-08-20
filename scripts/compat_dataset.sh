@@ -7,9 +7,9 @@ DATASET=$1
 PROFILE=$2
 shift 2
 
-CPU_TYPE=${1:-}
+THREADS=${1:-}
 QUEUE_NUMBER=${2:-}
-ARGS=("$DATASET" "$PROFILE" --cpu-type "$CPU_TYPE" --queue-number "$QUEUE_NUMBER")
+ARGS=("$DATASET" "$PROFILE" --threads "$THREADS" --queue-number "$QUEUE_NUMBER")
 
 if [[ $DATASET == seisbench ]]; then
     [[ -n ${3:-} ]] && ARGS+=(--dataset-file "$3")
