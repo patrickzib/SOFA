@@ -2778,143 +2778,78 @@ void clear_wedges(isax_index *index, isax_node *node) {
 }
 
 void print_settings(isax_index_settings *settings) {
-	fprintf(stderr,"############ Index SETTINGS ############\n");
-	fprintf(stderr,"## [FILE SETTINGS]\n");
-    if (settings->raw_filename) {
-	    fprintf(stderr,"## raw_filename:\t%s\n",settings->raw_filename);
-    }
-	fprintf(stderr,"## root_directory:\t%s\n",settings->root_directory);
-    // fprintf(stderr,"## Dataset is int8:\t%s\n", settings->filetype_int);
-
-    fprintf(stderr,"## \n## [INDEX SETTINGS]\n");
-    if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr,"## index_layout:\tSymbolic trie (8-way fanout)\n");
-    } else {
-        fprintf(stderr,"## index_layout:\tiSAX\n");
-    }
-
-    fprintf(stderr,"## \n## [DATA TYPE SETTINGS]\n");
-	fprintf(stderr,"## timeseries_size:    \t%d\n",settings->timeseries_size);
-	fprintf(stderr,"## partial_record_size:\t%d\n",settings->partial_record_size);
-	fprintf(stderr,"## full_record_size:   \t%d\n",settings->full_record_size);
-	fprintf(stderr,"## position_byte_size: \t%d\n",settings->position_byte_size);
-	fprintf(stderr,"## sax_byte_size:      \t%d\n",settings->sax_byte_size);
-	fprintf(stderr,"## ts_byte_size:       \t%d\n",settings->ts_byte_size);
-
-	fprintf(stderr,"## \n## [BUFFER SETTINGS]\n");
-	fprintf(stderr, "## initial_fbl_buffer_size: \t%d\n", settings->initial_fbl_buffer_size);
-	fprintf(stderr, "## initial_leaf_buffer_size: \t%d\n", settings->initial_leaf_buffer_size);
-	fprintf(stderr,"## max_total_buffer_size:     \t%d\n",settings->max_total_buffer_size);
-	fprintf(stderr,"## max_total_full_buffer_size:\t%d\n",settings->max_total_full_buffer_size);
-
-	fprintf(stderr,"## \n## [LEAF SETTINGS]\n");
-	fprintf(stderr, "## max_leaf_size:\t%d\n", settings->max_leaf_size);
-	fprintf(stderr, "## min_leaf_size:\t%d\n",settings->min_leaf_size);
-	const char *split_name = "informed_split_decision";
+    const char *split_name = "informed";
+    const char *layout = settings->index_type == MESSI_INDEX_TRIE
+                             ? "symbolic trie (8-way fanout)"
+                             : "iSAX";
+	const char *binning = NULL;
+    const char *sampling = NULL;
 	switch (settings->node_split_criterion) {
 		case 2:
-			split_name = "simple_split_decision";
+			split_name = "simple";
 			break;
 		case 3:
-			split_name = "maxvar_split_decision";
+			split_name = "maximum variance";
 			break;
 		case 4:
-			split_name = "maxbin_split_decision";
+			split_name = "maximum bin spread";
 			break;
 		default:
 			break;
 	}
-	fprintf(stderr, "## node_split_criterion:\t%d (%s)\n",
-			settings->node_split_criterion, split_name);
 
-	fprintf(stderr,"## \n## [Symbolic Transform SETTINGS]\n");
-    if (settings->SIMD_flag) {
-        fprintf(stderr,"## Using SIMD:        \t%c\n",    settings->SIMD_flag);
+    if (settings->histogram_type == 1) binning = "equi-depth";
+    else if (settings->histogram_type == 2) binning = "equi-width";
+    if (settings->sample_type == 1) sampling = "first values";
+    else if (settings->sample_type == 2) sampling = "uniform";
+    else if (settings->sample_type == 3) sampling = "random";
+
+    fprintf(stderr, "=== MESSI index configuration ===\n");
+    if (settings->raw_filename) {
+        fprintf(stderr, "  dataset       : %s\n", settings->raw_filename);
     }
+    fprintf(stderr, "  index root    : %s\n", settings->root_directory);
+    fprintf(stderr, "  layout        : %s\n", layout);
+    fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
+    fprintf(stderr, "  leaf capacity : %d (minimum %d)\n",
+            settings->max_leaf_size, settings->min_leaf_size);
+    fprintf(stderr, "  split policy  : %s\n", split_name);
+    fprintf(stderr, "  SIMD          : %s\n", settings->SIMD_flag ? "enabled" : "disabled");
 
     if (settings->function_type == 3) {
-        fprintf(stderr,"## Using MESSI + SAX. \n");
-        fprintf(stderr,"## \n## [SAX SETTINGS]\n");
-        fprintf(stderr,"## n_segments:       \t%d\n",settings->n_segments);
-        fprintf(stderr,"## sax_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
-        fprintf(stderr,"## sax_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
+        fprintf(stderr, "  transform     : SAX, %d segments, alphabet %d (%d bits)\n",
+                settings->n_segments, settings->sax_alphabet_cardinality,
+                settings->sax_bit_cardinality);
     }
     else if (settings->function_type == 4) {
-        fprintf(stderr, "## Using MESSI + SFA. \n");
-        fprintf(stderr,"## dft_coefficients:   \t%d\n",settings->n_segments);
-        fprintf(stderr,"## sfa_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
-        fprintf(stderr,"## sfa_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
-
-        fprintf(stderr,"## \n## [SFA SETTINGS]\n");
-        fprintf(stderr,"## Ignore mean FFT coefficient?:         \t%c\n",    settings->is_norm);
-        fprintf(stderr,"## Variance-based coefficient selection?:\t%d\n",    settings->n_coefficients > 0);
-        if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Depth Binning. \n");
-        } else if (settings->histogram_type==2) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        }
-
-        if (settings->sample_type == 1) {
-            fprintf(stderr,"## Sampling Type:      \tfirst-n-values\n");
-        } else if (settings->sample_type == 2) {
-            fprintf(stderr, "## Sampling Type:     \tuniform sampling\n");
-        } else if (settings->sample_type == 3) {
-            fprintf(stderr, "## Sampling Type:     \trandom sampling\n");
-        }
-        fprintf(stderr,"## Sampling Size:          \t%d\n", settings->sample_size);
-
+        fprintf(stderr, "  transform     : SFA, %d DFT coefficients, alphabet %d (%d bits)\n",
+                settings->n_segments, settings->sax_alphabet_cardinality,
+                settings->sax_bit_cardinality);
+        fprintf(stderr, "  selection     : %s; ignore mean coefficient: %s\n",
+                settings->n_coefficients > 0 ? "variance-based" : "fixed order",
+                settings->is_norm ? "yes" : "no");
     }
     else if (settings->function_type == 5) {
-        fprintf(stderr, "## Using MESSI + SPARTAN. \n");
-        fprintf(stderr,"## pca_coefficients:   \t%d\n",settings->n_segments);
-        fprintf(stderr,"## spartan_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
-        fprintf(stderr,"## spartan_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
-
-        fprintf(stderr,"## \n## [SPARTAN SETTINGS]\n");
-        if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Depth Binning. \n");
-        } else if (settings->histogram_type==2) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        }
-        if (settings->sample_type == 1) {
-            fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
-        } else if (settings->sample_type == 2) {
-            fprintf(stderr, "## Sampling Type:    \tuniform sampling\n");
-        } else if (settings->sample_type == 3) {
-            fprintf(stderr, "## Sampling Type:    \trandom sampling\n");
-        }
-        fprintf(stderr,"## Sampling Size:         \t%d\n", settings->sample_size);
+        fprintf(stderr, "  transform     : SPARTAN, %d PCA coefficients, alphabet %d (%d bits)\n",
+                settings->n_segments, settings->sax_alphabet_cardinality,
+                settings->sax_bit_cardinality);
     }
     else if (settings->function_type == 6) {
         int fft_coefficients = settings->n_coefficients > 0 ? settings->n_coefficients : settings->n_segments;
-        fprintf(stderr, "## Using MESSI + PISA. \n");
-        fprintf(stderr,"## fft_coefficients:   \t%d\n", fft_coefficients);
-        fprintf(stderr,"## pisa_alphabet_card.: \t%d\n",settings->sax_alphabet_cardinality);
-        fprintf(stderr,"## pisa_bit_cardinality:\t%d\n",settings->sax_bit_cardinality);
-
-        fprintf(stderr,"## \n## [PISA SETTINGS]\n");
-        fprintf(stderr,"## FFT -> PCA -> Binning\n");
-        if (settings->histogram_type==1) {
-            fprintf(stderr, "## \t Equi-Depth Binning. \n");
-        } else if (settings->histogram_type==2) {
-            fprintf(stderr, "## \t Equi-Width Binning. \n");
-        }
-        if (settings->sample_type == 1) {
-            fprintf(stderr,"## Sampling Type:     \tfirst-n-values\n");
-        } else if (settings->sample_type == 2) {
-            fprintf(stderr, "## Sampling Type:    \tuniform sampling\n");
-        } else if (settings->sample_type == 3) {
-            fprintf(stderr, "## Sampling Type:    \trandom sampling\n");
-        }
-        fprintf(stderr,"## Sampling Size:         \t%d\n", settings->sample_size);
+        fprintf(stderr, "  transform     : PISA (FFT -> PCA), %d FFT coefficients, %d dimensions, alphabet %d (%d bits)\n",
+                fft_coefficients, settings->n_segments, settings->sax_alphabet_cardinality,
+                settings->sax_bit_cardinality);
     }
 
-
-	fprintf(stderr,"## \n## [QUERY ANSWERING SETTINGS]\n");
-	fprintf(stderr, "## aggressive_check:  \t%d\n", settings->aggressive_check);
-	fprintf(stderr,"## tight_bound:        \t%d\n",settings->tight_bound);
-	fprintf(stderr,"## total_loaded_leaves:\t%d\n",settings->total_loaded_leaves);
-	fprintf(stderr,"######################################\n");
+    if (binning != NULL) {
+        fprintf(stderr, "  binning       : %s; sampling: %s (%u records)\n",
+                binning, sampling != NULL ? sampling : "unspecified", settings->sample_size);
+    }
+    fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
+            settings->tight_bound ? "on" : "off",
+            settings->aggressive_check ? "on" : "off",
+            settings->total_loaded_leaves);
+    fprintf(stderr, "===================================\n");
 
 	fflush(stderr);
 }
