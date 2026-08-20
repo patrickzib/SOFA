@@ -67,7 +67,7 @@ enum response fft_from_ts(
     This function discretized FFT coefficients with the intervals from MCB
     The current transform is pointed to by dft_mem_array
 */
-void sfa_from_fft(isax_index *index, ts_type *cur_transform, sax_type *cur_sfa_word) {
+void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word) {
     int n_segments = index->settings->n_segments;
     for (int k = 0; k < n_segments; ++k) {
         unsigned int c;
@@ -92,12 +92,7 @@ enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_ou
         return FAILURE;
     }
 
-    ts_type *cur_coeff_line = calloc(index->settings->n_segments, sizeof(ts_type));
-    memcpy(cur_coeff_line, fftw->transform, sizeof(ts_type) * index->settings->n_segments);
-
-    sfa_from_fft(index, cur_coeff_line, sax_out);
-
-    free(cur_coeff_line);
+    sfa_from_fft(index, fftw->transform, sax_out);
 
     if (sax_out != NULL) return SUCCESS;
     else {

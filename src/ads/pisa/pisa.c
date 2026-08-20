@@ -47,21 +47,15 @@ enum response pisa_pca_from_ts(isax_index *index, const ts_type *ts, ts_type *ou
     return pca_from_ts(index, fftw->transform, out);
 }
 
-enum response pisa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out, fftw_workspace *fftw) {
-    if (index == NULL || ts == NULL || sax_out == NULL || fftw == NULL) {
+enum response pisa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                           fftw_workspace *fftw, ts_type *coeff_scratch) {
+    if (index == NULL || ts == NULL || sax_out == NULL || fftw == NULL || coeff_scratch == NULL) {
         return FAILURE;
     }
-    int n_segments = index->settings->n_segments;
-    ts_type *coeffs = calloc(n_segments, sizeof(ts_type));
-    if (coeffs == NULL) {
+    if (pisa_pca_from_ts(index, ts, coeff_scratch, fftw) != SUCCESS) {
         return FAILURE;
     }
-    if (pisa_pca_from_ts(index, ts, coeffs, fftw) != SUCCESS) {
-        free(coeffs);
-        return FAILURE;
-    }
-    sfa_from_fft(index, coeffs, sax_out);
-    free(coeffs);
+    sfa_from_fft(index, coeff_scratch, sax_out);
     return SUCCESS;
 }
 

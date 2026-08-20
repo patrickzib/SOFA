@@ -12,6 +12,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
                             int maxquerythread, int filetype_int, int apply_znorm);
 
 enum response pisa_pca_from_ts(isax_index *index, const ts_type *ts, ts_type *out, fftw_workspace *fftw);
-enum response pisa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out, fftw_workspace *fftw);
+enum response pisa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                           fftw_workspace *fftw, ts_type *coeff_scratch);
 
 #endif /* MESSI_PISA_H */

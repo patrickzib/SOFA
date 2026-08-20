@@ -48,7 +48,7 @@ static inline void fftw_workspace_destroy(fftw_workspace *ws) {
 
 enum response fft_from_ts(isax_index *index, int n_coefficients, int best_only,
                           fftw_workspace *fftw);
-void sfa_from_fft(isax_index *index, ts_type * cur_transform, sax_type * cur_sfa_word);
+void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
 
 enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out, fftw_workspace *fftw);
 

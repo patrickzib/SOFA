@@ -19,13 +19,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
 #include <unistd.h>
 #include <math.h>
 #include <getopt.h>
 #include <time.h>
 #include <float.h>
+#include <limits.h>
 #ifdef __linux__
 #include <sched.h>
+#include <glob.h>
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -77,6 +80,84 @@ static inline int pthread_getaffinity_np(pthread_t thread, size_t size, cpu_set_
 }
 #endif
 
+#ifdef __linux__
+static int parse_cpu_list(const char *text, cpu_set_t *set, const cpu_set_t *allowed) {
+    const char *cursor = text;
+
+    while (*cursor != '\0') {
+        char *end;
+        long first = strtol(cursor, &end, 10);
+        long last = first;
+        if (end == cursor || first < 0 || first >= CPU_SETSIZE) {
+            return -1;
+        }
+        if (*end == '-') {
+            cursor = end + 1;
+            last = strtol(cursor, &end, 10);
+            if (end == cursor || last < first || last >= CPU_SETSIZE) {
+                return -1;
+            }
+        }
+        for (long cpu = first; cpu <= last; ++cpu) {
+            if (CPU_ISSET((int) cpu, allowed)) {
+                CPU_SET((int) cpu, set);
+            }
+        }
+        if (*end == '\n' || *end == '\0') {
+            return 0;
+        }
+        if (*end != ',') {
+            return -1;
+        }
+        cursor = end + 1;
+    }
+    return -1;
+}
+
+/* Select CPUs belonging to the first requested NUMA nodes that intersect the
+ * process cpuset.  A return value of zero leaves the caller's allowed cpuset
+ * unchanged, which is the correct fallback on systems without NUMA sysfs. */
+static int select_numa_cpus(cpu_set_t *selected, const cpu_set_t *allowed, int requested_nodes) {
+    glob_t paths;
+    int selected_nodes = 0;
+    int result = 0;
+
+    if (glob("/sys/devices/system/node/node[0-9]*", 0, NULL, &paths) != 0) {
+        return 0;
+    }
+    CPU_ZERO(selected);
+    for (size_t i = 0; i < paths.gl_pathc &&
+                       (requested_nodes < 0 || selected_nodes < requested_nodes); ++i) {
+        char filename[PATH_MAX];
+        char cpus[4096];
+        FILE *file;
+        cpu_set_t node_cpus;
+        if (snprintf(filename, sizeof(filename), "%s/cpulist", paths.gl_pathv[i]) >=
+            (int) sizeof(filename)) {
+            continue;
+        }
+        file = fopen(filename, "r");
+        if (file == NULL || fgets(cpus, sizeof(cpus), file) == NULL) {
+            if (file != NULL) fclose(file);
+            continue;
+        }
+        fclose(file);
+        CPU_ZERO(&node_cpus);
+        if (parse_cpu_list(cpus, &node_cpus, allowed) == 0 && CPU_COUNT(&node_cpus) > 0) {
+            for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+                if (CPU_ISSET(cpu, &node_cpus)) {
+                    CPU_SET(cpu, selected);
+                }
+            }
+            selected_nodes++;
+            result = selected_nodes;
+        }
+    }
+    globfree(&paths);
+    return result;
+}
+#endif
+
 int main(int argc, char **argv) {
     signal(SIGINT, INThandler);
 
@@ -124,7 +205,11 @@ int main(int argc, char **argv) {
     static int serial_scan = 0;
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
-    static int cpu_control_type = 81;
+    static int cpu_control_type = 0;
+    static int requested_threads = 0;
+    static int requested_numa_nodes = -1;
+    static int threads_option_set = 0;
+    static int numa_option_set = 0;
     static char inmemory_flag = 0;
     static char SIMD_flag = 0;
     static char is_norm = 0;
@@ -174,6 +259,8 @@ int main(int argc, char **argv) {
                 {"min-checked-leaves",  required_argument, 0,    'u'},
                 {"in-memory",           no_argument,       0,    'v'},
                 {"cpu-type",            required_argument, 0,    'w'},
+                {"threads",             required_argument, 0,    'I'},
+                {"numa",                required_argument, 0,    'J'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
                 {"n-segments",          required_argument, 0,    'B'},
                 {"function-type",       required_argument, 0,    'y'},
@@ -281,6 +368,32 @@ int main(int argc, char **argv) {
                 break;
             case 'w':
                 cpu_control_type = atoi(optarg);
+                break;
+            case 'I':
+                threads_option_set = 1;
+                if (strcmp(optarg, "auto") == 0) {
+                    requested_threads = 0;
+                } else {
+                    requested_threads = atoi(optarg);
+                    if (requested_threads <= 0) {
+                        fprintf(stderr, "error: threads must be a positive integer or 'auto'.\n");
+                        return EXIT_FAILURE;
+                    }
+                }
+                break;
+            case 'J':
+                numa_option_set = 1;
+                if (strcmp(optarg, "auto") == 0) {
+                    requested_numa_nodes = -1;
+                } else if (strcmp(optarg, "none") == 0) {
+                    requested_numa_nodes = 0;
+                } else {
+                    requested_numa_nodes = atoi(optarg);
+                    if (requested_numa_nodes <= 0) {
+                        fprintf(stderr, "error: numa must be 'auto', 'none', or a positive node count.\n");
+                        return EXIT_FAILURE;
+                    }
+                }
                 break;
 
             case 'y':
@@ -401,11 +514,11 @@ int main(int argc, char **argv) {
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
-                \t--cpu-type\t\t\tSet for how many cores you want to used and in 1 or 2 cpu\n\
+                \t--threads N|auto\t\tWorker threads (default: all CPUs available to this process)\n\
+                \t--numa auto|none|N\tCPU affinity: all available NUMA nodes, disabled, or first N nodes\n\
+                \t--cpu-type\t\t\tDeprecated compatibility option; use --threads and --numa\n\
                 \t--help\n\n\
-                \tCPU type code:\t\t\tAny 2-digit value ending in 1 or 2 uses that many cores\n\
-                \t\t\t\t\t362: 36 core in 2 CPUs\n\
-                \t\t\t\t\tOther: 1 core in 1 CPU\n\
+                \tLegacy CPU type code:\t\tValues ending in 1 or 2 mean cores * 10 + NUMA nodes\n\
                 \t\t\t\t\t22 : 2 core in 2 CPUs\n\
                 \t\t\t\t\t41 : 4 core in 1 CPU\n\
                 \t\t\t\t\t42 : 4 core in 2 CPUs\n\
@@ -440,53 +553,69 @@ int main(int argc, char **argv) {
                 break;
         }
     }
-    if (cpu_control_type <= 0) {
-        fprintf(stderr, "error: cpu-type must be a positive integer (received %d). Missing --cpu-type argument?\n",
-                cpu_control_type);
-        return EXIT_FAILURE;
-    }
     INIT_STATS();
 
-    cpu_set_t mask, get;
+    /* --cpu-type is retained for existing invocations.  Its historical
+     * encoding is cores * 10 + NUMA nodes, so 81 means 8 workers on one
+     * node--not 81 workers.  --threads/--numa take precedence when supplied. */
+    if (cpu_control_type > 0 && !threads_option_set) {
+        if (cpu_control_type >= 10 &&
+            (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
+            requested_threads = cpu_control_type / 10;
+            if (!numa_option_set) {
+                requested_numa_nodes = cpu_control_type % 10;
+            }
+        } else {
+            requested_threads = cpu_control_type;
+        }
+    }
+
+#ifdef __linux__
+    cpu_set_t allowed_cpus, mask;
+    CPU_ZERO(&allowed_cpus);
     CPU_ZERO(&mask);
-    CPU_ZERO(&get);
-    int cpu_count = 1;
-    if (cpu_control_type >= 10 && cpu_control_type < 100 &&
-        (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
-        int thread_count = cpu_control_type;
-        cpu_count = cpu_control_type % 10;
-
-        for (int i = 0; i < thread_count; i++) {
-            CPU_SET(i, &mask);
+    if (sched_getaffinity(0, sizeof(allowed_cpus), &allowed_cpus) != 0 ||
+        CPU_COUNT(&allowed_cpus) == 0) {
+        perror("sched_getaffinity");
+        return EXIT_FAILURE;
+    }
+    int available_cpus = CPU_COUNT(&allowed_cpus);
+    int detected_numa_nodes = 0;
+    if (requested_numa_nodes != 0) {
+        detected_numa_nodes = select_numa_cpus(&mask, &allowed_cpus, requested_numa_nodes);
+        if (detected_numa_nodes == 0 || CPU_COUNT(&mask) == 0) {
+            mask = allowed_cpus;
         }
-        calculate_thread = thread_count;
-        maxquerythread = thread_count;
-
-    } else if (cpu_control_type == 1) {
-        calculate_thread = 1;
-        maxquerythread = 1;
-        cpu_count = 1;
-
     } else {
-        calculate_thread = cpu_control_type;
-        maxquerythread = cpu_control_type;
-        cpu_count = 1;
-
-        for (int i = 0; i < cpu_control_type; i++) {
-            // CPU_SET(i, &mask);
-        }
+        mask = allowed_cpus;
     }
-
-    fprintf(stderr, ">>> cpu-type=%d -> using %d cores in %d CPUs\n",
-            cpu_control_type, maxquerythread, cpu_count);
-
-    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) < 0) {
-        fprintf(stderr, "set thread affinity failed\n");
+    int usable_cpus = CPU_COUNT(&mask);
+    int thread_count = requested_threads > 0 ? requested_threads : usable_cpus;
+    if (thread_count > usable_cpus) {
+        fprintf(stderr, "warning: requested %d threads but only %d selected CPUs are available; capping threads.\n",
+                thread_count, usable_cpus);
+        thread_count = usable_cpus;
     }
-
-    if (pthread_getaffinity_np(pthread_self(), sizeof(get), &get) < 0) {
-        fprintf(stderr, "get thread affinity failed\n");
+    if (requested_numa_nodes != 0 && pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) != 0) {
+        perror("pthread_setaffinity_np");
+        return EXIT_FAILURE;
     }
+    fprintf(stderr, ">>> using %d worker threads on %d available CPUs%s%s\n", thread_count,
+            usable_cpus, requested_numa_nodes == 0 ? " (affinity disabled)" : "",
+            detected_numa_nodes > 0 ? " across detected NUMA nodes" : "");
+#else
+    long online_cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    int available_cpus = online_cpus > 0 ? (int) online_cpus : 1;
+    int thread_count = requested_threads > 0 ? requested_threads : available_cpus;
+    if (thread_count > available_cpus) {
+        fprintf(stderr, "warning: requested %d threads but only %d CPUs are available; capping threads.\n",
+                thread_count, available_cpus);
+        thread_count = available_cpus;
+    }
+    fprintf(stderr, ">>> using %d worker threads; NUMA affinity is unavailable on this platform.\n", thread_count);
+#endif
+    calculate_thread = thread_count;
+    maxquerythread = thread_count;
     if (use_index) {
         isax_index *idx = index_read(index_path);
         idx->settings->tight_bound = tight_bound;

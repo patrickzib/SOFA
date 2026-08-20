@@ -11,7 +11,8 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
                                int maxquerythread, int filetype_int, int apply_znorm);
 void spartan_print_bins(isax_index *index);
 
-enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out);
+enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                              ts_type *coeff_scratch);
 void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out);
 enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *out);
 

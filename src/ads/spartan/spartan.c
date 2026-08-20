@@ -356,27 +356,17 @@ void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_ou
     }
 }
 
-enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out) {
-    int dim = index->settings->n_segments;
-    ts_type *coeffs = calloc(dim, sizeof(ts_type));
-    if (coeffs == NULL) {
-        free(coeffs);
+enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                              ts_type *coeff_scratch) {
+    if (index == NULL || ts == NULL || sax_out == NULL || coeff_scratch == NULL) {
         return FAILURE;
     }
 
-    if (pca_from_ts(index, ts, coeffs) != SUCCESS) {
-        free(coeffs);
+    if (pca_from_ts(index, ts, coeff_scratch) != SUCCESS) {
         return FAILURE;
     }
-    spartan_from_pca(index, coeffs, sax_out);
-
-    free(coeffs);
-
-    if (sax_out != NULL) {
-        return SUCCESS;
-    }
-    fprintf(stderr, "SPARTAN error\n");
-    return FAILURE;
+    spartan_from_pca(index, coeff_scratch, sax_out);
+    return SUCCESS;
 }
 
 enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *out) {
