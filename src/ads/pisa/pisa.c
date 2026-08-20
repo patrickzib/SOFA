@@ -72,9 +72,18 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     int ts_length = index->settings->timeseries_size;
     unsigned int sample_size = index->settings->sample_size;
     int fft_dim = pisa_fft_dim(index);
-    if (fft_dim <= 0 || n_segments <= 0 || sample_size == 0) {
+    if (fft_dim <= 0 || n_segments <= 0 || sample_size == 0 || ts_num <= 0 ||
+        sample_size > (unsigned long) ts_num) {
         fprintf(stderr, "warning: invalid PISA settings.\n");
         return;
+    }
+
+    int worker_threads = maxquerythread;
+    if (worker_threads < 1) {
+        worker_threads = 1;
+    }
+    if ((unsigned int) worker_threads > sample_size) {
+        worker_threads = (int) sample_size;
     }
 
     fprintf(stderr, ">>> PISA binning: %s\n", ifilename);
@@ -94,30 +103,30 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
         }
     }
 
-    pthread_t threadid[maxquerythread];
-    bins_data_inmemory *input_data = malloc(sizeof(bins_data_inmemory) * (size_t) maxquerythread);
+    pthread_t threadid[worker_threads];
+    bins_data_inmemory *input_data = malloc(sizeof(bins_data_inmemory) * (size_t) worker_threads);
     if (input_data == NULL) {
         free_dft_memory(index, fft_dim, dft_mem_array);
         return;
     }
 
     fftw_workspace fftw = {0};
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         fftw_workspace_init(&fftw, ts_length);
 
         input_data[i].index = index;
         input_data[i].dft_mem_array = dft_mem_array;
         input_data[i].filename = ifilename;
         input_data[i].workernumber = i;
-        input_data[i].records = sample_size / maxquerythread;
-        input_data[i].records_offset = sample_size / maxquerythread;
+        input_data[i].records = sample_size / worker_threads;
+        input_data[i].records_offset = sample_size / worker_threads;
 
         if (index->settings->sample_type == 1) {
-            input_data[i].start_number = i * (sample_size / maxquerythread);
-            input_data[i].stop_number = (i + 1) * (sample_size / maxquerythread);
+            input_data[i].start_number = i * (sample_size / worker_threads);
+            input_data[i].stop_number = (i + 1) * (sample_size / worker_threads);
         } else if (index->settings->sample_type == 2) {
-            input_data[i].start_number = i * (ts_num / maxquerythread);
-            input_data[i].stop_number = (i + 1) * (ts_num / maxquerythread);
+            input_data[i].start_number = i * (ts_num / worker_threads);
+            input_data[i].stop_number = (i + 1) * (ts_num / worker_threads);
         } else if (index->settings->sample_type == 3) {
             input_data[i].start_number = 0;
             input_data[i].stop_number = ts_num;
@@ -128,24 +137,24 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
         input_data[i].fftw = fftw;
     }
 
-    input_data[maxquerythread - 1].records =
-        sample_size - (maxquerythread - 1) * (sample_size / maxquerythread);
+    input_data[worker_threads - 1].records =
+        sample_size - (worker_threads - 1) * (sample_size / worker_threads);
 
     if (index->settings->sample_type == 1) {
-        input_data[maxquerythread - 1].stop_number = sample_size;
+        input_data[worker_threads - 1].stop_number = sample_size;
     } else if (index->settings->sample_type == 2) {
-        input_data[maxquerythread - 1].stop_number = ts_num;
+        input_data[worker_threads - 1].stop_number = ts_num;
     }
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         pthread_create(&(threadid[i]), NULL, set_bins_worker_dft, (void *) &(input_data[i]));
     }
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         pthread_join(threadid[i], NULL);
     }
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         fftw_workspace_destroy(&input_data[i].fftw);
     }
 
@@ -214,20 +223,20 @@ void pisa_set_bins(isax_index *index, const char *ifilename, long int ts_num, in
     free(projection);
     free(samples);
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         input_data[i].index = index;
         input_data[i].dft_mem_array = coeff_mem_array;
-        input_data[i].start_number = i * (n_segments / maxquerythread);
-        input_data[i].stop_number = (i + 1) * (n_segments / maxquerythread);
+        input_data[i].start_number = i * (n_segments / worker_threads);
+        input_data[i].stop_number = (i + 1) * (n_segments / worker_threads);
     }
 
-    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (n_segments / maxquerythread);
-    input_data[maxquerythread - 1].stop_number = n_segments;
+    input_data[worker_threads - 1].start_number = (worker_threads - 1) * (n_segments / worker_threads);
+    input_data[worker_threads - 1].stop_number = n_segments;
 
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         pthread_create(&(threadid[i]), NULL, order_divide_worker, (void *) &(input_data[i]));
     }
-    for (int i = 0; i < maxquerythread; i++) {
+    for (int i = 0; i < worker_threads; i++) {
         pthread_join(threadid[i], NULL);
     }
 

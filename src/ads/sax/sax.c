@@ -24,19 +24,26 @@
 #include "ads/sax/ts.h"
 #include "ads/sax/sax_breakpoints.h"
 
-/** 
- This is used for converting to sax
- */
-int compare(const void *a, const void *b) {
-    float *c = (float *) b - 1;
-    if (*(float *) a > *(float *) c && *(float *) a <= *(float *) b) {
-        //printf("Found %lf between %lf and %lf\n",*(float*)a,*(float*)c,*(float*)b);
-        return 0;
-    } else if (*(float *) a <= *(float *) c) {
-        return -1;
-    } else {
-        return 1;
+static enum response sax_symbol_from_value(ts_type value, int cardinality,
+                                           const float *breakpoints,
+                                           sax_type *symbol) {
+    if (!isfinite(value) || cardinality < 2 || breakpoints == NULL || symbol == NULL) {
+        return FAILURE;
     }
+
+    int low = 0;
+    int high = cardinality - 1;
+    while (low < high) {
+        int middle = low + (high - low) / 2;
+        if (value <= breakpoints[middle]) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+
+    *symbol = (sax_type) low;
+    return SUCCESS;
 }
 
 /** 
@@ -67,24 +74,15 @@ enum response sax_from_paa(ts_type *paa, sax_type *sax, isax_index_settings *set
 
     int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
-    int bit_cardinality = settings->sax_bit_cardinality;
     int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
     //printf("FROM %lf TO %lf\n", sax_breakpoints[offset], sax_breakpoints[offset + cardinality - 2]);
 
     int si;
     for (si = 0; si < segments; si++) {
-        sax[si] = 0;
-
-        // First object = sax_breakpoints[offset]
-        // Last object = sax_breakpoints[offset + cardinality - 2]
-        // Size of sub-array = cardinality - 1
-
-        float *res = (float *) bsearch(&paa[si], &sax_breakpoints[offset], cardinality - 1,
-                                       sizeof(ts_type), compare);
-        if (res != NULL)
-            sax[si] = (int) (res - &sax_breakpoints[offset]);
-        else if (paa[si] > 0)
-            sax[si] = cardinality - 1;
+        if (sax_symbol_from_value(paa[si], cardinality, &sax_breakpoints[offset],
+                                  &sax[si]) != SUCCESS) {
+            return FAILURE;
+        }
     }
 
     return SUCCESS;
@@ -99,7 +97,6 @@ enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, isax_index_settings
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
     int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
-    int bit_cardinality = settings->sax_bit_cardinality;
     int timeseries_size = settings->timeseries_size;
     float *paa = malloc(sizeof(float) * segments);
     if (paa == NULL) {
@@ -131,18 +128,11 @@ enum response sax_from_ts(ts_type *ts_in, sax_type *sax_out, isax_index_settings
 
     int si;
     for (si = 0; si < segments; si++) {
-        sax_out[si] = 0;
-
-        // First object = sax_breakpoints[offset]
-        // Last object = sax_breakpoints[offset + cardinality - 2]
-        // Size of sub-array = cardinality - 1
-
-        float *res = (float *) bsearch(&paa[si], &sax_breakpoints[offset], cardinality - 1,
-                                       sizeof(ts_type), compare);
-        if (res != NULL)
-            sax_out[si] = (int) (res - &sax_breakpoints[offset]);
-        else if (paa[si] > 0)
-            sax_out[si] = cardinality - 1;
+        if (sax_symbol_from_value(paa[si], cardinality, &sax_breakpoints[offset],
+                                  &sax_out[si]) != SUCCESS) {
+            free(paa);
+            return FAILURE;
+        }
     }
 
     //sax_print(sax_out, segments, cardinality);
@@ -155,7 +145,6 @@ enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, isax_index_sett
     int ts_values_per_segment = settings->ts_values_per_paa_segment;
     int segments = settings->n_segments;
     int cardinality = settings->sax_alphabet_cardinality;
-    int bit_cardinality = settings->sax_bit_cardinality;
     int timeseries_size = settings->timeseries_size;
     float *paa = malloc(sizeof(float) * segments);
     if (paa == NULL) {
@@ -187,18 +176,11 @@ enum response sax_from_ts_new(ts_type *ts_in, sax_type *sax_out, isax_index_sett
 
     int si;
     for (si = 0; si < segments; si++) {
-        sax_out[si] = 0;
-
-        // First object = sax_breakpointsnew3[0]
-        //  Last object = sax_breakpointsnew3[ cardinality - 2]
-        //  Size of sub-array = cardinality - 1
-
-        float *res = (float *) bsearch(&paa[si], &sax_breakpointsnew3[0], cardinality - 1,
-                                       sizeof(ts_type), compare);
-        if (res != NULL)
-            sax_out[si] = (int) (res - &sax_breakpointsnew3[0]);
-        else if (paa[si] > 0)
-            sax_out[si] = cardinality - 1;
+        if (sax_symbol_from_value(paa[si], cardinality, sax_breakpointsnew3,
+                                  &sax_out[si]) != SUCCESS) {
+            free(paa);
+            return FAILURE;
+        }
 
 
     }
@@ -247,18 +229,11 @@ enum response sax_from_ts_SIMD(ts_type *ts_in, sax_type *sax_out, int ts_values_
 
     int si;
     for (si = 0; si < segments; si++) {
-        sax_out[si] = 0;
-
-        // First object = sax_breakpoints[offset]
-        // Last object = sax_breakpoints[offset + cardinality - 2]
-        // Size of sub-array = cardinality - 1
-
-        float *res = (float *) bsearch(&paa[si], &sax_breakpoints[offset], cardinality - 1,
-                                       sizeof(ts_type), compare);
-        if (res != NULL)
-            sax_out[si] = (int) (res - &sax_breakpoints[offset]);
-        else if (paa[si] > 0)
-            sax_out[si] = cardinality - 1;
+        if (sax_symbol_from_value(paa[si], cardinality, &sax_breakpoints[offset],
+                                  &sax_out[si]) != SUCCESS) {
+            free(paa);
+            return FAILURE;
+        }
     }
 
     //sax_print(sax_out, segments, cardinality);

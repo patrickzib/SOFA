@@ -94,6 +94,18 @@ void sfa_set_bins(
     const int n_coefficients = use_variance
                                    ? index->settings->n_coefficients
                                    : n_segments;
+    if (sample_size == 0 || ts_num <= 0 || sample_size > (unsigned long) ts_num) {
+        fprintf(stderr, "error: SFA sample size must be between 1 and the dataset size.\n");
+        return;
+    }
+
+    int worker_threads = maxquerythread;
+    if (worker_threads < 1) {
+        worker_threads = 1;
+    }
+    if ((unsigned int) worker_threads > sample_size) {
+        worker_threads = (int) sample_size;
+    }
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
@@ -103,18 +115,18 @@ void sfa_set_bins(
         dft_mem_array[i] = calloc(sample_size, sizeof(**dft_mem_array));
     }
 
-    pthread_t threadid[maxquerythread];
+    pthread_t threadid[worker_threads];
     bins_data_inmemory *input_data =
-            malloc(maxquerythread * sizeof(*input_data));
+            malloc(worker_threads * sizeof(*input_data));
 
     /*
      * Phase 1:
      * sample time series and calculate DFT coefficients
      */
-    const long sample_chunk = sample_size / maxquerythread;
-    const long ts_chunk = ts_num / maxquerythread;
+    const long sample_chunk = sample_size / worker_threads;
+    const long ts_chunk = ts_num / worker_threads;
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         fftw_workspace fftw = {0};
         fftw_workspace_init(&fftw, ts_length);
 
@@ -151,16 +163,16 @@ void sfa_set_bins(
     }
 
     /* Give any remainder to the last sampling worker. */
-    input_data[maxquerythread - 1].records =
-            sample_size - (maxquerythread - 1) * sample_chunk;
+    input_data[worker_threads - 1].records =
+            sample_size - (worker_threads - 1) * sample_chunk;
 
     if (index->settings->sample_type == 1) {
-        input_data[maxquerythread - 1].stop_number = sample_size;
+        input_data[worker_threads - 1].stop_number = sample_size;
     } else if (index->settings->sample_type == 2) {
-        input_data[maxquerythread - 1].stop_number = ts_num;
+        input_data[worker_threads - 1].stop_number = ts_num;
     }
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         pthread_create(
             &threadid[i],
             NULL,
@@ -168,7 +180,7 @@ void sfa_set_bins(
             &input_data[i]);
     }
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         pthread_join(threadid[i], NULL);
     }
 
@@ -188,10 +200,10 @@ void sfa_set_bins(
      * Phase 2:
      * divide coefficient rows evenly among workers
      */
-    const int base = n_segments / maxquerythread;
-    const int remainder = n_segments % maxquerythread;
+    const int base = n_segments / worker_threads;
+    const int remainder = n_segments % worker_threads;
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         bins_data_inmemory *data = &input_data[i];
 
         fftw_workspace_destroy(&data->fftw);
@@ -207,7 +219,7 @@ void sfa_set_bins(
         }
     }
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         pthread_create(
             &threadid[i],
             NULL,
@@ -215,7 +227,7 @@ void sfa_set_bins(
             &input_data[i]);
     }
 
-    for (int i = 0; i < maxquerythread; ++i) {
+    for (int i = 0; i < worker_threads; ++i) {
         pthread_join(threadid[i], NULL);
     }
 
@@ -333,6 +345,10 @@ void *set_bins_worker_dft(void *transferdata) {
     unsigned long stop_number = bins_data->stop_number;
 
     unsigned long ts_length = index->settings->timeseries_size;
+    long records = bins_data->records;
+    if (records <= 0) {
+        return NULL;
+    }
 
     int n_coefficients = 0;
     // Variance based coefficients
@@ -344,25 +360,28 @@ void *set_bins_worker_dft(void *transferdata) {
         n_coefficients = index->settings->n_segments;
     }
 
+    unsigned long skip_elements = 0;
+    if (index->settings->sample_type == 2) {
+        unsigned long span = stop_number - start_number;
+        if (stop_number <= start_number || (unsigned long) records > span) {
+            return NULL;
+        }
+        skip_elements = (span / (unsigned long) records) - 1;
+    }
+
     unsigned long start_index = start_number * ts_length * sizeof(ts_type);
     int filetype_int = bins_data->filetype_int;
     int apply_znorm = bins_data->apply_znorm;
 
     FILE *ifile;
     ifile = fopen(bins_data->filename, "rb");
+    if (ifile == NULL) {
+        return NULL;
+    }
     fseek(ifile, start_index, SEEK_SET);
-
-    unsigned long skip_elements;
-    long records = bins_data->records;
 
     unsigned long position_count = start_number;
 
-    //set number of elements to skip for uniform sampling
-    if (index->settings->sample_type == 2) {
-        skip_elements = (((stop_number - start_number) / records) - 1);
-
-        // TODO skip_elements = (((stop_number - start_number) / records) - 1) * ts_length * sizeof(ts_type);
-    }
 
     ts_type *ts = bins_data->fftw.ts;
     fftw_workspace *fftw = &bins_data->fftw;
@@ -436,6 +455,7 @@ void *set_bins_worker_dft(void *transferdata) {
     free(ts_orig1);
     free(ts_orig2);
     fclose(ifile);
+    return NULL;
 }
 
 /*
@@ -491,6 +511,7 @@ void *order_divide_worker(void *transferdata) {
     if (n_segments == 0) {
         fprintf(stderr, "warning: SFA has zero segments.\n");
     }
+    return NULL;
 }
 
 
