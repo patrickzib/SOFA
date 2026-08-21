@@ -163,9 +163,14 @@ enum response pca_fit(
     }
     qsort(ranked, dim, sizeof(double) * 2, pca_compare_variance);
 
-    fprintf(stderr, ">>> SPARTAN: PCA Eigenvalues Sorted:\n");
-    for (int i = 0; i < components; ++i) {
+    fprintf(stderr, ">>> SPARTAN: PCA eigenvalue ranking (top %d/%d):\n",
+            components < 8 ? components : 8, components);
+    const int print_components = components < 8 ? components : 8;
+    for (int i = 0; i < print_components; ++i) {
         fprintf(stderr, "%d, (%.4f) ", (int) ranked[i * 2], ranked[i * 2 + 1]);
+    }
+    if (print_components < components) {
+        fprintf(stderr, "... (+%d more)", components - print_components);
     }
     fprintf(stderr, "\n");
 

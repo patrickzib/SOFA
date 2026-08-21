@@ -337,10 +337,16 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     qsort(var_coeff_index, n_coefficients / 2, sizeof(var_coeff_index[0]), compare_var);
 
-    fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
-    for (int i = 0; i < n_coefficients / 2; ++i) {
+    const int candidate_complex = n_coefficients / 2;
+    const int print_candidates = candidate_complex < 8 ? candidate_complex : 8;
+    fprintf(stderr, ">>> SFA: variance ranking (top %d/%d):\n",
+            print_candidates, candidate_complex);
+    for (int i = 0; i < print_candidates; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index,
                 var_coeff_index[i].variance);
+    }
+    if (print_candidates < candidate_complex) {
+        fprintf(stderr, "... (+%d more)", candidate_complex - print_candidates);
     }
     fprintf(stderr, "\n");
 
