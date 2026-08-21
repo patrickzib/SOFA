@@ -348,13 +348,52 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
-    // sorting needed?
-    qsort(index->coefficients, n_segments / 2, sizeof(int), compare_int);
-    fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
-    for (int i = 0; i < n_segments / 2; ++i) {
+    /*
+     * iSAX uses all transformed dimensions as its bound, so retain the
+     * historical coefficient-index order there.  Trie, however, keeps extra
+     * dimensions for MBRs/splitting and uses only a prefix for record bounds.
+     * Put the strongest coefficients at the front of that prefix; otherwise
+     * truncating the numerically sorted list silently discards the variance
+     * ranking.
+     */
+    const int selected_complex = n_segments / 2;
+    const int record_complex =
+            (index->settings->index_type == MESSI_INDEX_TRIE &&
+             index->settings->trie_bound_dimensions > 0)
+                ? index->settings->trie_bound_dimensions / 2
+                : selected_complex;
+
+    if (index->settings->index_type != MESSI_INDEX_TRIE) {
+        qsort(index->coefficients, selected_complex, sizeof(int), compare_int);
+    } else {
+        /* The ranking array is already descending by variance.  The first
+         * record_complex entries become the trie record-bound prefix and the
+         * remaining selected entries are retained for MBR dimensions. */
+        int *ordered = calloc((size_t) selected_complex, sizeof(*ordered));
+        if (ordered == NULL) {
+            return NULL;
+        }
+        for (int i = 0; i < selected_complex; ++i) {
+            ordered[i] = var_coeff_index[i].coeff_index;
+        }
+        memcpy(index->coefficients, ordered,
+               sizeof(*ordered) * (size_t) selected_complex);
+        free(ordered);
+    }
+
+    fprintf(stderr, ">>> SFA: Coefficients Used: ");
+    for (int i = 0; i < selected_complex; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
+
+    if (index->settings->index_type == MESSI_INDEX_TRIE) {
+        fprintf(stderr, ">>> SFA: Trie record-bound coeffs: ");
+        for (int i = 0; i < record_complex && i < selected_complex; ++i) {
+            fprintf(stderr, "%d, ", index->coefficients[i]);
+        }
+        fprintf(stderr, "\n");
+    }
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     for (int k = 0; k < n_segments; ++k) {
