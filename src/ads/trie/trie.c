@@ -179,7 +179,7 @@ static unsigned long long trie_monotonic_microseconds(void) {
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
                                    const trie_query_stats *stats, float distance,
                                    unsigned long long cumulative_microseconds) {
-    printf("%3d: %8lu %13lu %20.3f %12.3f %12llu\n",
+    fprintf(stderr, "%3d: %8lu %13lu %20.3f %12.3f %12llu\n",
            query_index, trie->node_count, stats->checked_nodes,
            stats->approximate_distance, distance, cumulative_microseconds);
 }

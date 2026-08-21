@@ -1298,7 +1298,7 @@ int main(int argc, char **argv) {
                 snprintf(wall_time, sizeof(wall_time), "%.3f ms", 1000.0 * query_wall_seconds);
             else
                 snprintf(wall_time, sizeof(wall_time), "%.3f s", query_wall_seconds);
-            printf("=== Query summary ===\n"
+            fprintf(stderr, "=== Query summary ===\n"
                    "  queries          : %d\n"
                    "  wall time        : %s (%.3f ms/query)\n"
                    "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n"
@@ -1309,7 +1309,7 @@ int main(int argc, char **argv) {
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
             if (profile_query_phases) {
-                printf("  phase profile (accumulated worker ms/query):\n"
+                fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"
                        "    node MBR bounds  : %.3f\n"
                        "    record bounds    : %.3f\n"
                        "    exact distances  : %.3f\n",
@@ -1317,7 +1317,7 @@ int main(int argc, char **argv) {
                        total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
                        total_real_dist_calc_time_all / (1000.0 * queries_size));
                 if (index_type == MESSI_INDEX_TRIE) {
-                    printf("    frontier traversal: %.3f\n"
+                    fprintf(stderr, "    frontier traversal: %.3f\n"
                            "    queue locks/pops : %.3f\n"
                            "    candidate heap   : %.3f\n"
                            "    synchronization/wait: %.3f\n",
@@ -1326,7 +1326,7 @@ int main(int argc, char **argv) {
                            total_trie_heap_time_all / (1000.0 * queries_size),
                            total_trie_sync_time_all / (1000.0 * queries_size));
                 } else {
-                    printf("    traversal/queues : %.3f\n",
+                    fprintf(stderr, "    traversal/queues : %.3f\n",
                            total_tree_pass_time_all / (1000.0 * queries_size));
                 }
             }
@@ -1393,7 +1393,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        printf("\n");
+        fprintf(stderr, "\n");
 
     }
 
