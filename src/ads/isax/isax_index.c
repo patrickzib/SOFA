@@ -2778,7 +2778,27 @@ void clear_wedges(isax_index *index, isax_node *node) {
 	}
 }
 
-void print_settings(isax_index_settings *settings) {
+static const char *format_compact_count(unsigned long long value, char buffer[32]) {
+    const char *suffix = NULL;
+    double scaled = (double) value;
+
+    if (value >= 1000000000ULL) {
+        scaled /= 1000000000.0;
+        suffix = "G";
+    } else if (value >= 1000000ULL) {
+        scaled /= 1000000.0;
+        suffix = "M";
+    } else if (value >= 1000ULL) {
+        scaled /= 1000.0;
+        suffix = "K";
+    }
+
+    if (suffix == NULL) snprintf(buffer, 32, "%llu", value);
+    else snprintf(buffer, 32, "%.3g %s", scaled, suffix);
+    return buffer;
+}
+
+void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch) {
     const char *split_name = "informed";
     const char *layout = settings->index_type == MESSI_INDEX_TRIE
                              ? "symbolic trie (8-way fanout)"
@@ -2814,15 +2834,36 @@ void print_settings(isax_index_settings *settings) {
     if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
         fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
                 settings->trie_bound_dimensions, settings->n_segments);
-        fprintf(stderr, "  trie queues   : %d shared leaf-work queues\n", N_PQUEUE);
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
-    fprintf(stderr, "  leaf capacity : %d (minimum %d)\n",
-            settings->max_leaf_size, settings->min_leaf_size);
+    char max_leaf_size[32], min_leaf_size[32], sample_size[32];
+    fprintf(stderr, "  leaf capacity : %s (minimum %s)\n",
+            format_compact_count((unsigned long long) settings->max_leaf_size, max_leaf_size),
+            format_compact_count((unsigned long long) settings->min_leaf_size, min_leaf_size));
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  split policy  : symbolic entropy × variance\n");
+        fprintf(stderr, "  root split    : sampled symbolic partition\n");
     } else {
         fprintf(stderr, "  split policy  : %s\n", split_name);
+        fprintf(stderr, "  root split    : %s\n",
+                settings->dynamic_root_split_variance && settings->function_type != 3
+                    ? "variance-driven cardinalities"
+                    : "uniform cardinalities");
+    }
+    char worker_count[32], queue_count[32];
+    if (settings->index_type == MESSI_INDEX_TRIE) {
+        if (trie_query_batch) {
+            fprintf(stderr, "  query parallel: batch queries across %s workers\n",
+                    format_compact_count((unsigned long long) query_workers, worker_count));
+        } else {
+            fprintf(stderr, "  query parallel: per-query leaf work (%s workers, %s queues)\n",
+                    format_compact_count((unsigned long long) query_workers, worker_count),
+                    format_compact_count((unsigned long long) N_PQUEUE, queue_count));
+        }
+    } else {
+        fprintf(stderr, "  query parallel: hybrid priority queues (%s workers, %s queues)\n",
+                format_compact_count((unsigned long long) query_workers, worker_count),
+                format_compact_count((unsigned long long) N_PQUEUE, queue_count));
     }
     fprintf(stderr, "  SIMD          : %s\n",
 #if ADS_HAVE_AVX2
@@ -2857,8 +2898,9 @@ void print_settings(isax_index_settings *settings) {
     }
 
     if (binning != NULL) {
-        fprintf(stderr, "  binning       : %s; sampling: %s (%u records)\n",
-                binning, sampling != NULL ? sampling : "unspecified", settings->sample_size);
+        fprintf(stderr, "  binning       : %s; sampling: %s (%s records)\n",
+                binning, sampling != NULL ? sampling : "unspecified",
+                format_compact_count((unsigned long long) settings->sample_size, sample_size));
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds\n");

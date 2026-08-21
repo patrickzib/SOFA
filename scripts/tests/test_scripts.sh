@@ -92,6 +92,22 @@ if MESSI_LOG_ROOT="$TEMP_ROOT/logs" MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SC
 fi
 pass 'result replacement is bounded by the configured results root'
 
+touch "$TEMP_ROOT/astro.bin" "$TEMP_ROOT/astro_queries.bin"
+FAKE_MESSI="$TEMP_ROOT/fake_messi"
+printf '%s\n' '#!/usr/bin/env bash' \
+    'printf "%s\\n" "=== Query summary ===" >&2' \
+    'printf "%s\\n" "  wall time        : 3.090 s (30.900 ms/query)" >&2' \
+    'printf "%s\\n" "  lower bounds     : 24.35 M/query (24.35% of 100.00 M indexed series)" >&2' \
+    'printf "%s\\n" "  exact distances  : 567.00 K/query (0.57% of 100.00 M indexed series)" >&2' \
+    > "$FAKE_MESSI"
+chmod +x "$FAKE_MESSI"
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --data-root "$TEMP_ROOT" \
+    --binary "$FAKE_MESSI" --methods spartan-width 2>&1)
+assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-frequency ==='
+assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
+assert_contains "$OUTPUT" '24.35 M/query'
+pass 'runner prints a compact suite summary from query results'
+
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
 assert_contains "$OUTPUT" 'text-to-image_noise_01.bin'

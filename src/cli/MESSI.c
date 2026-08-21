@@ -735,7 +735,7 @@ int main(int argc, char **argv) {
         idx->settings->aggressive_check = aggressive_check;
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
-        print_settings(idx->settings);
+        print_settings(idx->settings, maxquerythread, trie_query_batch);
         // fprintf(stderr,"total_records: %ld\n", idx->total_records);
         // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
         // create_wedges(idx, NULL);
@@ -992,10 +992,10 @@ int main(int argc, char **argv) {
 
         if (!inmemory_flag) {
             idx = isax_index_init(index_settings);
-            print_settings(idx->settings);
+            print_settings(idx->settings, maxquerythread, trie_query_batch);
         } else {
             idx = isax_index_init_inmemory(index_settings);
-            print_settings(idx->settings);
+            print_settings(idx->settings, maxquerythread, trie_query_batch);
         }
 
 #ifdef CLUSTERED

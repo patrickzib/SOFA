@@ -73,12 +73,25 @@ print_command() {
     printf '%q ' "$@"
     printf '\n'
 }
+format_count() {
+    local value=$1
+    if (( value >= 1000000000 )); then
+        awk -v value="$value" 'BEGIN { printf "%.3g G", value / 1000000000 }'
+    elif (( value >= 1000000 )); then
+        awk -v value="$value" 'BEGIN { printf "%.3g M", value / 1000000 }'
+    elif (( value >= 1000 )); then
+        awk -v value="$value" 'BEGIN { printf "%.3g K", value / 1000 }'
+    else
+        printf '%s' "$value"
+    fi
+}
 
 # MESSI's legacy SIGINT handler is interactive and would otherwise prompt once
 # for every command in a suite.  Run MESSI with SIGINT ignored and let this
 # script own cancellation: one Ctrl-C terminates the active child and prevents
 # subsequent methods from starting.
 ACTIVE_MESSI_PID=
+RUN_OUTPUT_FILE=
 stop_active_messi() {
     trap - INT TERM
     if [[ -n ${ACTIVE_MESSI_PID:-} ]]; then
@@ -90,12 +103,20 @@ stop_active_messi() {
     exit 130
 }
 run_messi() {
+    local capture_dir fifo tee_pid status=0
+    capture_dir=$(mktemp -d "${TMPDIR:-/tmp}/messi-run.XXXXXX")
+    fifo=$capture_dir/output
+    mkfifo "$fifo"
+    tee "$RUN_OUTPUT_FILE" < "$fifo" &
+    tee_pid=$!
     # The wrapper execs MESSI, retaining SIGINT=ignore in the final process.
-    bash -c 'trap "" INT; exec "$@"' messi "$@" &
+    bash -c 'trap "" INT; exec "$@"' messi "$@" > "$fifo" 2>&1 &
     ACTIVE_MESSI_PID=$!
-    wait "$ACTIVE_MESSI_PID"
-    local status=$?
+    wait "$ACTIVE_MESSI_PID" || status=$?
     ACTIVE_MESSI_PID=
+    wait "$tee_pid" || true
+    rm -f -- "$fifo"
+    rmdir "$capture_dir"
     return "$status"
 }
 trap stop_active_messi INT TERM
@@ -273,6 +294,54 @@ if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)
 fi
 
+SUMMARY_ROWS=
+collect_run_summary() {
+    local method=$1 transcript=$2 fields method_name binning layout leaf_cap
+    fields=$(awk '
+        /^  wall time[[:space:]]*:/ { wall = $4 " " $5 }
+        /^  lower bounds[[:space:]]*:/ {
+            lower = $4 " " $5; lower_pct = $6; gsub(/[()]/, "", lower_pct)
+        }
+        /^  exact distances[[:space:]]*:/ {
+            exact = $4 " " $5; exact_pct = $6; gsub(/[()]/, "", exact_pct)
+        }
+        END {
+            if (wall != "" && lower != "" && exact != "")
+                print wall "\t" lower "\t" lower_pct "\t" exact "\t" exact_pct
+        }
+    ' "$transcript")
+    if [[ -z $fields ]]; then
+        printf 'warning: could not parse query summary for method=%s; omitting it from suite summary\n' "$method" >&2
+        return 0
+    fi
+
+    case "$method" in
+        sax) method_name=SAX; binning=depth ;;
+        sfa-depth) method_name=SFA; binning=depth ;;
+        sfa-width) method_name=SFA; binning=width ;;
+        pisa-depth) method_name=PISA; binning=depth ;;
+        pisa-width) method_name=PISA; binning=width ;;
+        spartan-depth) method_name=SPARTAN; binning=depth ;;
+        spartan-width) method_name=SPARTAN; binning=width ;;
+    esac
+    [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
+    leaf_cap=$(format_count "$LEAF_SIZE")
+    SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$fields"$'\n'
+}
+
+print_suite_summary() {
+    [[ -n $SUMMARY_ROWS ]] || return 0
+    printf '\n=== Benchmark summary: dataset=%s, profile=%s ===\n' "$DATASET_ID" "$PROFILE" >&2
+    printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
+        Layout Method Binning 'Leaf cap.' 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime >&2
+    printf '%s\n' '--------------------------------------------------------------------------------------------------------------' >&2
+    while IFS='|' read -r layout method binning leaf_cap wall lower lower_pct exact exact_pct; do
+        [[ -n $layout ]] || continue
+        printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
+            "$layout" "$method" "$binning" "$leaf_cap" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" >&2
+    done <<< "$SUMMARY_ROWS"
+}
+
 run_method() {
     local method=$1 function_type histogram_type=
     local -a args=("${COMMON_ARGS[@]}")
@@ -315,7 +384,11 @@ run_method() {
         [[ -x $MESSI_EXECUTABLE ]] || die "MESSI executable is not executable: $MESSI_EXECUTABLE"
         [[ -f $DATASET_PATH ]] || die "dataset file does not exist: $DATASET_PATH"
         [[ -f $QUERY_PATH ]] || die "query file does not exist: $QUERY_PATH"
+        RUN_OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/messi-summary.XXXXXX")
         run_messi "$MESSI_EXECUTABLE" "${args[@]}"
+        collect_run_summary "$method" "$RUN_OUTPUT_FILE"
+        rm -f -- "$RUN_OUTPUT_FILE"
+        RUN_OUTPUT_FILE=
     fi
 }
 
@@ -323,3 +396,6 @@ for method in "${METHOD_LIST[@]}"; do
     [[ -n $method ]] || die 'method list contains an empty value'
     run_method "$method"
 done
+if [[ $DRY_RUN == false ]]; then
+    print_suite_summary
+fi
