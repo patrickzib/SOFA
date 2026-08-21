@@ -60,6 +60,14 @@ float APPROXIMATE;
 void* LOGFILE;
 /* Shared priority-queue count used by iSAX and trie query scheduling. */
 extern int N_PQUEUE;
+/* Console-only query-row sampling.  CSV logging and aggregate statistics are
+ * unaffected.  MESSI.c initializes this to 10 unless overridden. */
+extern int query_report_interval;
+
+#define SHOULD_REPORT_QUERY(query_index, query_count) \
+    (query_report_interval > 0 && \
+     ((query_index) == 0 || (query_index) == (query_count) - 1 || \
+      (((query_index) + 1) % query_report_interval == 0)))
 
 #define INCREASE_BYTES_ACCESSED(new_bytes) \
 	    BYTES_ACCESSED += (unsigned long) new_bytes;

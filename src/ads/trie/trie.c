@@ -30,6 +30,7 @@ typedef struct symbolic_trie_node {
     int size;
     int capacity;
     int split_dimension;
+    unsigned char split_fanout;
     uint64_t used_dimensions;
     unsigned char leaf;
     unsigned char mbb_valid;
@@ -43,9 +44,15 @@ struct symbolic_trie_index {
     sax_type *word_arena;
     int dimensions;
     int bound_dimensions;
+    int fanout;
     unsigned long split_exhausted_leaves;
     unsigned long node_count;
 };
+
+static int trie_bucket(const sax_type *word, int dimension, int fanout) {
+    int bits = fanout == 2 ? 1 : fanout == 4 ? 2 : 3;
+    return word[dimension] >> (8 - bits);
+}
 
 /* A full entropy pass over every dimension of a very large root is
  * prohibitively expensive (64 complete scans at the current maximum word
@@ -153,6 +160,7 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
     node->parent = parent;
     node->used_dimensions = used_dimensions;
     node->split_dimension = -1;
+    node->split_fanout = 0;
     node->leaf = 1;
     return node;
 }
@@ -168,6 +176,33 @@ static unsigned long trie_node_count(const symbolic_trie_node *node) {
     unsigned long count = 1;
     for (int i = 0; i < 8; ++i) count += trie_node_count(node->children[i]);
     return count;
+}
+
+/* Compute split quality from the completed tree so parallel construction does
+ * not need shared diagnostic counters.  Child record counts are recovered
+ * from their subtrees because internal nodes release their leaf arrays. */
+static unsigned long trie_collect_split_diagnostics(const symbolic_trie_node *node,
+                                                    unsigned long *internal_nodes,
+                                                    unsigned long long *nonempty_children,
+                                                    double *largest_child_share) {
+    if (node == NULL) return 0;
+    if (node->leaf) return (unsigned long) node->size;
+
+    unsigned long total = 0, largest = 0;
+    int occupied = 0;
+    for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
+        unsigned long child_records = trie_collect_split_diagnostics(node->children[i], internal_nodes,
+                                                                       nonempty_children, largest_child_share);
+        total += child_records;
+        if (child_records != 0) {
+            ++occupied;
+            if (child_records > largest) largest = child_records;
+        }
+    }
+    ++*internal_nodes;
+    *nonempty_children += (unsigned long long) occupied;
+    if (total != 0) *largest_child_share += (double) largest / (double) total;
+    return total;
 }
 
 static unsigned long long trie_monotonic_microseconds(void) {
@@ -290,21 +325,21 @@ static int trie_leaf_append(symbolic_trie_node *node, sax_type *word, file_posit
 }
 
 static int trie_choose_split(const symbolic_trie_node *node, int dimensions,
-                             const double *variances) {
+                             int fanout, const double *variances) {
     int best = -1;
     double best_score = -1.0;
     for (int d = 0; d < dimensions; ++d) {
         if (node->used_dimensions & (UINT64_C(1) << d)) continue;
         int counts[8] = {0};
-        for (int i = 0; i < node->size; ++i) ++counts[node->words[i][d] >> 5];
+        for (int i = 0; i < node->size; ++i) ++counts[trie_bucket(node->words[i], d, fanout)];
         double entropy = 0.0;
         int occupied = 0;
-        for (int b = 0; b < 8; ++b) if (counts[b] != 0) {
+        for (int b = 0; b < fanout; ++b) if (counts[b] != 0) {
             double p = (double) counts[b] / node->size;
             entropy -= p * log(p); ++occupied;
         }
         if (occupied < 2) continue;
-        double score = entropy / log(8.0);
+        double score = entropy / log((double) fanout);
         if (variances != NULL) score *= variances[d];
         if (score > best_score) { best_score = score; best = d; }
     }
@@ -312,19 +347,20 @@ static int trie_choose_split(const symbolic_trie_node *node, int dimensions,
 }
 
 static int trie_split_leaf(struct symbolic_trie_index *trie, isax_index *index, symbolic_trie_node *node) {
-    int dimension = trie_choose_split(node, trie->dimensions, index->settings->symbolic_variances);
+    int dimension = trie_choose_split(node, trie->dimensions, trie->fanout,
+                                      index->settings->symbolic_variances);
     if (dimension < 0) { node->split_exhausted = 1; ++trie->split_exhausted_leaves; return 0; }
     uint64_t used = node->used_dimensions | (UINT64_C(1) << dimension);
     symbolic_trie_node *children[8] = {0};
     for (int i = 0; i < node->size; ++i) {
-        int bucket = node->words[i][dimension] >> 5;
+        int bucket = trie_bucket(node->words[i], dimension, trie->fanout);
         if (children[bucket] == NULL && (children[bucket] = trie_node_create(trie->dimensions, node, used)) == NULL) return 0;
         if (!trie_leaf_append(children[bucket], node->words[i], node->positions[i], trie->dimensions)) return 0;
         node->words[i] = NULL;
     }
     free(node->words); free(node->positions);
     node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
-    node->leaf = 0; node->split_dimension = dimension;
+    node->leaf = 0; node->split_dimension = dimension; node->split_fanout = trie->fanout;
     memcpy(node->children, children, sizeof(children));
     return 1;
 }
@@ -340,7 +376,8 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
                                  ? node->size : TRIE_ROOT_SPLIT_SAMPLE_SIZE;
     const int dimensions = trie->dimensions;
     const int workers = maxquerythread > 0 ? maxquerythread : 1;
-    unsigned long *histograms = calloc((size_t) workers * dimensions * 8,
+    const int fanout = trie->fanout;
+    unsigned long *histograms = calloc((size_t) workers * dimensions * fanout,
                                        sizeof(*histograms));
     if (histograms == NULL) return -1;
 
@@ -353,14 +390,15 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
 #ifdef _OPENMP
         worker = omp_get_thread_num();
 #endif
-        unsigned long *local = histograms + (size_t) worker * dimensions * 8;
+        unsigned long *local = histograms + (size_t) worker * dimensions * fanout;
 #ifdef _OPENMP
 #pragma omp for schedule(static)
 #endif
         for (long sample = 0; sample < sample_size; ++sample) {
             long record = (long) (((unsigned long long) sample * node->size) / sample_size);
             const sax_type *word = node->words[record];
-            for (int d = 0; d < dimensions; ++d) ++local[d * 8 + (word[d] >> 5)];
+            for (int d = 0; d < dimensions; ++d)
+                ++local[d * fanout + trie_bucket(word, d, fanout)];
         }
     }
 
@@ -370,18 +408,18 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         if (node->used_dimensions & (UINT64_C(1) << d)) continue;
         unsigned long counts[8] = {0};
         for (int worker = 0; worker < workers; ++worker) {
-            const unsigned long *local = histograms + (size_t) worker * dimensions * 8 + d * 8;
-            for (int bucket = 0; bucket < 8; ++bucket) counts[bucket] += local[bucket];
+            const unsigned long *local = histograms + (size_t) worker * dimensions * fanout + d * fanout;
+            for (int bucket = 0; bucket < fanout; ++bucket) counts[bucket] += local[bucket];
         }
         double entropy = 0.0;
         int occupied = 0;
-        for (int bucket = 0; bucket < 8; ++bucket) if (counts[bucket] != 0) {
+        for (int bucket = 0; bucket < fanout; ++bucket) if (counts[bucket] != 0) {
             double p = (double) counts[bucket] / sample_size;
             entropy -= p * log(p);
             ++occupied;
         }
         if (occupied < 2) continue;
-        double score = entropy / log(8.0);
+        double score = entropy / log((double) fanout);
         if (index->settings->symbolic_variances != NULL) score *= index->settings->symbolic_variances[d];
         if (score > best_score) { best_score = score; dimension = d; }
     }
@@ -393,15 +431,15 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         return 0;
     }
 
-    unsigned long *counts = calloc((size_t) workers * 8, sizeof(*counts));
-    unsigned long *offsets = calloc((size_t) workers * 8, sizeof(*offsets));
-    sax_type *local_min = malloc((size_t) workers * 8 * dimensions);
-    sax_type *local_max = calloc((size_t) workers * 8 * dimensions, sizeof(*local_max));
+    unsigned long *counts = calloc((size_t) workers * fanout, sizeof(*counts));
+    unsigned long *offsets = calloc((size_t) workers * fanout, sizeof(*offsets));
+    sax_type *local_min = malloc((size_t) workers * fanout * dimensions);
+    sax_type *local_max = calloc((size_t) workers * fanout * dimensions, sizeof(*local_max));
     if (counts == NULL || offsets == NULL || local_min == NULL || local_max == NULL) {
         free(counts); free(offsets); free(local_min); free(local_max);
         return -1;
     }
-    memset(local_min, UCHAR_MAX, (size_t) workers * 8 * dimensions);
+    memset(local_min, UCHAR_MAX, (size_t) workers * fanout * dimensions);
 
 #ifdef _OPENMP
 #pragma omp parallel num_threads(workers)
@@ -411,31 +449,32 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
 #ifdef _OPENMP
         worker = omp_get_thread_num();
 #endif
-        unsigned long *local = counts + (size_t) worker * 8;
+        unsigned long *local = counts + (size_t) worker * fanout;
 #ifdef _OPENMP
 #pragma omp for schedule(static)
 #endif
-        for (int i = 0; i < node->size; ++i) ++local[node->words[i][dimension] >> 5];
+        for (int i = 0; i < node->size; ++i)
+            ++local[trie_bucket(node->words[i], dimension, fanout)];
     }
 
     unsigned long bucket_sizes[8] = {0};
-    for (int bucket = 0; bucket < 8; ++bucket) {
+    for (int bucket = 0; bucket < fanout; ++bucket) {
         unsigned long offset = 0;
         for (int worker = 0; worker < workers; ++worker) {
-            offsets[(size_t) worker * 8 + bucket] = offset;
-            offset += counts[(size_t) worker * 8 + bucket];
+            offsets[(size_t) worker * fanout + bucket] = offset;
+            offset += counts[(size_t) worker * fanout + bucket];
         }
         bucket_sizes[bucket] = offset;
     }
 
     symbolic_trie_node *children[8] = {0};
     const uint64_t used = node->used_dimensions | (UINT64_C(1) << dimension);
-    for (int bucket = 0; bucket < 8; ++bucket) if (bucket_sizes[bucket] != 0) {
+    for (int bucket = 0; bucket < fanout; ++bucket) if (bucket_sizes[bucket] != 0) {
         children[bucket] = trie_node_create(dimensions, node, used);
         if (children[bucket] == NULL ||
             (children[bucket]->words = malloc(sizeof(*children[bucket]->words) * bucket_sizes[bucket])) == NULL ||
             (children[bucket]->positions = malloc(sizeof(*children[bucket]->positions) * bucket_sizes[bucket])) == NULL) {
-            for (int b = 0; b < 8; ++b) if (children[b] != NULL) {
+            for (int b = 0; b < fanout; ++b) if (children[b] != NULL) {
                 free(children[b]->words); free(children[b]->positions);
                 free(children[b]->min_word); free(children[b]->max_word); free(children[b]);
             }
@@ -453,15 +492,15 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
 #ifdef _OPENMP
         worker = omp_get_thread_num();
 #endif
-        unsigned long *local_offsets = offsets + (size_t) worker * 8;
-        sax_type *min_word = local_min + (size_t) worker * 8 * dimensions;
-        sax_type *max_word = local_max + (size_t) worker * 8 * dimensions;
+        unsigned long *local_offsets = offsets + (size_t) worker * fanout;
+        sax_type *min_word = local_min + (size_t) worker * fanout * dimensions;
+        sax_type *max_word = local_max + (size_t) worker * fanout * dimensions;
 #ifdef _OPENMP
 #pragma omp for schedule(static)
 #endif
         for (int i = 0; i < node->size; ++i) {
             sax_type *word = node->words[i];
-            int bucket = word[dimension] >> 5;
+            int bucket = trie_bucket(word, dimension, fanout);
             unsigned long position = local_offsets[bucket]++;
             children[bucket]->words[position] = word;
             children[bucket]->positions[position] = node->positions[i];
@@ -474,12 +513,12 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         }
     }
 
-    for (int bucket = 0; bucket < 8; ++bucket) if (children[bucket] != NULL) {
+    for (int bucket = 0; bucket < fanout; ++bucket) if (children[bucket] != NULL) {
         for (int d = 0; d < dimensions; ++d) {
             sax_type min = UCHAR_MAX, max = 0;
             for (int worker = 0; worker < workers; ++worker) {
-                const sax_type local_low = local_min[((size_t) worker * 8 + bucket) * dimensions + d];
-                const sax_type local_high = local_max[((size_t) worker * 8 + bucket) * dimensions + d];
+                const sax_type local_low = local_min[((size_t) worker * fanout + bucket) * dimensions + d];
+                const sax_type local_high = local_max[((size_t) worker * fanout + bucket) * dimensions + d];
                 if (local_low < min) min = local_low;
                 if (local_high > max) max = local_high;
             }
@@ -491,7 +530,7 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
     free(counts); free(offsets); free(local_min); free(local_max);
     free(node->words); free(node->positions);
     node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
-    node->leaf = 0; node->split_dimension = dimension;
+    node->leaf = 0; node->split_dimension = dimension; node->split_fanout = fanout;
     memcpy(node->children, children, sizeof(children));
     const double partition_end = messi_monotonic_seconds();
     fprintf(stderr,
@@ -526,7 +565,7 @@ static int trie_insert(struct symbolic_trie_index *trie, isax_index *index, sax_
     symbolic_trie_node *node = trie->root;
     while (!node->leaf) {
         trie_node_update_mbb(node, word, trie->dimensions);
-        int bucket = word[node->split_dimension] >> 5;
+        int bucket = trie_bucket(word, node->split_dimension, node->split_fanout);
         if (node->children[bucket] == NULL) {
             node->children[bucket] = trie_node_create(trie->dimensions, node, node->used_dimensions);
             if (node->children[bucket] == NULL) return 0;
@@ -544,7 +583,7 @@ static void trie_build_subtree(struct symbolic_trie_index *trie, isax_index *ind
                                symbolic_trie_node *node, int depth) {
     if (!node->leaf || node->size <= index->settings->max_leaf_size || node->split_exhausted) return;
     if (!trie_split_leaf(trie, index, node)) return;
-    for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
+    for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
 #ifdef _OPENMP
 #pragma omp task firstprivate(i) if (depth < 6)
 #endif
@@ -588,6 +627,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         free(trie); free(rawfile); rawfile = NULL; return FAILURE;
     }
     trie->dimensions = index->settings->n_segments;
+    trie->fanout = index->settings->trie_fanout;
     trie->bound_dimensions = index->settings->trie_bound_dimensions > 0
                                  ? index->settings->trie_bound_dimensions
                                  : trie->dimensions;
@@ -656,7 +696,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         if (trie->root->leaf) {
             trie_build_subtree(trie, index, trie->root, 0);
         } else {
-            for (int i = 0; i < 8; ++i) if (trie->root->children[i] != NULL) {
+            for (int i = 0; i < trie->root->split_fanout; ++i) if (trie->root->children[i] != NULL) {
 #ifdef _OPENMP
 #pragma omp task firstprivate(i)
 #endif
@@ -665,6 +705,11 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         }
     }
     trie->node_count = trie_node_count(trie->root);
+    unsigned long internal_nodes = 0;
+    unsigned long long nonempty_children = 0;
+    double largest_child_share = 0.0;
+    trie_collect_split_diagnostics(trie->root, &internal_nodes, &nonempty_children,
+                                   &largest_child_share);
     double split_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
@@ -674,6 +719,16 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             read_end - build_start, transform_end - read_end,
             root_mbb_end - transform_end, split_end - root_mbb_end,
             split_end - build_start);
+    if (internal_nodes != 0) {
+        fprintf(stderr,
+                ">>> trie split diagnostics: internal=%lu fanout=%d avg_nonempty=%.2f "
+                "occupancy=%.1f%% largest_child=%.1f%%\n",
+                internal_nodes, trie->fanout,
+                (double) nonempty_children / (double) internal_nodes,
+                100.0 * (double) nonempty_children /
+                    ((double) internal_nodes * (double) trie->fanout),
+                100.0 * largest_child_share / (double) internal_nodes);
+    }
     return SUCCESS;
 }
 
@@ -751,7 +806,7 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
         trie_child_bound ordered[8];
         int n = 0;
-        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
+        for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
             ordered[n].node = node->children[i];
             ordered[n++].bound = trie_lower_bound(index->trie, index, transform,
                 node->children[i]->min_word, node->children[i]->max_word,
@@ -773,11 +828,11 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
                                                  const ts_type *transform, trie_query_stats *stats) {
     const symbolic_trie_node *node = index->trie->root;
     while (!node->leaf) {
-        int bucket = query_word[node->split_dimension] >> 5;
+        int bucket = trie_bucket(query_word, node->split_dimension, node->split_fanout);
         const symbolic_trie_node *next = node->children[bucket];
         if (next == NULL) {
             float best_bound = FLT_MAX;
-            for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
+            for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
                 float bound = trie_lower_bound(index->trie, index, transform,
                                                 node->children[i]->min_word,
                                                 node->children[i]->max_word,
@@ -804,7 +859,7 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     if (trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                          index->trie->dimensions, bsf, NULL) >= bsf) return;
     if (!node->leaf) {
-        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) {
+        for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
 #ifdef _OPENMP
 #pragma omp task firstprivate(i) if (depth < 6)
 #endif
@@ -906,7 +961,7 @@ static symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int
         symbolic_trie_node *node = frontier[current];
         if (node->leaf) { ++current; continue; }
         int children = 0;
-        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL) ++children;
+        for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) ++children;
         if (children == 0) { ++current; continue; }
         if (*count - 1 + children > capacity) {
             int new_capacity = capacity * 2;
@@ -916,7 +971,7 @@ static symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int
             frontier = expanded; capacity = new_capacity;
         }
         frontier[current] = frontier[--*count];
-        for (int i = 0; i < 8; ++i) if (node->children[i] != NULL)
+        for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL)
             frontier[(*count)++] = node->children[i];
     }
     return frontier;
@@ -938,7 +993,7 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
             __atomic_store_n(failed, 1, __ATOMIC_RELAXED);
         return;
     }
-    for (int i = 0; i < 8; ++i) if (node->children[i] != NULL)
+    for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL)
         trie_parallel_collect_leaves(index, node->children[i], transform, bsf, skip_leaf,
                                      queues, queue_count, next_queue, stats, failed);
 }
@@ -1134,8 +1189,10 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
         cumulative_microseconds += stats.total_microseconds;
         trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
-        if (i == 0) PRINT_STATS_HEADER();
-        trie_print_query_stats(i, index->trie, &stats, distance, cumulative_microseconds);
+        if (SHOULD_REPORT_QUERY(i, query_count)) {
+            PRINT_STATS_HEADER();
+            trie_print_query_stats(i, index->trie, &stats, distance, cumulative_microseconds);
+        }
     }
     fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
     fftw_workspace_destroy(&fftw); return SUCCESS;
@@ -1223,14 +1280,16 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     if (!failed) {
-        if (query_count > 0) PRINT_STATS_HEADER();
         unsigned long long cumulative_microseconds = 0;
         for (int i = 0; i < query_count; ++i) {
             cumulative_microseconds += stats[i].total_microseconds;
             trie_save_query_stats(index->trie, &stats[i], distances[i], cumulative_microseconds);
-            trie_print_query_stats(i, index->trie, &stats[i], distances[i], cumulative_microseconds);
+            if (SHOULD_REPORT_QUERY(i, query_count)) {
+                PRINT_STATS_HEADER();
+                trie_print_query_stats(i, index->trie, &stats[i], distances[i], cumulative_microseconds);
+            }
         }
-        fflush(stdout);
+        fflush(stderr);
     }
     free(queries); free(distances); free(stats); return failed ? FAILURE : SUCCESS;
 }

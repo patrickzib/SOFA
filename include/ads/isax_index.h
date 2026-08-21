@@ -87,6 +87,9 @@ typedef struct {
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
+    /* Trie-only symbolic partition fanout.  The implementation accepts a
+     * power-of-two prefix partition of 2, 4, or 8 buckets. */
+    int trie_fanout;
     double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,

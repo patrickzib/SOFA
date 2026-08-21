@@ -60,6 +60,7 @@
 #define FILENAME_LENGTH 256
 
 isax_index *idx;
+int query_report_interval = 10;
 
 void INThandler(int);
 
@@ -297,6 +298,8 @@ int main(int argc, char **argv) {
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
+    static int trie_fanout = 8;
+    static int query_report_interval_requested = 10;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -364,6 +367,8 @@ int main(int argc, char **argv) {
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
+                {"trie-fanout", required_argument, 0, 1005},
+                {"query-report-interval", required_argument, 0, 1006},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -390,6 +395,12 @@ int main(int argc, char **argv) {
                 break;
             case 1004:
                 trie_mbr_dimensions = atoi(optarg);
+                break;
+            case 1005:
+                trie_fanout = atoi(optarg);
+                break;
+            case 1006:
+                query_report_interval_requested = atoi(optarg);
                 break;
             case 'j':
                 serial_scan = 1;
@@ -597,6 +608,8 @@ int main(int argc, char **argv) {
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
                 \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
+                \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
+                \t--query-report-interval N\tPrint first, every Nth completed, and final query row (0=none; default: 10)\n\
                 \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
@@ -657,6 +670,11 @@ int main(int argc, char **argv) {
     }
     INIT_STATS();
     profile_query_phases = profile_query_phases_requested;
+    if (query_report_interval_requested < 0) {
+        fprintf(stderr, "error: query report interval must be zero or positive.\n");
+        return EXIT_FAILURE;
+    }
+    query_report_interval = query_report_interval_requested;
 
     if (index_type == MESSI_INDEX_TRIE) {
         if (function_type < 3 || function_type > 6) {
@@ -679,6 +697,13 @@ int main(int argc, char **argv) {
                     n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
             return EXIT_FAILURE;
         }
+        if (trie_fanout != 2 && trie_fanout != 4 && trie_fanout != 8) {
+            fprintf(stderr, "error: trie fanout must be 2, 4, or 8.\n");
+            return EXIT_FAILURE;
+        }
+    } else if (trie_fanout != 8) {
+        fprintf(stderr, "error: --trie-fanout requires --index-type trie.\n");
+        return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
         fprintf(stderr, "error: uniform root split must be between 1 and sax-cardinality (%d).\n",
@@ -1002,6 +1027,7 @@ int main(int argc, char **argv) {
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
+        index_settings->trie_fanout = trie_fanout;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 

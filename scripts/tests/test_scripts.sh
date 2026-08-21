@@ -33,7 +33,15 @@ assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 32'
+assert_contains "$OUTPUT" '--trie-fanout 8'
 pass 'trie standard profile excludes SAX from its method matrix'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie --trie-fanout 4 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-fanout 4'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie --trie-fanout 3 --dry-run >/dev/null 2>&1; then
+    fail 'trie benchmark accepted an invalid fanout'
+fi
+pass 'trie fanout is forwarded and validated'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'variance root split should apply to each learned iSAX method'
@@ -47,6 +55,13 @@ pass 'trie benchmark rejects SAX explicitly'
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --queue-number 36 --index-type trie --trie-query-parallel --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-query-parallel'
 pass 'trie query-parallel option is forwarded'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--query-report-interval 10'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-interval -1 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted a negative query report interval'
+fi
+pass 'query report interval is forwarded and validated'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'

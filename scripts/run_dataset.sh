@@ -24,11 +24,13 @@ Options:
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
+  --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
                             (the iSAX runner default)
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
+  --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
@@ -51,6 +53,7 @@ USAGE
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 2; }
 is_positive_integer() { [[ $1 =~ ^[1-9][0-9]*$ ]]; }
+is_nonnegative_integer() { [[ $1 =~ ^[0-9]+$ ]]; }
 normalize_count() {
     local value=${1,,} number suffix multiplier=1
     if [[ $value =~ ^([1-9][0-9]*)(k|m|mio|g)?$ ]]; then
@@ -149,7 +152,9 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_FANOUT=8
 PROFILE_QUERY_PHASES=false
+QUERY_REPORT_INTERVAL=
 # Resolved after parsing because the default depends on --index-type.
 DYNAMIC_ROOT_SPLIT_VARIANCE=
 TIGHT_BOUND=true
@@ -181,6 +186,8 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
+        --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
@@ -205,6 +212,7 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
+[[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
@@ -215,6 +223,7 @@ fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
@@ -231,6 +240,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
     (( TRIE_MBR_DIMS <= TS_SIZE / 2 )) || TRIE_MBR_DIMS=$((TS_SIZE / 2))
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'
 fi
 
 if [[ $PROFILE == knn ]]; then
@@ -296,6 +306,7 @@ COMMON_ARGS+=(
 )
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-fanout "$TRIE_FANOUT")
 if [[ $TRIE_QUERY_PARALLEL == true ]]; then
     COMMON_ARGS+=(--trie-query-parallel)
 fi
@@ -305,17 +316,32 @@ fi
 if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)
 fi
+if [[ -n $QUERY_REPORT_INTERVAL ]]; then
+    COMMON_ARGS+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
+fi
 
 SUMMARY_ROWS=
 collect_run_summary() {
-    local method=$1 transcript=$2 fields method_name binning layout leaf_cap wall lower lower_pct exact exact_pct
+    local method=$1 transcript=$2 fields method_name binning layout leaf_cap fanout wall lower lower_pct exact exact_pct
     fields=$(awk '
         /^  wall time[[:space:]]*:/ { wall = $4 " " $5 }
         /^  lower bounds[[:space:]]*:/ {
-            lower = $4 " " $5; lower_pct = $6; gsub(/[()]/, "", lower_pct)
+            line = $0; sub(/^.*:[[:space:]]*/, "", line)
+            marker = index(line, " (")
+            if (marker != 0) {
+                lower = substr(line, 1, marker - 1)
+                lower_pct = substr(line, marker + 2)
+                sub(/[[:space:]].*$/, "", lower_pct)
+            }
         }
         /^  exact distances[[:space:]]*:/ {
-            exact = $4 " " $5; exact_pct = $6; gsub(/[()]/, "", exact_pct)
+            line = $0; sub(/^.*:[[:space:]]*/, "", line)
+            marker = index(line, " (")
+            if (marker != 0) {
+                exact = substr(line, 1, marker - 1)
+                exact_pct = substr(line, marker + 2)
+                sub(/[[:space:]].*$/, "", exact_pct)
+            }
         }
         END {
             if (wall != "" && lower != "" && exact != "")
@@ -339,19 +365,20 @@ collect_run_summary() {
     esac
     [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
     leaf_cap=$(format_count "$LEAF_SIZE")
-    SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$lower|$lower_pct|$exact|$exact_pct|$wall"$'\n'
+    [[ $INDEX_TYPE == trie ]] && fanout="${TRIE_FANOUT}-way" || fanout='-'
+    SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$fanout|$lower|$lower_pct|$exact|$exact_pct|$wall"$'\n'
 }
 
 print_suite_summary() {
     [[ -n $SUMMARY_ROWS ]] || return 0
     printf '\n=== Benchmark summary: dataset=%s, profile=%s ===\n' "$DATASET_ID" "$PROFILE" >&2
-    printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
-        Layout Method Binning 'Leaf cap.' 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime >&2
-    printf '%s\n' '--------------------------------------------------------------------------------------------------------------' >&2
-    while IFS='|' read -r layout method binning leaf_cap lower lower_pct exact exact_pct wall; do
+    printf '%-6s  %-8s  %-5s  %8s  %6s  %18s  %8s  %18s  %8s  %11s\n' \
+        Layout Method Binning 'Leaf cap.' Fanout 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime >&2
+    printf '%s\n' '------------------------------------------------------------------------------------------------------------------------' >&2
+    while IFS='|' read -r layout method binning leaf_cap fanout lower lower_pct exact exact_pct wall; do
         [[ -n $layout ]] || continue
-        printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
-            "$layout" "$method" "$binning" "$leaf_cap" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" >&2
+        printf '%-6s  %-8s  %-5s  %8s  %6s  %18s  %8s  %18s  %8s  %11s\n' \
+            "$layout" "$method" "$binning" "$leaf_cap" "$fanout" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" >&2
     done <<< "$SUMMARY_ROWS"
 }
 

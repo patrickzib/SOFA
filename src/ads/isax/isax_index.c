@@ -241,6 +241,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->node_split_criterion = 1;
     settings->index_type = MESSI_INDEX_ISAX;
     settings->trie_bound_dimensions = 0;
+    settings->trie_fanout = 8;
     settings->symbolic_variances = NULL;
     settings->dynamic_root_split_variance = 0;
     settings->root_bit_cardinalities = NULL;
@@ -2800,9 +2801,13 @@ static const char *format_compact_count(unsigned long long value, char buffer[32
 
 void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch) {
     const char *split_name = "informed";
-    const char *layout = settings->index_type == MESSI_INDEX_TRIE
-                             ? "symbolic trie (8-way fanout)"
-                             : "iSAX";
+    char trie_layout[64];
+    const char *layout = "iSAX";
+    if (settings->index_type == MESSI_INDEX_TRIE) {
+        snprintf(trie_layout, sizeof(trie_layout), "symbolic trie (%d-way fanout)",
+                 settings->trie_fanout);
+        layout = trie_layout;
+    }
 	const char *binning = NULL;
     const char *sampling = NULL;
 	switch (settings->node_split_criterion) {

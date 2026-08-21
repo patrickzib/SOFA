@@ -94,9 +94,9 @@ void isax_query_binary_file(const char *ifilename, int q_num, isax_index *index,
         query_result result = search_function(ts, paa, index, minimum_distance, min_checked_leaves);
         //COUNT_OUTPUT2_TIME_END
         COUNT_TOTAL_TIME_END
-        PRINT_STATS(result.distance)
+        if (SHOULD_REPORT_QUERY(q_loaded, q_num)) PRINT_STATS(result.distance)
 
-        fflush(stdout);
+        fflush(stderr);
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
@@ -194,8 +194,11 @@ void isax_query_binary_file_traditional(
         }
 
         COUNT_INPUT_TIME_END
-        PRINT_STATS_HEADER();
-        printf("%3d: ", q_loaded);
+        int print_query_row = SHOULD_REPORT_QUERY(q_loaded, q_num);
+        if (print_query_row) {
+            PRINT_STATS_HEADER();
+            fprintf(stderr, "%3d: ", q_loaded);
+        }
 
         COUNT_QUERYING_TIME_START
         COUNT_INIT_TIME_START
@@ -225,10 +228,10 @@ void isax_query_binary_file_traditional(
         COUNT_TOTAL_TIME_END
         COUNT_QUERYING_TIME_END
 
-        PRINT_STATS(result.distance)
+        if (print_query_row) PRINT_STATS(result.distance)
         SAVE_STATS(result.distance)
 
-        fflush(stdout);
+        fflush(stderr);
 #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
 #endif
