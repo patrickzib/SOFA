@@ -19,6 +19,7 @@ Options:
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --index-type TYPE       Index layout: isax (default) or trie
+  --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --no-dynamic-root-split-variance
                           Disable variance-assigned root bits for learned iSAX methods
   --rerun-existing        Run workloads even when an archive directory exists
@@ -54,6 +55,7 @@ K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 INDEX_TYPE=isax
+TRIE_FANOUT=8
 NO_DYNAMIC_ROOT_SPLIT_VARIANCE=false
 RERUN_EXISTING=false
 DRY_RUN=false
@@ -66,6 +68,7 @@ while [[ $# -gt 0 ]]; do
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --no-dynamic-root-split-variance) NO_DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --rerun-existing) RERUN_EXISTING=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
@@ -81,6 +84,10 @@ case "$SUITE" in
     *) die "unknown suite '$SUITE'" ;;
 esac
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+[[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || \
+    die '--trie-fanout must be 2, 4, or 8'
+[[ $INDEX_TYPE == trie || $TRIE_FANOUT == 8 ]] || \
+    die '--trie-fanout requires --index-type trie'
 
 split_csv "$THREADS_CSV"; THREADS=("${SPLIT_RESULT[@]}")
 split_csv "$K_VALUES_CSV"; K_VALUES=("${SPLIT_RESULT[@]}")
@@ -108,6 +115,7 @@ run_one() {
         return 0
     fi
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+    [[ $INDEX_TYPE == trie ]] && command+=(--trie-fanout "$TRIE_FANOUT")
     $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)
@@ -198,6 +206,7 @@ run_query_suite() {
             local methods=sax,sfa-depth,sfa-width
             [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+            [[ $INDEX_TYPE == trie ]] && command+=(--trie-fanout "$TRIE_FANOUT")
             $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods" --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)
