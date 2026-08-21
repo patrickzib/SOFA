@@ -2824,7 +2824,12 @@ void print_settings(isax_index_settings *settings) {
     } else {
         fprintf(stderr, "  split policy  : %s\n", split_name);
     }
-    fprintf(stderr, "  SIMD          : %s\n", settings->SIMD_flag ? "enabled" : "disabled");
+    fprintf(stderr, "  SIMD          : %s\n",
+#if ADS_HAVE_AVX2
+            settings->SIMD_flag ? "AVX2 enabled" : "AVX2 available (not requested)");
+#else
+            settings->SIMD_flag ? "requested, but AVX2 was not compiled in" : "not compiled in");
+#endif
 
     if (settings->function_type == 3) {
         fprintf(stderr, "  transform     : SAX, %d segments, alphabet %d (%d bits)\n",

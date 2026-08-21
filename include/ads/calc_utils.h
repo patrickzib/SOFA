@@ -34,6 +34,10 @@ ts_type messi_minidist_range_raw(isax_index *index,
                                  sax_type *sax_max,
                                  sax_type *sax_cardinalities,
                                  float bsf);
+int messi_build_record_lb_table(const isax_index *index,
+                                const float *paa_or_fft,
+                                int dimensions,
+                                float table[16][256]);
 
 // Shared minidist dispatch for SAX/SFA.
 static inline ts_type messi_minidist_raw(isax_index *index,

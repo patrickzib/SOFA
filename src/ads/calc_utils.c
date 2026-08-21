@@ -324,6 +324,55 @@ static ts_type get_lb_distance(const ts_type *bins, float value, sax_type v, sax
     return 0.0f;
 }
 
+/* The query transform is fixed while scanning a leaf.  With full 8-bit
+ * symbols, cache each dimension/symbol contribution once rather than
+ * repeatedly reconstructing its bin interval for every record. */
+int messi_build_record_lb_table(const isax_index *index,
+                                const float *paa_or_fft,
+                                int dimensions,
+                                float table[16][256]) {
+    if (index == NULL || index->settings == NULL || paa_or_fft == NULL || table == NULL ||
+        dimensions != 16 || index->settings->sax_bit_cardinality != 8 ||
+        index->settings->sax_alphabet_cardinality != 256) return 0;
+
+    const isax_index_settings *settings = index->settings;
+    const int function_type = settings->function_type;
+    int sfa_start = 0;
+    if ((function_type == 4 || function_type == 6) && !settings->is_norm &&
+        (settings->n_coefficients == 0 ||
+         (index->coefficients != NULL && index->coefficients[0] == 0))) {
+        sfa_start = settings->n_coefficients == 0 ? 2 : 1;
+    }
+
+    const ts_type *sax_bins = NULL;
+    float sax_factor = 1.0f;
+    if (function_type != 4 && function_type != 5 && function_type != 6) {
+        const int offset = ((settings->sax_alphabet_cardinality - 1) *
+                            (settings->sax_alphabet_cardinality - 2)) / 2;
+        sax_bins = sax_breakpoints + offset;
+        sax_factor = settings->mindist_sqrt;
+    }
+
+    for (int dimension = 0; dimension < dimensions; ++dimension) {
+        const int ignored = (function_type == 4 || function_type == 6) &&
+                            dimension > 0 && dimension < sfa_start;
+        const ts_type *bins = sax_bins;
+        float factor = sax_factor;
+        if (function_type == 4 || function_type == 5 || function_type == 6) {
+            if (index->bins == NULL || index->bins[dimension] == NULL) return 0;
+            bins = index->bins[dimension];
+            factor = (function_type == 4 || function_type == 6)
+                         ? (dimension == 0 && sfa_start > 0 ? 1.0f : 2.0f)
+                         : 1.0f;
+        }
+        for (int symbol = 0; symbol < 256; ++symbol)
+            table[dimension][symbol] = ignored ? 0.0f :
+                get_lb_distance(bins, paa_or_fft[dimension], (sax_type) symbol, 8, 8,
+                                256, factor, 1);
+    }
+    return 1;
+}
+
 float minidist_paa_to_isax(float *paa, sax_type *sax,
                                   sax_type *sax_cardinalities,
                                   const isax_index_settings *settings,
