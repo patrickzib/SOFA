@@ -25,7 +25,9 @@ Options:
   --index-type TYPE         Index layout: isax (default) or trie
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
-  --trie-query-parallel     Parallelize each trie query rather than batching queries
+  --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
+  --trie-query-batch        Batch independent trie queries instead
+  --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
   --data-root PATH          Main dataset root
@@ -107,6 +109,8 @@ SAMPLE_SIZE_OVERRIDE=
 METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
+TRIE_QUERY_BATCH=false
+PROFILE_QUERY_PHASES=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=false
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
@@ -135,6 +139,8 @@ while [[ $# -gt 0 ]]; do
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
+        --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
@@ -164,6 +170,8 @@ is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive in
 is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive integer'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
+[[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
+[[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
@@ -238,6 +246,12 @@ COMMON_ARGS+=(
 )
 if [[ $TRIE_QUERY_PARALLEL == true ]]; then
     COMMON_ARGS+=(--trie-query-parallel)
+fi
+if [[ $TRIE_QUERY_BATCH == true ]]; then
+    COMMON_ARGS+=(--trie-query-batch)
+fi
+if [[ $PROFILE_QUERY_PHASES == true ]]; then
+    COMMON_ARGS+=(--profile-query-phases)
 fi
 
 run_method() {

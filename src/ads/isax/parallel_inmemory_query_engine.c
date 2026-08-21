@@ -1658,6 +1658,11 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
     pthread_rwlock_t lock_bsf = PTHREAD_RWLOCK_INITIALIZER;
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
+    if (profile_query_phases) {
+        TOTAL_TREE_TRAVERSAL_TIME = 0;
+        TOTAL_LB_DIST_CALC_TIME = 0;
+        TOTAL_REAL_DIST_CALC_TIME = 0;
+    }
 
     for (int i = 0; i < N_PQUEUE; i++) {
         allpq[i] = pqueue_init(index->settings->root_nodes_size / N_PQUEUE,
@@ -1698,6 +1703,8 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
     for (int i = 0; i < maxquerythread; i++) {
         pthread_join(threadid[i], NULL);
     }
+    if (profile_query_phases)
+        total_tree_pass_time = (double) TOTAL_TREE_TRAVERSAL_TIME;
 
     // Free the nodes that where not popped.
     // Free the priority queue.
@@ -2065,6 +2072,40 @@ void *exact_search_worker_inmemory_workstealing(void *rfdata) {
     //printf("the check's node is\t %d\tthe local queue's node is\t%d\n",checks,calculate_node_quque);
 }
 
+/* This is intentionally enabled only by --profile-query-phases.  Timing each
+ * primitive would distort a normal benchmark, but it gives a direct split of
+ * record-symbol lower-bound and raw-series exact-distance work. */
+static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_node *node,
+                                                         ts_type *query, ts_type *paa, float bsf,
+                                                         unsigned long int *lower_bound_time,
+                                                         unsigned long int *exact_distance_time) {
+    if (node->buffer == NULL) return bsf;
+    COUNT_CHECKED_NODE()
+    int exact_count = 0;
+    for (int i = 0; i < node->buffer->partial_buffer_size; ++i) {
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        float lower = messi_minidist_raw(index, paa, node->buffer->partial_sax_buffer[i],
+                                         index->settings->max_sax_cardinalities, bsf);
+        gettimeofday(&end, NULL);
+        *lower_bound_time += (unsigned long int)
+            ((end.tv_sec - start.tv_sec) * 1000000L + end.tv_usec - start.tv_usec);
+        if (lower < bsf) {
+            gettimeofday(&start, NULL);
+            float distance = ts_ed(query, rawfile + *node->buffer->partial_position_buffer[i],
+                                   index->settings->timeseries_size, bsf);
+            gettimeofday(&end, NULL);
+            *exact_distance_time += (unsigned long int)
+                ((end.tv_sec - start.tv_sec) * 1000000L + end.tv_usec - start.tv_usec);
+            ++exact_count;
+            if (distance < bsf) bsf = distance;
+        }
+    }
+    __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
+    __sync_fetch_and_add(&RDcalculationnumber, exact_count);
+    return bsf;
+}
+
 void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     isax_node *current_root_node;
     query_result *n;
@@ -2096,6 +2137,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     unsigned long int total_pq_remove_time=0;
     unsigned long int total_lb_dist_calc_time=0;
     unsigned long int total_real_dist_calc_time=0;
+    unsigned long int total_tree_traversal_time=0;
 
 
     gettimeofday(&pq_insert_time_start, NULL);
@@ -2106,10 +2148,23 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
             break;
         current_root_node = ((MESSI_workerdata *) rfdata)->nodelist[current_root_node_number];
 
-        insert_tree_node_m_hybridpqueue(
-            paa, current_root_node, index, bsfdisntance,
-            ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
-            &tnumber);
+        if (profile_query_phases) {
+            struct timeval traversal_start, traversal_end;
+            gettimeofday(&traversal_start, NULL);
+            insert_tree_node_m_hybridpqueue_time(
+                paa, current_root_node, index, bsfdisntance,
+                ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
+                &tnumber, &total_lb_dist_calc_time);
+            gettimeofday(&traversal_end, NULL);
+            total_tree_traversal_time += (unsigned long int)
+                ((traversal_end.tv_sec - traversal_start.tv_sec) * 1000000L +
+                 traversal_end.tv_usec - traversal_start.tv_usec);
+        } else {
+            insert_tree_node_m_hybridpqueue(
+                paa, current_root_node, index, bsfdisntance,
+                ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
+                &tnumber);
+        }
 
         /*
         insert_tree_node_m_hybridpqueue_time(
@@ -2152,7 +2207,11 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         // If it is a leaf, check its real distance.
         if (n->node->is_leaf) {
             checks++;
-            float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
+            float distance = profile_query_phases
+                             ? calculate_node_distance2_inmemory_profiled(index, n->node, ts, paa,
+                                                                          bsfdisntance, &total_lb_dist_calc_time,
+                                                                          &total_real_dist_calc_time)
+                             : calculate_node_distance2_inmemory(index, n->node, ts, paa, bsfdisntance);
 
             if (distance < bsfdisntance) {
                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
@@ -2214,7 +2273,13 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                     // If it is a leaf, check its real distance.
                     if (n->node->is_leaf) {
                         checks++;
-                        float distance = calculate_node_distance2_inmemory(index, n->node, ts, paa, bsf_result->distance);
+                        float distance = profile_query_phases
+                                         ? calculate_node_distance2_inmemory_profiled(index, n->node, ts, paa,
+                                                                                      bsf_result->distance,
+                                                                                      &total_lb_dist_calc_time,
+                                                                                      &total_real_dist_calc_time)
+                                         : calculate_node_distance2_inmemory(index, n->node, ts, paa,
+                                                                            bsf_result->distance);
 
                         // the method itself runs in parallel, thus this would add a second level of parallelizm
                         // float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
@@ -2245,6 +2310,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     __sync_fetch_and_add(&TOTAL_PQ_REMOVE_TIME,(int)total_pq_remove_time);
     __sync_fetch_and_add(&TOTAL_LB_DIST_CALC_TIME,(int)total_lb_dist_calc_time);
     __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);
+    __sync_fetch_and_add(&TOTAL_TREE_TRAVERSAL_TIME,(int)total_tree_traversal_time);
 }
 
 void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
@@ -2596,7 +2662,6 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
             node->mbb_sax_min, node->mbb_sax_max,
             index->settings->max_sax_cardinalities, bsf);
 
-    __sync_fetch_and_add(&LBDcalculationnumber, 1);
     gettimeofday(&current_time, NULL);
     *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
                  (int) (lb_dist_time_start.tv_sec * 1000000 + (lb_dist_time_start.tv_usec)));

@@ -83,6 +83,16 @@ static double monotonic_seconds(void) {
     return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
+static void format_compact_count(double value, char *buffer, size_t buffer_size) {
+    const char *suffix = "";
+    double scaled = value;
+    if (fabs(value) >= 1000000000.0) { scaled = value / 1000000000.0; suffix = "B"; }
+    else if (fabs(value) >= 1000000.0) { scaled = value / 1000000.0; suffix = "M"; }
+    else if (fabs(value) >= 1000.0) { scaled = value / 1000.0; suffix = "K"; }
+    if (*suffix == '\0') snprintf(buffer, buffer_size, "%.0f", scaled);
+    else snprintf(buffer, buffer_size, "%.2f %s", scaled, suffix);
+}
+
 /* Keep every query engine, including the trie engines, from discovering a
  * short query file only after an expensive index build. */
 static int clamp_query_count_to_file(const char *path, int timeseries_size,
@@ -282,9 +292,9 @@ int main(int argc, char **argv) {
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
     static int node_split_criterion = 1;
     static messi_index_type index_type = MESSI_INDEX_ISAX;
-    /* Trie queries are independent and batch scheduling preserves each
-     * query's private best-so-far, unlike speculative subtree parallelism. */
-    static int trie_query_batch = 1;
+    /* The trie mirrors iSAX's per-query worker scheduling by default. */
+    static int trie_query_batch = 0;
+    static int profile_query_phases_requested = 0;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -349,6 +359,8 @@ int main(int argc, char **argv) {
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
                 {"index-type", required_argument, 0, 1000},
                 {"trie-query-parallel", no_argument, 0, 1001},
+                {"profile-query-phases", no_argument, 0, 1002},
+                {"trie-query-batch", no_argument, 0, 1003},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -366,6 +378,12 @@ int main(int argc, char **argv) {
                 break;
             case 1001:
                 trie_query_batch = 0;
+                break;
+            case 1002:
+                profile_query_phases_requested = 1;
+                break;
+            case 1003:
+                trie_query_batch = 1;
                 break;
             case 'j':
                 serial_scan = 1;
@@ -565,7 +583,9 @@ int main(int argc, char **argv) {
                 \t--dynamic-root-split-uniform XX\tUniform root split in bits per symbolic dimension\n\
                 \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
-                \t--trie-query-parallel\tParallelize each trie query across subtrees (default: batch queries)\n\
+                \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
+                \t--trie-query-batch\tBatch independent trie queries instead\n\
+                \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -624,6 +644,7 @@ int main(int argc, char **argv) {
         }
     }
     INIT_STATS();
+    profile_query_phases = profile_query_phases_requested;
 
     if (index_type == MESSI_INDEX_TRIE) {
         if (function_type < 3 || function_type > 6) {
@@ -1227,17 +1248,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        //save querying stats
-        if (inmemory_flag && (function_type == 4 || function_type == 5 || function_type == 6 ||
-                              (index_type == MESSI_INDEX_TRIE && function_type == 3)) &&
-            queries_size > 0) {
-            fprintf(stderr,
-                    ">>> distance calculations: lower-bound=%lu (%.2f/query), exact=%lu (%.2f/query)\n",
-                    LBDcalculationnumber_all,
-                    (double) LBDcalculationnumber_all / queries_size,
-                    RDcalculationnumber_all,
-                    (double) RDcalculationnumber_all / queries_size);
-        }
         SAVE_STATS_TOTAL(logfile_query, queries_size)
         if (queries_size > 0 && query_wall_seconds > 0.0) {
             const double avg_checked_nodes = (double) checked_nodes_all / queries_size;
@@ -1252,16 +1262,34 @@ int main(int argc, char **argv) {
             const double exact_distance_percent = dataset_size > 0
                                                   ? 100.0 * avg_exact_distances / dataset_size
                                                   : 0.0;
-            printf("summary: queries=%d wall_time_s=%.6f avg_checked_nodes=%.2f "
-                   "avg_lower_bounds=%.2f avg_exact_distances=%.2f\n",
-                   queries_size, query_wall_seconds,
-                   avg_checked_nodes, avg_lower_bounds, avg_exact_distances);
-            printf("coverage: checked_nodes=%.4f%% of %d index nodes "
-                   "lower_bounds=%.4f%% of %ld indexed series "
-                   "exact_distances=%.4f%% of %ld indexed series\n",
-                   checked_node_percent, total_tree_nodes,
-                   lower_bound_percent, dataset_size,
-                   exact_distance_percent, dataset_size);
+            char nodes[32], lower_bounds[32], exact_distances[32], index_nodes[32], indexed_series[32];
+            char wall_time[32];
+            format_compact_count(avg_checked_nodes, nodes, sizeof(nodes));
+            format_compact_count(avg_lower_bounds, lower_bounds, sizeof(lower_bounds));
+            format_compact_count(avg_exact_distances, exact_distances, sizeof(exact_distances));
+            format_compact_count(total_tree_nodes, index_nodes, sizeof(index_nodes));
+            format_compact_count(dataset_size, indexed_series, sizeof(indexed_series));
+            if (query_wall_seconds < 1.0)
+                snprintf(wall_time, sizeof(wall_time), "%.3f ms", 1000.0 * query_wall_seconds);
+            else
+                snprintf(wall_time, sizeof(wall_time), "%.3f s", query_wall_seconds);
+            printf("=== Query summary ===\n"
+                   "  queries          : %d\n"
+                   "  wall time        : %s (%.3f ms/query)\n"
+                   "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n"
+                   "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
+                   "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",
+                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size,
+                   nodes, checked_node_percent, index_nodes,
+                   lower_bounds, lower_bound_percent, indexed_series,
+                   exact_distances, exact_distance_percent, indexed_series);
+            if (profile_query_phases) {
+                printf("phase profile (accumulated worker ms/query): traversal=%.3f "
+                       "lower-bound=%.3f exact-distance=%.3f\n",
+                       total_tree_pass_time_all / (1000.0 * queries_size),
+                       total_lb_dist_calc_time_all / (1000.0 * queries_size),
+                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+            }
         }
 
         /* Do not store index for now

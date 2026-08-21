@@ -134,6 +134,11 @@ void* LOGFILE;
         unsigned long int TOTAL_PQ_REMOVE_TIME;
         unsigned long int TOTAL_LB_DIST_CALC_TIME;
         unsigned long int TOTAL_REAL_DIST_CALC_TIME;
+        /* Opt-in, direct query-phase profiling.  These are accumulated worker
+         * times (rather than wall-clock time), so parallel work can sum to
+         * more than the query wall time. */
+        unsigned long int TOTAL_TREE_TRAVERSAL_TIME;
+        int profile_query_phases;
 
         unsigned long int TOTAL_INDEXING_PART_TIME;
         unsigned long int TOTAL_TRANSFORMATION_PART_TIME;
@@ -188,6 +193,8 @@ void* LOGFILE;
                             TOTAL_PQ_REMOVE_TIME=0;\
                             TOTAL_LB_DIST_CALC_TIME=0;\
                             TOTAL_REAL_DIST_CALC_TIME=0;\
+                            TOTAL_TREE_TRAVERSAL_TIME=0;\
+                            profile_query_phases=0;\
                             total_init_time_all=0.0;\
                             total_tree_pass_time_all=0.0;\
                             total_pq_insert_time_all=0.0;\
