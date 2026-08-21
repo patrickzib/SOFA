@@ -47,6 +47,10 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number
 [[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'variance root split should apply to each learned iSAX method'
 pass 'iSAX variance root split is forwarded only to learned transforms'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --no-dynamic-root-split-variance --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
+pass 'iSAX variance root split can be disabled explicitly'
+
 if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --queue-number 1 --index-type trie --methods sax --dry-run >/dev/null 2>&1; then
     fail 'trie benchmark accepted SAX explicitly'
 fi
@@ -149,6 +153,10 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --ind
 assert_contains "$OUTPUT" '--index-type trie'
 assert_not_contains "$OUTPUT" '--function-type 3'
 pass 'suite forwards the selected index layout to dataset runs'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type isax --no-dynamic-root-split-variance --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
+pass 'suite forwards the dynamic root split disable option'
 
 mkdir -p "$TEMP_ROOT/results/ASTRO/36"
 OUTPUT=$(MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SCRIPT_DIR/run_suite.sh" standard \

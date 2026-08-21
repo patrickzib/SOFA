@@ -30,6 +30,8 @@ Options:
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
                             (the iSAX runner default)
+  --no-dynamic-root-split-variance
+                            Disable variance-assigned root bits for learned iSAX methods
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
@@ -196,6 +198,7 @@ while [[ $# -gt 0 ]]; do
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
+        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;

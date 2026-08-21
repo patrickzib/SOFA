@@ -19,6 +19,8 @@ Options:
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --index-type TYPE       Index layout: isax (default) or trie
+  --no-dynamic-root-split-variance
+                          Disable variance-assigned root bits for learned iSAX methods
   --rerun-existing        Run workloads even when an archive directory exists
   --dry-run               Print commands without running or archiving
   -h, --help              Show this help
@@ -52,6 +54,7 @@ K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 INDEX_TYPE=isax
+NO_DYNAMIC_ROOT_SPLIT_VARIANCE=false
 RERUN_EXISTING=false
 DRY_RUN=false
 RESULTS_ROOT=${MESSI_RESULTS_ROOT:-"$HOME/MESSI_SFA_logs"}
@@ -63,6 +66,7 @@ while [[ $# -gt 0 ]]; do
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --no-dynamic-root-split-variance) NO_DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --rerun-existing) RERUN_EXISTING=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -103,7 +107,9 @@ run_one() {
             "$(dataset_label "$dataset")" >&2
         return 0
     fi
-    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" "$@")
+    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+    $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
+    command+=("$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"
     if [[ $DRY_RUN == false && $profile != high-frequency ]]; then
@@ -191,7 +197,9 @@ run_query_suite() {
             fi
             local methods=sax,sfa-depth,sfa-width
             [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
-            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" --query-file "$query" --methods "$methods" --no-tight-bound)
+            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+            $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
+            command+=(--query-file "$query" --methods "$methods" --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)
             "${command[@]}"
             if [[ $DRY_RUN == false ]]; then "$SCRIPT_DIR/archive_results.sh" "$label" "$threads"; fi
