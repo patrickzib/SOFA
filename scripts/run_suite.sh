@@ -19,6 +19,7 @@ Options:
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --index-type TYPE       Index layout: isax (default) or trie
+  --rerun-existing        Run workloads even when an archive directory exists
   --dry-run               Print commands without running or archiving
   -h, --help              Show this help
 
@@ -51,7 +52,9 @@ K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 INDEX_TYPE=isax
+RERUN_EXISTING=false
 DRY_RUN=false
+RESULTS_ROOT=${MESSI_RESULTS_ROOT:-"$HOME/MESSI_SFA_logs"}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -60,6 +63,7 @@ while [[ $# -gt 0 ]]; do
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --rerun-existing) RERUN_EXISTING=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown option '$1'" ;;
@@ -78,6 +82,11 @@ split_csv "$THREADS_CSV"; THREADS=("${SPLIT_RESULT[@]}")
 split_csv "$K_VALUES_CSV"; K_VALUES=("${SPLIT_RESULT[@]}")
 split_csv "$SAMPLE_FACTORS_CSV"; SAMPLE_FACTORS=("${SPLIT_RESULT[@]}")
 
+archive_exists() {
+    local label=$1
+    [[ -d "$RESULTS_ROOT/$label" ]]
+}
+
 if [[ -n $DATASETS_CSV ]]; then
     split_csv "$DATASETS_CSV"; DATASETS=("${SPLIT_RESULT[@]}")
 else
@@ -87,6 +96,13 @@ fi
 run_one() {
     local dataset=$1 profile=$2 threads=$3 result_value=$4
     shift 4
+    if [[ $DRY_RUN == false && $RERUN_EXISTING == false && $profile != high-frequency ]] && \
+       archive_exists "$(dataset_label "$dataset")"; then
+        printf 'Skipping dataset=%s profile=%s run=%s: archive directory already exists at %s/%s\n' \
+            "$dataset" "$profile" "$result_value" "$RESULTS_ROOT" \
+            "$(dataset_label "$dataset")" >&2
+        return 0
+    fi
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" "$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"
@@ -168,6 +184,11 @@ run_query_suite() {
     for threads in "${THREADS[@]}"; do
         for entry in "${entries[@]}"; do
             IFS='|' read -r dataset query label <<< "$entry"
+            if [[ $DRY_RUN == false && $RERUN_EXISTING == false ]] && archive_exists "$label"; then
+                printf 'Skipping query workload=%s run=%s: archive directory already exists at %s/%s\n' \
+                    "$label" "$threads" "$RESULTS_ROOT" "$label" >&2
+                continue
+            fi
             local methods=sax,sfa-depth,sfa-width
             [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" --query-file "$query" --methods "$methods" --no-tight-bound)

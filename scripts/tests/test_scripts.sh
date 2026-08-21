@@ -149,6 +149,12 @@ assert_contains "$OUTPUT" '--index-type trie'
 assert_not_contains "$OUTPUT" '--function-type 3'
 pass 'suite forwards the selected index layout to dataset runs'
 
+mkdir -p "$TEMP_ROOT/results/ASTRO/36"
+OUTPUT=$(MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SCRIPT_DIR/run_suite.sh" standard \
+    --threads 36 --datasets astro --index-type trie 2>&1)
+assert_contains "$OUTPUT" 'Skipping dataset=astro profile=standard run=36'
+pass 'suite skips workloads with existing result archives'
+
 if command -v shellcheck >/dev/null 2>&1; then
     mapfile -t SHELL_SCRIPTS < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
     shellcheck -x "${SHELL_SCRIPTS[@]}"
