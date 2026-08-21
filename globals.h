@@ -232,17 +232,17 @@ extern int N_PQUEUE;
                             stats_header_printed = 0;
         #define PRINT_STATS(result_distance) do { \
             if (!stats_header_printed) { \
-                printf("%4s %8s %13s %20s %12s %12s\n", \
+                fprintf(stderr, "%4s %8s %13s %20s %12s %12s\n", \
                        "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_us"); \
                 stats_header_printed = 1; \
             } \
-            printf("%8d %13d %20.3f %12.3f %12.0f\n", \
+            fprintf(stderr, "%8d %13d %20.3f %12.3f %12.0f\n", \
                    total_tree_nodes, checked_nodes, APPROXIMATE, \
                    result_distance, total_time); \
         } while (0);
         #define PRINT_STATS_HEADER() do { \
             if (!stats_header_printed) { \
-                printf("%4s %8s %13s %20s %12s %12s\n", \
+                fprintf(stderr, "%4s %8s %13s %20s %12s %12s\n", \
                        "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_us"); \
                 stats_header_printed = 1; \
             } \
