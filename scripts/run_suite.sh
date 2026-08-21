@@ -18,6 +18,7 @@ Options:
   --k-values LIST         K values for knn (default: 20,50)
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
+  --index-type TYPE       Index layout: isax (default) or trie
   --dry-run               Print commands without running or archiving
   -h, --help              Show this help
 
@@ -49,6 +50,7 @@ THREADS_SET=false
 K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
+INDEX_TYPE=isax
 DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
         --k-values) [[ $# -ge 2 ]] || die "$1 requires a value"; K_VALUES_CSV=$2; shift 2 ;;
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
+        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "unknown option '$1'" ;;
@@ -69,6 +72,7 @@ case "$SUITE" in
     standard|high-frequency|knn|sampling|generated-queries|hard-queries|noise-workloads) ;;
     *) die "unknown suite '$SUITE'" ;;
 esac
+[[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 
 split_csv "$THREADS_CSV"; THREADS=("${SPLIT_RESULT[@]}")
 split_csv "$K_VALUES_CSV"; K_VALUES=("${SPLIT_RESULT[@]}")
@@ -83,7 +87,7 @@ fi
 run_one() {
     local dataset=$1 profile=$2 threads=$3 result_value=$4
     shift 4
-    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" "$@")
+    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" "$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"
     if [[ $DRY_RUN == false && $profile != high-frequency ]]; then
@@ -164,7 +168,9 @@ run_query_suite() {
     for threads in "${THREADS[@]}"; do
         for entry in "${entries[@]}"; do
             IFS='|' read -r dataset query label <<< "$entry"
-            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --query-file "$query" --methods sax,sfa-depth,sfa-width --no-tight-bound)
+            local methods=sax,sfa-depth,sfa-width
+            [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
+            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE" --query-file "$query" --methods "$methods" --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)
             "${command[@]}"
             if [[ $DRY_RUN == false ]]; then "$SCRIPT_DIR/archive_results.sh" "$label" "$threads"; fi

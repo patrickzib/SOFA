@@ -308,7 +308,7 @@ fi
 
 SUMMARY_ROWS=
 collect_run_summary() {
-    local method=$1 transcript=$2 fields method_name binning layout leaf_cap
+    local method=$1 transcript=$2 fields method_name binning layout leaf_cap wall lower lower_pct exact exact_pct
     fields=$(awk '
         /^  wall time[[:space:]]*:/ { wall = $4 " " $5 }
         /^  lower bounds[[:space:]]*:/ {
@@ -326,6 +326,7 @@ collect_run_summary() {
         printf 'warning: could not parse query summary for method=%s; omitting it from suite summary\n' "$method" >&2
         return 0
     fi
+    IFS=$'\t' read -r wall lower lower_pct exact exact_pct <<< "$fields"
 
     case "$method" in
         sax) method_name=SAX; binning=depth ;;
@@ -338,7 +339,7 @@ collect_run_summary() {
     esac
     [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
     leaf_cap=$(format_count "$LEAF_SIZE")
-    SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$fields"$'\n'
+    SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$lower|$lower_pct|$exact|$exact_pct|$wall"$'\n'
 }
 
 print_suite_summary() {
@@ -347,7 +348,7 @@ print_suite_summary() {
     printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
         Layout Method Binning 'Leaf cap.' 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime >&2
     printf '%s\n' '--------------------------------------------------------------------------------------------------------------' >&2
-    while IFS='|' read -r layout method binning leaf_cap wall lower lower_pct exact exact_pct; do
+    while IFS='|' read -r layout method binning leaf_cap lower lower_pct exact exact_pct wall; do
         [[ -n $layout ]] || continue
         printf '%-6s  %-8s  %-5s  %8s  %18s  %8s  %18s  %8s  %11s\n' \
             "$layout" "$method" "$binning" "$leaf_cap" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" >&2

@@ -107,6 +107,7 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --data-ro
 assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-frequency ==='
 assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
 assert_contains "$OUTPUT" '24.35 M/query'
+[[ $OUTPUT =~ 24\.35\ M/query[[:space:]]+24\.35% ]] || fail 'suite summary columns are out of order'
 pass 'runner prints a compact suite summary from query results'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
@@ -114,6 +115,11 @@ assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
 assert_contains "$OUTPUT" 'text-to-image_noise_01.bin'
 assert_contains "$OUTPUT" 'turingANNs_noise_05.bin'
 pass 'migrated generated-query suite expands expected workloads'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--index-type trie'
+assert_not_contains "$OUTPUT" '--function-type 3'
+pass 'suite forwards the selected index layout to dataset runs'
 
 if command -v shellcheck >/dev/null 2>&1; then
     mapfile -t SHELL_SCRIPTS < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
