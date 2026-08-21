@@ -2143,6 +2143,8 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     unsigned long int total_record_lb_dist_calc_time=0;
     unsigned long int total_real_dist_calc_time=0;
     unsigned long int total_tree_traversal_time=0;
+    struct timeval worker_phase_start;
+    if (profile_query_phases) gettimeofday(&worker_phase_start, NULL);
 
 
     gettimeofday(&pq_insert_time_start, NULL);
@@ -2154,16 +2156,10 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         current_root_node = ((MESSI_workerdata *) rfdata)->nodelist[current_root_node_number];
 
         if (profile_query_phases) {
-            struct timeval traversal_start, traversal_end;
-            gettimeofday(&traversal_start, NULL);
             insert_tree_node_m_hybridpqueue_time(
                 paa, current_root_node, index, bsfdisntance,
                 ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
                 &tnumber, &total_mbr_dist_calc_time);
-            gettimeofday(&traversal_end, NULL);
-            total_tree_traversal_time += (unsigned long int)
-                ((traversal_end.tv_sec - traversal_start.tv_sec) * 1000000L +
-                 traversal_end.tv_usec - traversal_start.tv_usec);
         } else {
             insert_tree_node_m_hybridpqueue(
                 paa, current_root_node, index, bsfdisntance,
@@ -2318,6 +2314,16 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
     __sync_fetch_and_add(&TOTAL_LB_DIST_CALC_TIME,
                          (int)(total_mbr_dist_calc_time + total_record_lb_dist_calc_time));
     __sync_fetch_and_add(&TOTAL_REAL_DIST_CALC_TIME,(int)total_real_dist_calc_time);
+    if (profile_query_phases) {
+        struct timeval worker_phase_end;
+        gettimeofday(&worker_phase_end, NULL);
+        const unsigned long int worker_elapsed = (unsigned long int)
+            ((worker_phase_end.tv_sec - worker_phase_start.tv_sec) * 1000000L +
+             worker_phase_end.tv_usec - worker_phase_start.tv_usec);
+        const unsigned long int direct = total_mbr_dist_calc_time +
+                                         total_record_lb_dist_calc_time + total_real_dist_calc_time;
+        total_tree_traversal_time = worker_elapsed > direct ? worker_elapsed - direct : 0;
+    }
     __sync_fetch_and_add(&TOTAL_TREE_TRAVERSAL_TIME,(int)total_tree_traversal_time);
 }
 

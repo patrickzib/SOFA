@@ -1296,12 +1296,23 @@ int main(int argc, char **argv) {
                 printf("  phase profile (accumulated worker ms/query):\n"
                        "    node MBR bounds  : %.3f\n"
                        "    record bounds    : %.3f\n"
-                       "    exact distances  : %.3f\n"
-                       "    traversal/queues : %.3f\n",
+                       "    exact distances  : %.3f\n",
                        total_mbr_dist_calc_time_all / (1000.0 * queries_size),
                        total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
-                       total_real_dist_calc_time_all / (1000.0 * queries_size),
-                       total_tree_pass_time_all / (1000.0 * queries_size));
+                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+                if (index_type == MESSI_INDEX_TRIE) {
+                    printf("    frontier traversal: %.3f\n"
+                           "    queue locks/pops : %.3f\n"
+                           "    candidate heap   : %.3f\n"
+                           "    synchronization/wait: %.3f\n",
+                           total_trie_frontier_time_all / (1000.0 * queries_size),
+                           total_trie_queue_time_all / (1000.0 * queries_size),
+                           total_trie_heap_time_all / (1000.0 * queries_size),
+                           total_trie_sync_time_all / (1000.0 * queries_size));
+                } else {
+                    printf("    traversal/queues : %.3f\n",
+                           total_tree_pass_time_all / (1000.0 * queries_size));
+                }
             }
         }
 

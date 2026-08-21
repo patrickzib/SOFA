@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/lib/datasets.sh"
 
 usage() {
     cat <<'USAGE'
-Usage: run_dataset.sh DATASET PROFILE --threads N|auto --queue-number N [OPTIONS]
+Usage: run_dataset.sh DATASET PROFILE --threads N|auto [--queue-number N] [OPTIONS]
 
 Profiles: standard, high-frequency, knn, sampling
 
@@ -25,6 +25,7 @@ Options:
   --index-type TYPE         Index layout: isax (default) or trie
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
+                            (the iSAX runner default)
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
@@ -126,7 +127,8 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 PROFILE_QUERY_PHASES=false
-DYNAMIC_ROOT_SPLIT_VARIANCE=false
+# Resolved after parsing because the default depends on --index-type.
+DYNAMIC_ROOT_SPLIT_VARIANCE=
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
@@ -176,14 +178,16 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
 
 [[ -n $THREADS ]] || die '--threads is required'
-[[ -n $QUEUE_NUMBER ]] || die '--queue-number is required'
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
-is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
+[[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+if [[ -z $DYNAMIC_ROOT_SPLIT_VARIANCE ]]; then
+    [[ $INDEX_TYPE == isax ]] && DYNAMIC_ROOT_SPLIT_VARIANCE=true || DYNAMIC_ROOT_SPLIT_VARIANCE=false
+fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -251,7 +255,6 @@ COMMON_ARGS+=(
     --sax-cardinality 8
     --queries "$QUERY_PATH"
     --queries-size "$QUERY_SIZE"
-    --queue-number "$QUEUE_NUMBER"
     --threads "$THREADS"
     --numa "$NUMA_MODE"
     --leaf-size "$LEAF_SIZE"
@@ -259,6 +262,7 @@ COMMON_ARGS+=(
     --initial-lbl-size 20000
     --SIMD
 )
+[[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 if [[ $TRIE_QUERY_PARALLEL == true ]]; then
     COMMON_ARGS+=(--trie-query-parallel)
 fi

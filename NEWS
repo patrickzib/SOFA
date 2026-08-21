@@ -1,0 +1,28 @@
+Unreleased
+==========
+
+Symbolic trie
+-------------
+
+- Added an in-memory, 8-way symbolic-trie index with configurable leaf
+  capacity, sampled root splitting, and entropy × variance-based splits.
+- Stores MBRs and selects split dimensions across the full transform word
+  (up to 64 dimensions); record lower bounds use the leading 16 dimensions.
+- Supports SAX, SFA, and SPARTAN words, including integer input files and
+  query-specific symbolic lower-bound lookup tables.
+- Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
+  bounds, with exact-distance early abandonment.
+- Provides batch and single-query parallel modes with configurable worker and
+  queue counts, plus construction, coverage, and per-phase query timings.
+
+iSAX
+----
+
+- Added dynamic, variance-driven root-cardinality splitting for symbolic
+  transforms and support for SAX, SFA, PISA, and SPARTAN words.
+- Added full-word node MBR pruning and transform-specific lower bounds,
+  including SIMD-capable exact-distance paths where available.
+- Improved parallel index construction and hybrid query scheduling, including
+  configurable worker/queue counts and robust queue ownership.
+- Unified iSAX and trie benchmark summaries, CSV logs, coverage reporting,
+  construction timings, and optional per-phase query profiling.

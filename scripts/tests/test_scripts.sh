@@ -19,7 +19,12 @@ assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'
 assert_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--tight-bound'
+[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'iSAX should enable variance root splits for learned methods by default'
 pass 'standard profile emits the complete method matrix with quoted paths'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--queue-number'
+pass 'queue count is optional and defaults in MESSI'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type trie --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 6 ]] || fail 'trie standard profile should exclude SAX'
@@ -29,7 +34,7 @@ assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
 pass 'trie standard profile excludes SAX from its method matrix'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dynamic-root-split-variance --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'variance root split should apply to each learned iSAX method'
 pass 'iSAX variance root split is forwarded only to learned transforms'
 

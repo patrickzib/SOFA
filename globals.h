@@ -142,6 +142,10 @@ extern int N_PQUEUE;
          * times (rather than wall-clock time), so parallel work can sum to
          * more than the query wall time. */
         unsigned long int TOTAL_TREE_TRAVERSAL_TIME;
+        unsigned long int TOTAL_TRIE_FRONTIER_TIME;
+        unsigned long int TOTAL_TRIE_QUEUE_TIME;
+        unsigned long int TOTAL_TRIE_HEAP_TIME;
+        unsigned long int TOTAL_TRIE_SYNC_TIME;
         int profile_query_phases;
 
         unsigned long int TOTAL_INDEXING_PART_TIME;
@@ -155,6 +159,10 @@ extern int N_PQUEUE;
         double total_mbr_dist_calc_time_all;
         double total_record_lb_dist_calc_time_all;
         double total_real_dist_calc_time_all;
+        double total_trie_frontier_time_all;
+        double total_trie_queue_time_all;
+        double total_trie_heap_time_all;
+        double total_trie_sync_time_all;
 
         int total_tree_nodes;
         int loaded_nodes;
@@ -202,6 +210,10 @@ extern int N_PQUEUE;
                             TOTAL_RECORD_LB_DIST_CALC_TIME=0;\
                             TOTAL_REAL_DIST_CALC_TIME=0;\
                             TOTAL_TREE_TRAVERSAL_TIME=0;\
+                            TOTAL_TRIE_FRONTIER_TIME=0;\
+                            TOTAL_TRIE_QUEUE_TIME=0;\
+                            TOTAL_TRIE_HEAP_TIME=0;\
+                            TOTAL_TRIE_SYNC_TIME=0;\
                             profile_query_phases=0;\
                             total_init_time_all=0.0;\
                             total_tree_pass_time_all=0.0;\
@@ -211,6 +223,10 @@ extern int N_PQUEUE;
                             total_mbr_dist_calc_time_all=0.0;\
                             total_record_lb_dist_calc_time_all=0.0;\
                             total_real_dist_calc_time_all=0.0;\
+                            total_trie_frontier_time_all=0.0;\
+                            total_trie_queue_time_all=0.0;\
+                            total_trie_heap_time_all=0.0;\
+                            total_trie_sync_time_all=0.0;\
                             TOTAL_INDEXING_PART_TIME = 0.0;\
                             TOTAL_TRANSFORMATION_PART_TIME = 0.0;\
                             stats_header_printed = 0;
@@ -275,7 +291,15 @@ extern int N_PQUEUE;
         total_record_lb_dist_calc_time_all += TOTAL_RECORD_LB_DIST_CALC_TIME;\
         TOTAL_RECORD_LB_DIST_CALC_TIME=0;\
         total_real_dist_calc_time_all += TOTAL_REAL_DIST_CALC_TIME;\
-        TOTAL_REAL_DIST_CALC_TIME=0;
+        TOTAL_REAL_DIST_CALC_TIME=0;\
+        total_trie_frontier_time_all += TOTAL_TRIE_FRONTIER_TIME;\
+        TOTAL_TRIE_FRONTIER_TIME=0;\
+        total_trie_queue_time_all += TOTAL_TRIE_QUEUE_TIME;\
+        TOTAL_TRIE_QUEUE_TIME=0;\
+        total_trie_heap_time_all += TOTAL_TRIE_HEAP_TIME;\
+        TOTAL_TRIE_HEAP_TIME=0;\
+        total_trie_sync_time_all += TOTAL_TRIE_SYNC_TIME;\
+        TOTAL_TRIE_SYNC_TIME=0;
         #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
         (total_querying_time_all / queries_size), (total_init_time_all / queries_size),\
         (total_tree_pass_time_all / queries_size), (total_pq_insert_time_all / queries_size),(total_pq_remove_time_all / queries_size),\

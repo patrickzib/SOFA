@@ -63,6 +63,10 @@ typedef struct trie_query_stats {
     unsigned long long record_bound_microseconds;
     unsigned long long exact_distance_microseconds;
     unsigned long long traversal_microseconds;
+    unsigned long long frontier_microseconds;
+    unsigned long long queue_microseconds;
+    unsigned long long candidate_heap_microseconds;
+    unsigned long long synchronization_microseconds;
     float approximate_distance;
 } trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
@@ -198,6 +202,10 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     TOTAL_RECORD_LB_DIST_CALC_TIME = (unsigned long) stats->record_bound_microseconds;
     TOTAL_LB_DIST_CALC_TIME = TOTAL_MBR_DIST_CALC_TIME + TOTAL_RECORD_LB_DIST_CALC_TIME;
     TOTAL_REAL_DIST_CALC_TIME = (unsigned long) stats->exact_distance_microseconds;
+    TOTAL_TRIE_FRONTIER_TIME = (unsigned long) stats->frontier_microseconds;
+    TOTAL_TRIE_QUEUE_TIME = (unsigned long) stats->queue_microseconds;
+    TOTAL_TRIE_HEAP_TIME = (unsigned long) stats->candidate_heap_microseconds;
+    TOTAL_TRIE_SYNC_TIME = (unsigned long) stats->synchronization_microseconds;
     total_time = (double) cumulative_microseconds;
     LBDcalculationnumber = stats->lower_bounds;
     RDcalculationnumber = stats->exact_distances;
@@ -711,9 +719,16 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
 
+    unsigned long long heap_start = profile_query_phases && stats != NULL
+                                        ? trie_monotonic_microseconds() : 0;
     trie_heap_build(scratch->candidates, candidate_count);
+    if (heap_start != 0)
+        stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
     while (candidate_count > 0 && scratch->candidates[0].lower_bound < bsf) {
+        heap_start = profile_query_phases && stats != NULL ? trie_monotonic_microseconds() : 0;
         trie_leaf_candidate candidate = trie_heap_pop(scratch->candidates, &candidate_count);
+        if (heap_start != 0)
+            stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
         if (stats != NULL) ++stats->exact_distances;
         else __sync_fetch_and_add(&RDcalculationnumber, 1);
         float d = trie_exact_distance(query,
@@ -837,7 +852,10 @@ static void trie_leaf_queue_sift_down(trie_leaf_work *items, int size, int posit
     }
 }
 
-static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item) {
+static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item,
+                                trie_query_stats *stats) {
+    unsigned long long start = profile_query_phases && stats != NULL
+                                   ? trie_monotonic_microseconds() : 0;
     int ok = 1;
     pthread_mutex_lock(&queue->lock);
     if (queue->size == queue->capacity) {
@@ -857,16 +875,25 @@ static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item) {
         }
     }
     pthread_mutex_unlock(&queue->lock);
+    if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
     return ok;
 }
 
-static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item) {
+static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item,
+                               trie_query_stats *stats) {
+    unsigned long long start = profile_query_phases && stats != NULL
+                                   ? trie_monotonic_microseconds() : 0;
     pthread_mutex_lock(&queue->lock);
-    if (queue->size == 0) { pthread_mutex_unlock(&queue->lock); return 0; }
+    if (queue->size == 0) {
+        pthread_mutex_unlock(&queue->lock);
+        if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
+        return 0;
+    }
     *item = queue->items[0];
     queue->items[0] = queue->items[--queue->size];
     trie_leaf_queue_sift_down(queue->items, queue->size, 0);
     pthread_mutex_unlock(&queue->lock);
+    if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
     return 1;
 }
 
@@ -907,7 +934,7 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
     if (lower >= bsf) return;
     if (node->leaf) {
         int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;
-        if (!trie_leaf_queue_push(&queues[queue_number], (trie_leaf_work) {node, lower}))
+        if (!trie_leaf_queue_push(&queues[queue_number], (trie_leaf_work) {node, lower}, stats))
             __atomic_store_n(failed, 1, __ATOMIC_RELAXED);
         return;
     }
@@ -957,15 +984,24 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         unsigned long long worker_start = trie_monotonic_microseconds();
         float traversal_bsf;
         pthread_rwlock_rdlock(&bsf_lock); traversal_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
-#pragma omp for schedule(dynamic, 1)
+        const unsigned long long frontier_start = trie_monotonic_microseconds();
+        const unsigned long long mbr_before_frontier = stats->mbr_bound_microseconds;
+        const unsigned long long queue_before_frontier = stats->queue_microseconds;
+#pragma omp for schedule(dynamic, 1) nowait
         for (int i = 0; i < frontier_count; ++i)
             trie_parallel_collect_leaves(index, frontier[i], transform, traversal_bsf, skip_leaf,
                                          queues, queue_count, &next_queue, stats, &failed);
+        if (profile_query_phases) {
+            const unsigned long long elapsed = trie_monotonic_microseconds() - frontier_start;
+            const unsigned long long direct = (stats->mbr_bound_microseconds - mbr_before_frontier) +
+                                              (stats->queue_microseconds - queue_before_frontier);
+            stats->frontier_microseconds += elapsed > direct ? elapsed - direct : 0;
+        }
 #pragma omp barrier
         for (int offset = 0; offset < queue_count && !__atomic_load_n(&failed, __ATOMIC_RELAXED); ++offset) {
             int queue_number = (worker + offset) % queue_count;
             trie_leaf_work work;
-            while (trie_leaf_queue_pop(&queues[queue_number], &work)) {
+            while (trie_leaf_queue_pop(&queues[queue_number], &work, stats)) {
                 float current_bsf;
                 pthread_rwlock_rdlock(&bsf_lock); current_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
                 if (work.lower_bound >= current_bsf) continue;
@@ -981,8 +1017,12 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         unsigned long long worker_elapsed = trie_monotonic_microseconds() - worker_start;
         if (profile_query_phases) {
             const unsigned long long bounded = stats->mbr_bound_microseconds +
-                                               stats->record_bound_microseconds + stats->exact_distance_microseconds;
-            stats->traversal_microseconds = worker_elapsed > bounded ? worker_elapsed - bounded : 0;
+                                               stats->record_bound_microseconds + stats->exact_distance_microseconds +
+                                               stats->frontier_microseconds + stats->queue_microseconds +
+                                               stats->candidate_heap_microseconds;
+            stats->synchronization_microseconds = worker_elapsed > bounded ? worker_elapsed - bounded : 0;
+            stats->traversal_microseconds = stats->frontier_microseconds + stats->queue_microseconds +
+                                            stats->candidate_heap_microseconds + stats->synchronization_microseconds;
         }
     }
     if (result_stats != NULL) for (int i = 0; i < workers; ++i) {
@@ -993,6 +1033,10 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->record_bound_microseconds += worker_stats[i].record_bound_microseconds;
         result_stats->exact_distance_microseconds += worker_stats[i].exact_distance_microseconds;
         result_stats->traversal_microseconds += worker_stats[i].traversal_microseconds;
+        result_stats->frontier_microseconds += worker_stats[i].frontier_microseconds;
+        result_stats->queue_microseconds += worker_stats[i].queue_microseconds;
+        result_stats->candidate_heap_microseconds += worker_stats[i].candidate_heap_microseconds;
+        result_stats->synchronization_microseconds += worker_stats[i].synchronization_microseconds;
     }
     for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
     for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
@@ -1054,8 +1098,11 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             if (profile_query_phases) {
                 const unsigned long long seed_elapsed = trie_monotonic_microseconds() - search_start;
                 const unsigned long long bounded = stats.mbr_bound_microseconds +
-                                                   stats.record_bound_microseconds + stats.exact_distance_microseconds;
-                stats.traversal_microseconds = seed_elapsed > bounded ? seed_elapsed - bounded : 0;
+                                                   stats.record_bound_microseconds + stats.exact_distance_microseconds +
+                                                   stats.candidate_heap_microseconds;
+                stats.frontier_microseconds += seed_elapsed > bounded ? seed_elapsed - bounded : 0;
+                stats.traversal_microseconds = stats.frontier_microseconds + stats.queue_microseconds +
+                                               stats.candidate_heap_microseconds + stats.synchronization_microseconds;
             }
             if (minimum_distance < bsf) bsf = minimum_distance;
             trie_query_stats parallel_stats = {0};
@@ -1067,6 +1114,10 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.record_bound_microseconds += parallel_stats.record_bound_microseconds;
             stats.exact_distance_microseconds += parallel_stats.exact_distance_microseconds;
             stats.traversal_microseconds += parallel_stats.traversal_microseconds;
+            stats.frontier_microseconds += parallel_stats.frontier_microseconds;
+            stats.queue_microseconds += parallel_stats.queue_microseconds;
+            stats.candidate_heap_microseconds += parallel_stats.candidate_heap_microseconds;
+            stats.synchronization_microseconds += parallel_stats.synchronization_microseconds;
         } else {
             distance = trie_search_node(index, index->trie->root, query, transform,
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch);
@@ -1074,8 +1125,11 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         if (profile_query_phases && maxquerythread <= 1) {
             const unsigned long long search_elapsed = trie_monotonic_microseconds() - search_start;
             const unsigned long long bounded = stats.mbr_bound_microseconds +
-                                               stats.record_bound_microseconds + stats.exact_distance_microseconds;
-            stats.traversal_microseconds = search_elapsed > bounded ? search_elapsed - bounded : 0;
+                                               stats.record_bound_microseconds + stats.exact_distance_microseconds +
+                                               stats.candidate_heap_microseconds;
+            stats.frontier_microseconds += search_elapsed > bounded ? search_elapsed - bounded : 0;
+            stats.traversal_microseconds = stats.frontier_microseconds + stats.queue_microseconds +
+                                           stats.candidate_heap_microseconds + stats.synchronization_microseconds;
         }
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
         cumulative_microseconds += stats.total_microseconds;
@@ -1154,8 +1208,11 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                 if (profile_query_phases) {
                     const unsigned long long search_elapsed = trie_monotonic_microseconds() - search_start;
                     const unsigned long long bounded = stats[i].mbr_bound_microseconds +
-                                                       stats[i].record_bound_microseconds + stats[i].exact_distance_microseconds;
-                    stats[i].traversal_microseconds = search_elapsed > bounded ? search_elapsed - bounded : 0;
+                                                       stats[i].record_bound_microseconds + stats[i].exact_distance_microseconds +
+                                                       stats[i].candidate_heap_microseconds;
+                    stats[i].frontier_microseconds += search_elapsed > bounded ? search_elapsed - bounded : 0;
+                    stats[i].traversal_microseconds = stats[i].frontier_microseconds + stats[i].queue_microseconds +
+                                                      stats[i].candidate_heap_microseconds + stats[i].synchronization_microseconds;
                 }
                 stats[i].total_microseconds = trie_monotonic_microseconds() - query_start;
             }
