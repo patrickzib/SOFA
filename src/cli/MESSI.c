@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
     static int trie_query_batch = 0;
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
+    static int trie_mbr_dimensions = 0;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -362,6 +363,7 @@ int main(int argc, char **argv) {
                 {"trie-query-parallel", no_argument, 0, 1001},
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
+                {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -385,6 +387,9 @@ int main(int argc, char **argv) {
                 break;
             case 1003:
                 trie_query_batch = 1;
+                break;
+            case 1004:
+                trie_mbr_dimensions = atoi(optarg);
                 break;
             case 'j':
                 serial_scan = 1;
@@ -591,6 +596,7 @@ int main(int argc, char **argv) {
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
+                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
                 \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
@@ -663,6 +669,14 @@ int main(int argc, char **argv) {
         }
         if (n_segments < 16 || n_segments > 64) {
             fprintf(stderr, "error: trie n-segments must be between 16 and 64.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_mbr_dimensions != 0 &&
+            (trie_mbr_dimensions < n_segments || trie_mbr_dimensions < 16 ||
+             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size / 2)) {
+            fprintf(stderr,
+                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size/2) (%d).\n",
+                    n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
             return EXIT_FAILURE;
         }
     }
@@ -815,7 +829,9 @@ int main(int argc, char **argv) {
          * The public n-segments value remains the lower-bound prefix. */
         if (index_type == MESSI_INDEX_TRIE) {
             trie_bound_dimensions = index_segments;
-            index_segments = time_series_size / 2 < 64 ? time_series_size / 2 : 64;
+            index_segments = trie_mbr_dimensions > 0
+                                 ? trie_mbr_dimensions
+                                 : (time_series_size / 2 < 64 ? time_series_size / 2 : 64);
             if (function_type == 4 || function_type == 6) {
                 if (n_coefficients == 0 || n_coefficients < index_segments) {
                     n_coefficients = index_segments;

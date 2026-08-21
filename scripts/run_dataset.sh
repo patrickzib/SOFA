@@ -23,6 +23,7 @@ Options:
   --sample-size N           Override the sample size; accepts count suffixes
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
+  --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
                             (the iSAX runner default)
@@ -147,6 +148,7 @@ METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
+TRIE_MBR_DIMS=
 PROFILE_QUERY_PHASES=false
 # Resolved after parsing because the default depends on --index-type.
 DYNAMIC_ROOT_SPLIT_VARIANCE=
@@ -178,6 +180,7 @@ while [[ $# -gt 0 ]]; do
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
@@ -211,6 +214,7 @@ if [[ -z $DYNAMIC_ROOT_SPLIT_VARIANCE ]]; then
 fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
+[[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
@@ -221,6 +225,13 @@ LEAF_SIZE=$(normalize_count "$LEAF_SIZE") || die '--leaf-size must be a positive
 MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
 MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
+if [[ $INDEX_TYPE == trie ]]; then
+    TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
+    is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
+    (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
+    (( TRIE_MBR_DIMS <= TS_SIZE / 2 )) || TRIE_MBR_DIMS=$((TS_SIZE / 2))
+    (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+fi
 
 if [[ $PROFILE == knn ]]; then
     [[ -n $K_SIZE ]] || die '--k is required by the knn profile'
@@ -284,6 +295,7 @@ COMMON_ARGS+=(
     --SIMD
 )
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
+[[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
 if [[ $TRIE_QUERY_PARALLEL == true ]]; then
     COMMON_ARGS+=(--trie-query-parallel)
 fi

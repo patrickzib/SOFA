@@ -32,6 +32,7 @@ assert_not_contains "$OUTPUT" '--function-type 3'
 assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 32'
 pass 'trie standard profile excludes SAX from its method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
