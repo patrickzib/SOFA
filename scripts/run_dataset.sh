@@ -38,6 +38,7 @@ Options:
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --no-tight-bound          Disable standard profile's tight-bound option
   --binary PATH             MESSI executable
+  MESSI_SHELL_LOG_DIR       Directory for per-method shell output logs
   --data-root PATH          Main dataset root
   --query-root PATH         Main query root (default: data root)
   --seisbench-root PATH     SeisBench dataset root
@@ -166,6 +167,7 @@ DYNAMIC_ROOT_SPLIT_VARIANCE=
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
+MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-$SCRIPT_DIR}
 DATA_ROOT=${MESSI_DATA_ROOT:-/vol/tmp/schaefpa/messi_datasets}
 SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/vol/tmp/schaefpa/seismic}
 QUERY_ROOT=${MESSI_QUERY_ROOT:-}
@@ -440,10 +442,10 @@ run_method() {
         [[ -x $MESSI_EXECUTABLE ]] || die "MESSI executable is not executable: $MESSI_EXECUTABLE"
         [[ -f $DATASET_PATH ]] || die "dataset file does not exist: $DATASET_PATH"
         [[ -f $QUERY_PATH ]] || die "query file does not exist: $QUERY_PATH"
-        RUN_OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/messi-summary.XXXXXX")
+        mkdir -p -- "$MESSI_SHELL_LOG_DIR"
+        RUN_OUTPUT_FILE="$MESSI_SHELL_LOG_DIR/MESSI_${DATASET_ID}_${PROFILE}_${method}_$(date +%Y%m%d_%H%M%S)_$$.log"
         run_messi "$MESSI_EXECUTABLE" "${args[@]}"
         collect_run_summary "$method" "$RUN_OUTPUT_FILE"
-        rm -f -- "$RUN_OUTPUT_FILE"
         RUN_OUTPUT_FILE=
     fi
 }
