@@ -13,7 +13,10 @@ load_dataset() {
     QUERY_FILE=
     TS_SIZE=
     DATASET_SIZE=
-    COEFF_NUMBER=32
+    # SFA/PISA coefficient counts include real and imaginary dimensions.
+    # Prefer a 64-dimensional training pool, but respect the FFT limit of
+    # timeseries_size / 2 complex coefficients (the CLI's doubled count).
+    COEFF_NUMBER=64
     APPLY_Z_NORM=false
     FILETYPE_INT=false
 
@@ -148,6 +151,17 @@ load_dataset() {
 
     if [[ $DATASET_ROOT_KIND == seisbench && $profile == high-frequency ]]; then
         COEFF_NUMBER=128
+    fi
+
+    local max_coefficients=$((TS_SIZE / 2))
+    if (( COEFF_NUMBER > max_coefficients )); then
+        COEFF_NUMBER=$max_coefficients
+    fi
+    # The SFA/PISA coefficient count must describe complete real/imaginary
+    # pairs.  All current datasets have an even maximum, but keep the
+    # metadata valid for future odd-length series as well.
+    if (( COEFF_NUMBER % 2 != 0 )); then
+        COEFF_NUMBER=$((COEFF_NUMBER - 1))
     fi
 }
 

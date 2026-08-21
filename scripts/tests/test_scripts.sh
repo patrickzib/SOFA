@@ -32,7 +32,7 @@ assert_not_contains "$OUTPUT" '--function-type 3'
 assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 32'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 assert_contains "$OUTPUT" '--trie-fanout 8'
 pass 'trie standard profile excludes SAX from its method matrix'
 
@@ -71,6 +71,19 @@ assert_contains "$OUTPUT" '--sfa-n-coefficients 50'
 assert_contains "$OUTPUT" '--histogram-type 2'
 assert_not_contains "$OUTPUT" '--histogram-type 1'
 pass 'high-frequency profile preserves BigANN flags and coefficients'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
+pass 'standard SFA uses the 64-coefficient training pool when permitted'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--sfa-n-coefficients 48'
+pass 'short series use the largest valid even coefficient pool'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
+assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
+assert_contains "$OUTPUT" '--sample-size 100000'
+pass 'binning sample size is capped for reduced datasets'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sift1b knn --threads 36 --queue-number 36 --k 20 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--topk --k-size 20'

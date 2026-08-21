@@ -255,6 +255,11 @@ if [[ $PROFILE == sampling && -z $SAMPLE_SIZE_OVERRIDE ]]; then
     SAMPLE_SIZE=$(awk -v size="$DATASET_SIZE" -v factor="$SAMPLE_FACTOR" 'BEGIN { printf "%.0f", size * factor }')
 fi
 SAMPLE_SIZE=$(normalize_count "$SAMPLE_SIZE") || die '--sample-size must be a positive integer or use k/m/mio/g'
+if (( SAMPLE_SIZE > DATASET_SIZE )); then
+    printf 'Warning: binning sample size %s exceeds dataset size %s; using dataset size.\n' \
+        "$(format_count "$SAMPLE_SIZE")" "$(format_count "$DATASET_SIZE")" >&2
+    SAMPLE_SIZE=$DATASET_SIZE
+fi
 
 ROOT=$DATA_ROOT
 QUERY_BASE=${QUERY_ROOT:-$DATA_ROOT}
