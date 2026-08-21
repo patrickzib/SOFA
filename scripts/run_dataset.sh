@@ -14,13 +14,13 @@ Profiles: standard, high-frequency, knn, sampling
 Options:
   --dataset-file PATH       Override the dataset filename/path
   --query-file PATH         Override the query filename/path
-  --dataset-size N          Override the number of dataset records
-  --query-size N            Number of queries (default: 100; high-frequency: 1)
-  --leaf-size N             Maximum records per leaf (default: 20000)
-  --min-leaf-size N         Minimum records per leaf (default: leaf size)
+  --dataset-size N          Override dataset records; accepts 100m, 1mio, 20k
+  --query-size N            Queries; accepts count suffixes (default: 100; high-frequency: 1)
+  --leaf-size N             Maximum records per leaf; accepts count suffixes (default: 20000)
+  --min-leaf-size N         Minimum records per leaf; accepts count suffixes (default: leaf size)
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
-  --sample-size N           Override the sample size directly
+  --sample-size N           Override the sample size; accepts count suffixes
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --dynamic-root-split-variance
@@ -49,6 +49,21 @@ USAGE
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 2; }
 is_positive_integer() { [[ $1 =~ ^[1-9][0-9]*$ ]]; }
+normalize_count() {
+    local value=${1,,} number suffix multiplier=1
+    if [[ $value =~ ^([1-9][0-9]*)(k|m|mio|g)?$ ]]; then
+        number=${BASH_REMATCH[1]}
+        suffix=${BASH_REMATCH[2]}
+    else
+        return 1
+    fi
+    case "$suffix" in
+        k) multiplier=1000 ;;
+        m|mio) multiplier=1000000 ;;
+        g) multiplier=1000000000 ;;
+    esac
+    printf '%s\n' "$((number * multiplier))"
+}
 resolve_path() {
     local root=$1 path=$2
     if [[ $path == /* ]]; then printf '%s\n' "$path"; else printf '%s/%s\n' "${root%/}" "$path"; fi
@@ -167,7 +182,7 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
-is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive integer'
+DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
@@ -176,10 +191,10 @@ is_positive_integer "$DATASET_SIZE" || die '--dataset-size must be a positive in
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
 [[ $PROFILE == high-frequency ]] && QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-1}
-is_positive_integer "$QUERY_SIZE" || die '--query-size must be a positive integer'
-is_positive_integer "$LEAF_SIZE" || die '--leaf-size must be a positive integer'
+QUERY_SIZE=$(normalize_count "$QUERY_SIZE") || die '--query-size must be a positive integer or use k/m/mio/g'
+LEAF_SIZE=$(normalize_count "$LEAF_SIZE") || die '--leaf-size must be a positive integer or use k/m/mio/g'
 MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
-is_positive_integer "$MIN_LEAF_SIZE" || die '--min-leaf-size must be a positive integer'
+MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 
 if [[ $PROFILE == knn ]]; then
@@ -193,7 +208,7 @@ if [[ $PROFILE == sampling && -z $SAMPLE_SIZE_OVERRIDE ]]; then
     awk -v factor="$SAMPLE_FACTOR" 'BEGIN { exit !(factor > 0 && factor <= 1) }' || die '--sample-factor must be in (0, 1]'
     SAMPLE_SIZE=$(awk -v size="$DATASET_SIZE" -v factor="$SAMPLE_FACTOR" 'BEGIN { printf "%.0f", size * factor }')
 fi
-is_positive_integer "$SAMPLE_SIZE" || die '--sample-size must be a positive integer'
+SAMPLE_SIZE=$(normalize_count "$SAMPLE_SIZE") || die '--sample-size must be a positive integer or use k/m/mio/g'
 
 ROOT=$DATA_ROOT
 QUERY_BASE=${QUERY_ROOT:-$DATA_ROOT}

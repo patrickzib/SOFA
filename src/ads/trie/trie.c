@@ -59,7 +59,8 @@ typedef struct trie_query_stats {
     unsigned long lower_bounds;
     unsigned long exact_distances;
     unsigned long long total_microseconds;
-    unsigned long long lower_bound_microseconds;
+    unsigned long long mbr_bound_microseconds;
+    unsigned long long record_bound_microseconds;
     unsigned long long exact_distance_microseconds;
     unsigned long long traversal_microseconds;
     float approximate_distance;
@@ -82,7 +83,7 @@ static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index
     shadow_index.settings = &shadow_settings;
     float result = messi_minidist_range_raw(&shadow_index, (float *) transform, sax_min, sax_max,
                                             shadow_settings.max_sax_cardinalities, bsf);
-    if (start != 0) stats->lower_bound_microseconds += trie_monotonic_microseconds() - start;
+    if (start != 0) stats->mbr_bound_microseconds += trie_monotonic_microseconds() - start;
     return result;
 }
 
@@ -100,7 +101,7 @@ static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
     shadow_index.settings = &shadow_settings;
     float result = messi_minidist_raw(&shadow_index, (float *) transform, word,
                                       shadow_settings.max_sax_cardinalities, bsf);
-    if (start != 0) stats->lower_bound_microseconds += trie_monotonic_microseconds() - start;
+    if (start != 0) stats->record_bound_microseconds += trie_monotonic_microseconds() - start;
     return result;
 }
 
@@ -176,7 +177,9 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     total_tree_pass_time = (double) stats->traversal_microseconds;
     TOTAL_PQ_INSERT_TIME = 0;
     TOTAL_PQ_REMOVE_TIME = 0;
-    TOTAL_LB_DIST_CALC_TIME = (unsigned long) stats->lower_bound_microseconds;
+    TOTAL_MBR_DIST_CALC_TIME = (unsigned long) stats->mbr_bound_microseconds;
+    TOTAL_RECORD_LB_DIST_CALC_TIME = (unsigned long) stats->record_bound_microseconds;
+    TOTAL_LB_DIST_CALC_TIME = TOTAL_MBR_DIST_CALC_TIME + TOTAL_RECORD_LB_DIST_CALC_TIME;
     TOTAL_REAL_DIST_CALC_TIME = (unsigned long) stats->exact_distance_microseconds;
     total_time = (double) cumulative_microseconds;
     LBDcalculationnumber = stats->lower_bounds;
@@ -946,7 +949,8 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         }
         unsigned long long worker_elapsed = trie_monotonic_microseconds() - worker_start;
         if (profile_query_phases) {
-            const unsigned long long bounded = stats->lower_bound_microseconds + stats->exact_distance_microseconds;
+            const unsigned long long bounded = stats->mbr_bound_microseconds +
+                                               stats->record_bound_microseconds + stats->exact_distance_microseconds;
             stats->traversal_microseconds = worker_elapsed > bounded ? worker_elapsed - bounded : 0;
         }
     }
@@ -954,7 +958,8 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->checked_nodes += worker_stats[i].checked_nodes;
         result_stats->lower_bounds += worker_stats[i].lower_bounds;
         result_stats->exact_distances += worker_stats[i].exact_distances;
-        result_stats->lower_bound_microseconds += worker_stats[i].lower_bound_microseconds;
+        result_stats->mbr_bound_microseconds += worker_stats[i].mbr_bound_microseconds;
+        result_stats->record_bound_microseconds += worker_stats[i].record_bound_microseconds;
         result_stats->exact_distance_microseconds += worker_stats[i].exact_distance_microseconds;
         result_stats->traversal_microseconds += worker_stats[i].traversal_microseconds;
     }
@@ -1016,7 +1021,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         if (maxquerythread > 1) {
             if (profile_query_phases) {
                 const unsigned long long seed_elapsed = trie_monotonic_microseconds() - search_start;
-                const unsigned long long bounded = stats.lower_bound_microseconds + stats.exact_distance_microseconds;
+                const unsigned long long bounded = stats.mbr_bound_microseconds +
+                                                   stats.record_bound_microseconds + stats.exact_distance_microseconds;
                 stats.traversal_microseconds = seed_elapsed > bounded ? seed_elapsed - bounded : 0;
             }
             if (minimum_distance < bsf) bsf = minimum_distance;
@@ -1025,7 +1031,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.checked_nodes += parallel_stats.checked_nodes;
             stats.lower_bounds += parallel_stats.lower_bounds;
             stats.exact_distances += parallel_stats.exact_distances;
-            stats.lower_bound_microseconds += parallel_stats.lower_bound_microseconds;
+            stats.mbr_bound_microseconds += parallel_stats.mbr_bound_microseconds;
+            stats.record_bound_microseconds += parallel_stats.record_bound_microseconds;
             stats.exact_distance_microseconds += parallel_stats.exact_distance_microseconds;
             stats.traversal_microseconds += parallel_stats.traversal_microseconds;
         } else {
@@ -1034,7 +1041,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         }
         if (profile_query_phases && maxquerythread <= 1) {
             const unsigned long long search_elapsed = trie_monotonic_microseconds() - search_start;
-            const unsigned long long bounded = stats.lower_bound_microseconds + stats.exact_distance_microseconds;
+            const unsigned long long bounded = stats.mbr_bound_microseconds +
+                                               stats.record_bound_microseconds + stats.exact_distance_microseconds;
             stats.traversal_microseconds = search_elapsed > bounded ? search_elapsed - bounded : 0;
         }
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
@@ -1112,7 +1120,8 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                                                 &stats[i], seed_leaf, &scratch);
                 if (profile_query_phases) {
                     const unsigned long long search_elapsed = trie_monotonic_microseconds() - search_start;
-                    const unsigned long long bounded = stats[i].lower_bound_microseconds + stats[i].exact_distance_microseconds;
+                    const unsigned long long bounded = stats[i].mbr_bound_microseconds +
+                                                       stats[i].record_bound_microseconds + stats[i].exact_distance_microseconds;
                     stats[i].traversal_microseconds = search_elapsed > bounded ? search_elapsed - bounded : 0;
                 }
                 stats[i].total_microseconds = trie_monotonic_microseconds() - query_start;

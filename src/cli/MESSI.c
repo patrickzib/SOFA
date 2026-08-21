@@ -1284,11 +1284,15 @@ int main(int argc, char **argv) {
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
             if (profile_query_phases) {
-                printf("phase profile (accumulated worker ms/query): traversal=%.3f "
-                       "lower-bound=%.3f exact-distance=%.3f\n",
-                       total_tree_pass_time_all / (1000.0 * queries_size),
-                       total_lb_dist_calc_time_all / (1000.0 * queries_size),
-                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+                printf("  phase profile (accumulated worker ms/query):\n"
+                       "    node MBR bounds  : %.3f\n"
+                       "    record bounds    : %.3f\n"
+                       "    exact distances  : %.3f\n"
+                       "    traversal/queues : %.3f\n",
+                       total_mbr_dist_calc_time_all / (1000.0 * queries_size),
+                       total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
+                       total_real_dist_calc_time_all / (1000.0 * queries_size),
+                       total_tree_pass_time_all / (1000.0 * queries_size));
             }
         }
 

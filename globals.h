@@ -133,6 +133,8 @@ void* LOGFILE;
         unsigned long int TOTAL_PQ_INSERT_TIME;
         unsigned long int TOTAL_PQ_REMOVE_TIME;
         unsigned long int TOTAL_LB_DIST_CALC_TIME;
+        unsigned long int TOTAL_MBR_DIST_CALC_TIME;
+        unsigned long int TOTAL_RECORD_LB_DIST_CALC_TIME;
         unsigned long int TOTAL_REAL_DIST_CALC_TIME;
         /* Opt-in, direct query-phase profiling.  These are accumulated worker
          * times (rather than wall-clock time), so parallel work can sum to
@@ -148,6 +150,8 @@ void* LOGFILE;
         double total_pq_insert_time_all;
         double total_pq_remove_time_all;
         double total_lb_dist_calc_time_all;
+        double total_mbr_dist_calc_time_all;
+        double total_record_lb_dist_calc_time_all;
         double total_real_dist_calc_time_all;
 
         int total_tree_nodes;
@@ -192,6 +196,8 @@ void* LOGFILE;
                             TOTAL_PQ_INSERT_TIME=0;\
                             TOTAL_PQ_REMOVE_TIME=0;\
                             TOTAL_LB_DIST_CALC_TIME=0;\
+                            TOTAL_MBR_DIST_CALC_TIME=0;\
+                            TOTAL_RECORD_LB_DIST_CALC_TIME=0;\
                             TOTAL_REAL_DIST_CALC_TIME=0;\
                             TOTAL_TREE_TRAVERSAL_TIME=0;\
                             profile_query_phases=0;\
@@ -200,6 +206,8 @@ void* LOGFILE;
                             total_pq_insert_time_all=0.0;\
                             total_pq_remove_time_all=0.0;\
                             total_lb_dist_calc_time_all=0.0;\
+                            total_mbr_dist_calc_time_all=0.0;\
+                            total_record_lb_dist_calc_time_all=0.0;\
                             total_real_dist_calc_time_all=0.0;\
                             TOTAL_INDEXING_PART_TIME = 0.0;\
                             TOTAL_TRANSFORMATION_PART_TIME = 0.0;\
@@ -260,6 +268,10 @@ void* LOGFILE;
         TOTAL_PQ_REMOVE_TIME=0;\
         total_lb_dist_calc_time_all += TOTAL_LB_DIST_CALC_TIME;\
         TOTAL_LB_DIST_CALC_TIME=0;\
+        total_mbr_dist_calc_time_all += TOTAL_MBR_DIST_CALC_TIME;\
+        TOTAL_MBR_DIST_CALC_TIME=0;\
+        total_record_lb_dist_calc_time_all += TOTAL_RECORD_LB_DIST_CALC_TIME;\
+        TOTAL_RECORD_LB_DIST_CALC_TIME=0;\
         total_real_dist_calc_time_all += TOTAL_REAL_DIST_CALC_TIME;\
         TOTAL_REAL_DIST_CALC_TIME=0;
         #define SAVE_STATS_TOTAL(ifile, queries_size) fprintf(ifile,"%lf, %lf, %lf, %lf, %lf, %lf, %lf, %d, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf\n", \
