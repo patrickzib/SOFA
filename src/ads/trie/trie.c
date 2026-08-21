@@ -902,7 +902,9 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     return distance;
 #else
     const int workers = maxquerythread > 0 ? maxquerythread : 1;
-    const int queue_count = workers < 8 ? workers : 8;
+    /* Match iSAX: --queue-number controls the number of shared leaf-work
+     * queues.  The CLI defaults it to the active worker count. */
+    const int queue_count = N_PQUEUE > 0 ? N_PQUEUE : workers;
     int frontier_count = 0;
     symbolic_trie_node **frontier = trie_parallel_frontier(index->trie->root, workers * 4, &frontier_count);
     trie_leaf_queue *queues = calloc((size_t) queue_count, sizeof(*queues));

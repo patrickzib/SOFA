@@ -33,6 +33,8 @@
 
 #define NTHREADS 4
 
+int N_PQUEUE = 1;
+
 
 query_result approximate_search_inmemory_m(ts_type *ts, ts_type *paa, isax_index *index) {
     query_result result;

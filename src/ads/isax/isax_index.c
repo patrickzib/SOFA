@@ -2814,6 +2814,7 @@ void print_settings(isax_index_settings *settings) {
     if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
         fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
                 settings->trie_bound_dimensions, settings->n_segments);
+        fprintf(stderr, "  trie queues   : %d shared leaf-work queues\n", N_PQUEUE);
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     fprintf(stderr, "  leaf capacity : %d (minimum %d)\n",

@@ -295,6 +295,7 @@ int main(int argc, char **argv) {
     /* The trie mirrors iSAX's per-query worker scheduling by default. */
     static int trie_query_batch = 0;
     static int profile_query_phases_requested = 0;
+    static int queue_number_specified = 0;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -516,6 +517,11 @@ int main(int argc, char **argv) {
                 break;
             case '6':
                 N_PQUEUE = atoi(optarg);
+                if (N_PQUEUE <= 0) {
+                    fprintf(stderr, "Error: --queue-number must be a positive integer.\n");
+                    return EXIT_FAILURE;
+                }
+                queue_number_specified = 1;
                 break;
             case '8':
                 sample_size = atoi(optarg);
@@ -720,6 +726,9 @@ int main(int argc, char **argv) {
 #endif
     calculate_thread = thread_count;
     maxquerythread = thread_count;
+    /* Keep the default work distribution proportional to the active query
+     * workers.  An explicit --queue-number always takes precedence. */
+    if (!queue_number_specified) N_PQUEUE = thread_count;
     if (use_index) {
         isax_index *idx = index_read(index_path);
         idx->settings->tight_bound = tight_bound;

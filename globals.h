@@ -58,6 +58,8 @@ unsigned long BYTES_ACCESSED;
 float APPROXIMATE;
 
 void* LOGFILE;
+/* Shared priority-queue count used by iSAX and trie query scheduling. */
+extern int N_PQUEUE;
 
 #define INCREASE_BYTES_ACCESSED(new_bytes) \
 	    BYTES_ACCESSED += (unsigned long) new_bytes;
