@@ -81,6 +81,7 @@ typedef struct {
     unsigned int sample_size;
     int histogram_type;
     int sample_type;
+    unsigned int sampling_seed;
     int n_coefficients;
     int node_split_criterion;
     messi_index_type index_type;

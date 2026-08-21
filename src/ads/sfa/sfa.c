@@ -278,11 +278,15 @@ enum response sfa_set_bins(
     COUNT_BINNING_TIME_END
 
     sfa_print_bins(index);
-    fprintf(stderr,
-            ">>> SFA binning timing: sample+DFT=%.3fs variance+root-split=%.3fs "
-            "bin-sort=%.3fs total=%.3fs\n",
-            sampling_end - binning_start, selection_end - sampling_end,
-            bins_end - selection_end, bins_end - binning_start);
+    fprintf(stderr, ">>> SFA binning timing\n");
+    fprintf(stderr, "    sample + DFT          : %.3f s\n",
+            sampling_end - binning_start);
+    fprintf(stderr, "    variance + root split : %.3f s\n",
+            selection_end - sampling_end);
+    fprintf(stderr, "    bin sorting           : %.3f s\n",
+            bins_end - selection_end);
+    fprintf(stderr, "    total                 : %.3f s\n",
+            bins_end - binning_start);
     fprintf(stderr, ">>> Finished binning\n");
     return SUCCESS;
 }
@@ -431,6 +435,8 @@ void *set_bins_worker_dft(void *transferdata) {
     isax_index *index = ((bins_data_inmemory *) transferdata)->index;
     unsigned long start_number = bins_data->start_number;
     unsigned long stop_number = bins_data->stop_number;
+    uint64_t rng_state = ((uint64_t) index->settings->sampling_seed << 32) ^
+                         (uint64_t) (bins_data->workernumber + 1);
 
     unsigned long ts_length = index->settings->timeseries_size;
     long records = bins_data->records;
@@ -504,7 +510,8 @@ void *set_bins_worker_dft(void *transferdata) {
         if (index->settings->sample_type == 3) {
             unsigned long span = stop_number - start_number;
             unsigned long position = start_number +
-                                     (unsigned long) random_at_most((long int) span - 1);
+                                     (unsigned long) random_at_most_seed(&rng_state,
+                                                                         (long int) span - 1);
             fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
         }
 
@@ -744,6 +751,25 @@ long random_at_most(long max) {
     } while (num_rand - defect <= (unsigned long) x);
 
     return x / bin_size;
+}
+
+/* Deterministic, worker-local generator used by SFA/PISA bin sampling. */
+static uint64_t sfa_rng_next(uint64_t *state) {
+    uint64_t value = (*state += UINT64_C(0x9e3779b97f4a7c15));
+    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return value ^ (value >> 31);
+}
+
+long random_at_most_seed(uint64_t *state, long max) {
+    if (max <= 0) return 0;
+    const uint64_t range = (uint64_t) max + 1;
+    const uint64_t limit = UINT64_MAX - (UINT64_MAX % range);
+    uint64_t value;
+    do {
+        value = sfa_rng_next(state);
+    } while (value >= limit);
+    return (long) (value % range);
 }
 
 

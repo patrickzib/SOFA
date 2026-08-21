@@ -74,6 +74,7 @@ pass 'high-frequency profile preserves BigANN flags and coefficients'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
+assert_contains "$OUTPUT" '--sampling-seed 1'
 pass 'standard SFA uses the 64-coefficient training pool when permitted'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)

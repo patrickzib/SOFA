@@ -241,17 +241,17 @@ extern int query_report_interval;
         #define PRINT_STATS(result_distance) do { \
             if (!stats_header_printed) { \
                 fprintf(stderr, "%4s %8s %13s %20s %12s %12s\n", \
-                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_us"); \
+                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_ms"); \
                 stats_header_printed = 1; \
             } \
-            fprintf(stderr, "%8d %13d %20.3f %12.3f %12.0f\n", \
+            fprintf(stderr, "%8d %13d %20.3f %12.3f %12.3f\n", \
                    total_tree_nodes, checked_nodes, APPROXIMATE, \
-                   result_distance, total_time); \
+                   result_distance, total_time / 1000.0); \
         } while (0);
         #define PRINT_STATS_HEADER() do { \
             if (!stats_header_printed) { \
                 fprintf(stderr, "%4s %8s %13s %20s %12s %12s\n", \
-                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_us"); \
+                       "idx:", "nodes", "checked_nodes", "approximate_distance", "distance", "cumulative_ms"); \
                 stats_header_printed = 1; \
             } \
         } while (0);

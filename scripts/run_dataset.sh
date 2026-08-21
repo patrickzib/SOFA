@@ -21,6 +21,8 @@ Options:
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes
+  --sampling-seed N         Seed random binning sampling (default: 1)
+  --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
@@ -147,6 +149,8 @@ MIN_LEAF_SIZE=
 K_SIZE=
 SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
+SAMPLING_SEED=1
+NO_SIMD=false
 METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
@@ -181,6 +185,8 @@ while [[ $# -gt 0 ]]; do
         --k) [[ $# -ge 2 ]] || die "$1 requires a value"; K_SIZE=$2; shift 2 ;;
         --sample-factor) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTOR=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
+        --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
@@ -212,6 +218,7 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
+is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonnegative integer'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
@@ -307,8 +314,9 @@ COMMON_ARGS+=(
     --leaf-size "$LEAF_SIZE"
     --min-leaf-size "$MIN_LEAF_SIZE"
     --initial-lbl-size 20000
-    --SIMD
+    --sampling-seed "$SAMPLING_SEED"
 )
+[[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-fanout "$TRIE_FANOUT")

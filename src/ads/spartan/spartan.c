@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "config.h"
 #include "globals.h"
@@ -24,18 +25,22 @@ typedef struct spartan_bins_data {
     long int stop_number;
 } spartan_bins_data;
 
-static long spartan_random_at_most(long max) {
-    unsigned long num_bins = (unsigned long) max + 1;
-    unsigned long num_rand = (unsigned long) RAND_MAX + 1;
-    unsigned long bin_size = num_rand / num_bins;
-    unsigned long defect = num_rand % num_bins;
+static uint64_t spartan_rng_next(uint64_t *state) {
+    uint64_t value = (*state += UINT64_C(0x9e3779b97f4a7c15));
+    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return value ^ (value >> 31);
+}
 
-    long x;
+static long spartan_random_at_most(uint64_t *state, long max) {
+    if (max <= 0) return 0;
+    const uint64_t range = (uint64_t) max + 1;
+    const uint64_t limit = UINT64_MAX - (UINT64_MAX % range);
+    uint64_t value;
     do {
-        x = random();
-    } while (num_rand - defect <= (unsigned long) x);
-
-    return x / bin_size;
+        value = spartan_rng_next(state);
+    } while (value >= limit);
+    return (long) (value % range);
 }
 
 enum response spartan_bins_init(isax_index *index) {
@@ -113,12 +118,13 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
 
     long int *positions = NULL;
     if (index->settings->sample_type == 3) {
+        uint64_t rng_state = (uint64_t) index->settings->sampling_seed;
         positions = malloc(sizeof(long int) * records);
         for (unsigned int i = 0; i < records; ++i) {
             positions[i] = (long int) i;
         }
         for (long int i = (long int) records; i < ts_num; ++i) {
-            long int j = spartan_random_at_most(i);
+            long int j = spartan_random_at_most(&rng_state, i);
             if (j < (long int) records) {
                 positions[j] = i;
             }

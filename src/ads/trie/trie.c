@@ -20,6 +20,20 @@
 #include <omp.h>
 #endif
 
+/* Keep large diagnostic counts compact and easy to scan in benchmark logs. */
+static const char *trie_format_compact_count(unsigned long long value,
+                                              char buffer[32]) {
+    if (value >= 1000000000ULL)
+        snprintf(buffer, 32, "%.3g G", (double) value / 1e9);
+    else if (value >= 1000000ULL)
+        snprintf(buffer, 32, "%.3g M", (double) value / 1e6);
+    else if (value >= 1000ULL)
+        snprintf(buffer, 32, "%.3g K", (double) value / 1e3);
+    else
+        snprintf(buffer, 32, "%llu", value);
+    return buffer;
+}
+
 typedef struct symbolic_trie_node {
     struct symbolic_trie_node *children[8];
     struct symbolic_trie_node *parent;
@@ -214,9 +228,10 @@ static unsigned long long trie_monotonic_microseconds(void) {
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
                                    const trie_query_stats *stats, float distance,
                                    unsigned long long cumulative_microseconds) {
-    fprintf(stderr, "%3d: %8lu %13lu %20.3f %12.3f %12llu\n",
+    fprintf(stderr, "%3d: %8lu %13lu %20.3f %12.3f %12.3f\n",
            query_index, trie->node_count, stats->checked_nodes,
-           stats->approximate_distance, distance, cumulative_microseconds);
+           stats->approximate_distance, distance,
+           (double) cumulative_microseconds / 1000.0);
 }
 
 static void trie_save_query_stats(const struct symbolic_trie_index *trie,
@@ -533,9 +548,13 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
     node->leaf = 0; node->split_dimension = dimension; node->split_fanout = fanout;
     memcpy(node->children, children, sizeof(children));
     const double partition_end = messi_monotonic_seconds();
-    fprintf(stderr,
-            ">>> trie root split timing: sample=%ld selection=%.3fs partition=%.3fs dimension=%d\n",
-            sample_size, selection_end - selection_start, partition_end - selection_end, dimension);
+    char sample_count[32];
+    fprintf(stderr, ">>> trie root split timing\n");
+    fprintf(stderr, "    sample records : %s\n",
+            trie_format_compact_count((unsigned long long) sample_size, sample_count));
+    fprintf(stderr, "    selection      : %.3f s\n", selection_end - selection_start);
+    fprintf(stderr, "    partition      : %.3f s\n", partition_end - selection_end);
+    fprintf(stderr, "    dimension      : %d\n", dimension);
     return 1;
 }
 
@@ -713,20 +732,25 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double split_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
-    fprintf(stderr,
-            ">>> trie build timing: read=%.3fs transform=%.3fs root-mbb=%.3fs "
-            "split=%.3fs total=%.3fs\n",
-            read_end - build_start, transform_end - read_end,
-            root_mbb_end - transform_end, split_end - root_mbb_end,
-            split_end - build_start);
+    fprintf(stderr, ">>> trie build timing\n");
+    fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
+    fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);
+    fprintf(stderr, "    root MBR   : %.3f s\n", root_mbb_end - transform_end);
+    fprintf(stderr, "    split      : %.3f s\n", split_end - root_mbb_end);
+    fprintf(stderr, "    total      : %.3f s\n", split_end - build_start);
     if (internal_nodes != 0) {
-        fprintf(stderr,
-                ">>> trie split diagnostics: internal=%lu fanout=%d avg_nonempty=%.2f "
-                "occupancy=%.1f%% largest_child=%.1f%%\n",
-                internal_nodes, trie->fanout,
-                (double) nonempty_children / (double) internal_nodes,
+        char internal_count[32];
+        fprintf(stderr, ">>> trie split diagnostics\n");
+        fprintf(stderr, "    internal nodes : %s\n",
+                trie_format_compact_count((unsigned long long) internal_nodes,
+                                          internal_count));
+        fprintf(stderr, "    fanout         : %d\n", trie->fanout);
+        fprintf(stderr, "    avg non-empty  : %.2f\n",
+                (double) nonempty_children / (double) internal_nodes);
+        fprintf(stderr, "    occupancy      : %.1f%%\n",
                 100.0 * (double) nonempty_children /
-                    ((double) internal_nodes * (double) trie->fanout),
+                    ((double) internal_nodes * (double) trie->fanout));
+        fprintf(stderr, "    largest child  : %.1f%%\n",
                 100.0 * largest_child_share / (double) internal_nodes);
     }
     return SUCCESS;

@@ -13,6 +13,7 @@
 #include <fftw3.h>
 #include <sys/types.h>
 #include "dft.h"
+#include <stdint.h>
 
 enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
@@ -39,6 +40,7 @@ ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *s
 #endif
 
 long random_at_most(long max);
+long random_at_most_seed(uint64_t *state, long max);
 
 void sfa_printbin(unsigned long long n, int size);
 

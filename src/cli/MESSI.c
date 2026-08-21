@@ -282,10 +282,13 @@ int main(int argc, char **argv) {
     static int requested_threads = 0;
     static int requested_numa_nodes = -1;
     static char inmemory_flag = 0;
-    static char SIMD_flag = 0;
+    /* SIMD is enabled automatically when AVX2 support was compiled in.
+     * --no-simd remains available for scalar comparison runs. */
+    static char SIMD_flag = ADS_HAVE_AVX2 ? 1 : 0;
     static char is_norm = 0;
     static int histogram_type = 1;
     static int sample_type = 1;
+    static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
@@ -351,7 +354,6 @@ int main(int argc, char **argv) {
                 {"topk",                no_argument,       0,    '4'},
                 {"dtwwindowsize",       required_argument, 0,    '5'},
                 {"queue-number",        required_argument, 0,    '6'},
-                {"SIMD",                no_argument,       0,    '7'},
                 {"sample-size",         required_argument, 0,    '8'},
                 {"is-norm",             no_argument,       0,    '9'},
                 {"histogram-type",      required_argument, 0,    'A'},
@@ -369,6 +371,8 @@ int main(int argc, char **argv) {
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"query-report-interval", required_argument, 0, 1006},
+                {"sampling-seed", required_argument, 0, 1007},
+                {"no-simd",             no_argument,       0, 1008},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -401,6 +405,9 @@ int main(int argc, char **argv) {
                 break;
             case 1006:
                 query_report_interval_requested = atoi(optarg);
+                break;
+            case 1008:
+                SIMD_flag = 0;
                 break;
             case 'j':
                 serial_scan = 1;
@@ -548,6 +555,17 @@ int main(int argc, char **argv) {
             case 'C':
                 sample_type = atoi(optarg);
                 break;
+            case 1007: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0' ||
+                    value > UINT_MAX) {
+                    fprintf(stderr, "Error: --sampling-seed must be an unsigned integer.\n");
+                    return EXIT_FAILURE;
+                }
+                sampling_seed = (unsigned int) value;
+                break;
+            }
             case 'D':
                 n_coefficients = atoi(optarg);
                 break;
@@ -632,12 +650,13 @@ int main(int argc, char **argv) {
                 \t\t\tMESSI+SFA: 4\n\
                 \t\t\tMESSI+SPARTAN: 5\n\
                 \t\t\tMESSI+PISA: 6\n\
-                \t--SIMD\t\t\tSet for search with SIMD intrinsics\n\
+                \t--no-simd\t\t\tDisable SIMD even when AVX2 is available\n\
                 \t--sample-size\t\t\tSet sample size for MCB\n\
                 \t--sample-type\t\t\tSet for sampling strategy\n\
                 \t\t\tfirst-n-values sampling: 1\n\
                 \t\t\tuniform sampling: 2\n\
                 \t\t\trandom sampling: 3\n\
+                \t--sampling-seed\t\t\tSeed for random binning sampling (default: 1)\n\
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
@@ -656,9 +675,6 @@ int main(int argc, char **argv) {
                 break;
             case 'v':
                 inmemory_flag = 1;
-                break;
-            case '7':
-                SIMD_flag = 1;
                 break;
             case '9':
                 is_norm = 1;
@@ -1028,6 +1044,7 @@ int main(int argc, char **argv) {
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_fanout = trie_fanout;
+        index_settings->sampling_seed = sampling_seed;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 

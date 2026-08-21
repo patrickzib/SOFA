@@ -238,6 +238,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = MESSI_INDEX_ISAX;
     settings->trie_bound_dimensions = 0;
@@ -2903,9 +2904,10 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
 
     if (binning != NULL) {
-        fprintf(stderr, "  binning       : %s; sampling: %s (%s records)\n",
+        fprintf(stderr, "  binning       : %s; sampling: %s (%s records, seed %u)\n",
                 binning, sampling != NULL ? sampling : "unspecified",
-                format_compact_count((unsigned long long) settings->sample_size, sample_size));
+                format_compact_count((unsigned long long) settings->sample_size, sample_size),
+                settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds\n");
