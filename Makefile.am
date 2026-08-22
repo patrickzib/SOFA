@@ -16,3 +16,12 @@ bin_MESSI_SOURCES = src/cli/MESSI.c
 bin_MESSI_CFLAGS = -I/opt/local/include -I/usr/include/ -I/usr/local/include/ $(FFTW_CFLAGS) -march=native $(SIMD_CFLAGS) -fcommon
 bin_MESSI_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) -lreadline -lm -lpthread
 bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ $(SIMD_CFLAGS) -fopenmp
+
+check_PROGRAMS = scripts/tests/test_ed_simd
+TESTS = scripts/tests/test_ed_simd
+scripts_tests_test_ed_simd_SOURCES = scripts/tests/test_ed_simd.c
+scripts_tests_test_ed_simd_LDADD = lib/libads.a -lm
+
+noinst_PROGRAMS = bench_ed_simd
+bench_ed_simd_SOURCES = scripts/bench_ed_simd.c
+bench_ed_simd_LDADD = lib/libads.a -lm

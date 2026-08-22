@@ -13,6 +13,8 @@ option(MESSI_ENABLE_NATIVE_ARCH "Enable -march=native for local builds." ON)
 option(MESSI_REQUIRE_FFTW "Fail configure if FFTW3f is missing." ON)
 option(MESSI_REQUIRE_READLINE "Fail configure if readline is missing." ON)
 
+include(CTest)
+
 set(ADS_SOURCES
   src/ads/isax/isax_file_loaders.c
   src/ads/isax/isax_first_buffer_layer.c
@@ -150,4 +152,27 @@ target_link_libraries(MESSI PRIVATE Threads::Threads)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
   target_link_libraries(MESSI PRIVATE ${MATH_LIBRARY})
+endif()
+
+if(BUILD_TESTING)
+  add_executable(test_ed_simd scripts/tests/test_ed_simd.c)
+  target_include_directories(test_ed_simd PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_ed_simd PRIVATE ads)
+  if(MATH_LIBRARY)
+    target_link_libraries(test_ed_simd PRIVATE ${MATH_LIBRARY})
+  endif()
+  add_test(NAME ed_simd_scalar_reference COMMAND test_ed_simd)
+endif()
+
+add_executable(bench_ed_simd EXCLUDE_FROM_ALL scripts/bench_ed_simd.c)
+target_include_directories(bench_ed_simd PRIVATE
+  ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/include
+)
+target_link_libraries(bench_ed_simd PRIVATE ads)
+if(MATH_LIBRARY)
+  target_link_libraries(bench_ed_simd PRIVATE ${MATH_LIBRARY})
 endif()
