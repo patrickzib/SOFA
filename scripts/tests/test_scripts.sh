@@ -154,6 +154,14 @@ assert_contains "$OUTPUT" '--index-type trie'
 assert_not_contains "$OUTPUT" '--function-type 3'
 pass 'suite forwards the selected index layout to dataset runs'
 
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
+    --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-dynamic-alphabet'
+assert_contains "$OUTPUT" '--trie-min-fanout 2'
+assert_contains "$OUTPUT" '--trie-max-fanout 16'
+assert_contains "$OUTPUT" '--trie-alphabet-budget-bits 3'
+pass 'suite forwards the precomputed dynamic trie alphabet option'
+
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type isax --no-dynamic-root-split-variance --dry-run 2>/dev/null)
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'suite forwards the dynamic root split disable option'

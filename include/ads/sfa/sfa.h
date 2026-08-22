@@ -66,6 +66,8 @@ typedef struct bins_data_inmemory
 typedef struct variance_coeff_index
 {
 	double variance;
+	double variance_real;
+	double variance_imag;
 	int coeff_index;
 }variance_coeff_index;
 

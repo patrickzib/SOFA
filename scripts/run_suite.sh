@@ -20,6 +20,11 @@ Options:
   --datasets LIST         Limit regular suites to dataset IDs
   --index-type TYPE       Index layout: isax (default) or trie
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
+  --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
+  --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
+  --trie-max-fanout N     Maximum dynamic trie fanout (default: 16)
+  --trie-alphabet-budget-bits N
+                          Average dynamic alphabet budget in bits (default: 3)
   --no-dynamic-root-split-variance
                           Disable variance-assigned root bits for learned iSAX methods
   --rerun-existing        Run workloads even when an archive directory exists
@@ -56,6 +61,10 @@ SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 INDEX_TYPE=isax
 TRIE_FANOUT=8
+TRIE_DYNAMIC_ALPHABET=false
+TRIE_MIN_FANOUT=2
+TRIE_MAX_FANOUT=16
+TRIE_ALPHABET_BUDGET_BITS=3
 NO_DYNAMIC_ROOT_SPLIT_VARIANCE=false
 RERUN_EXISTING=false
 DRY_RUN=false
@@ -69,6 +78,10 @@ while [[ $# -gt 0 ]]; do
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
+        --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
+        --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
+        --trie-max-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MAX_FANOUT=$2; shift 2 ;;
+        --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --no-dynamic-root-split-variance) NO_DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --rerun-existing) RERUN_EXISTING=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
@@ -88,6 +101,14 @@ esac
     die '--trie-fanout must be 2, 4, or 8'
 [[ $INDEX_TYPE == trie || $TRIE_FANOUT == 8 ]] || \
     die '--trie-fanout requires --index-type trie'
+[[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-dynamic-alphabet requires --index-type trie'
+if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
+    [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
+    [[ $TRIE_MIN_FANOUT =~ ^(2|4|8|16|32|64|128|256)$ ]] || die '--trie-min-fanout must be a power of two between 2 and 256'
+    [[ $TRIE_MAX_FANOUT =~ ^(2|4|8|16|32|64|128|256)$ ]] || die '--trie-max-fanout must be a power of two between 2 and 256'
+    [[ $TRIE_ALPHABET_BUDGET_BITS =~ ^[1-8]$ ]] || die '--trie-alphabet-budget-bits must be between 1 and 8'
+fi
 
 split_csv "$THREADS_CSV"; THREADS=("${SPLIT_RESULT[@]}")
 split_csv "$K_VALUES_CSV"; K_VALUES=("${SPLIT_RESULT[@]}")
@@ -115,7 +136,15 @@ run_one() {
         return 0
     fi
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
-    [[ $INDEX_TYPE == trie ]] && command+=(--trie-fanout "$TRIE_FANOUT")
+    if [[ $INDEX_TYPE == trie ]]; then
+        if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
+            command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
+                      --trie-max-fanout "$TRIE_MAX_FANOUT"
+                      --trie-alphabet-budget-bits "$TRIE_ALPHABET_BUDGET_BITS")
+        else
+            command+=(--trie-fanout "$TRIE_FANOUT")
+        fi
+    fi
     $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)
@@ -206,7 +235,15 @@ run_query_suite() {
             local methods=sax,sfa-depth,sfa-width
             [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
-            [[ $INDEX_TYPE == trie ]] && command+=(--trie-fanout "$TRIE_FANOUT")
+            if [[ $INDEX_TYPE == trie ]]; then
+                if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
+                    command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
+                              --trie-max-fanout "$TRIE_MAX_FANOUT"
+                              --trie-alphabet-budget-bits "$TRIE_ALPHABET_BUDGET_BITS")
+                else
+                    command+=(--trie-fanout "$TRIE_FANOUT")
+                fi
+            fi
             $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods" --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)

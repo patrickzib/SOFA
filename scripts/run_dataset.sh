@@ -27,6 +27,11 @@ Options:
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
+  --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
+  --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
+  --trie-max-fanout N      Maximum dynamic trie fanout (default: 16)
+  --trie-alphabet-budget-bits N
+                            Average dynamic alphabet budget in bits (default: 3)
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
                             (the iSAX runner default)
@@ -160,6 +165,10 @@ TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
 TRIE_FANOUT=8
+TRIE_DYNAMIC_ALPHABET=false
+TRIE_MIN_FANOUT=2
+TRIE_MAX_FANOUT=16
+TRIE_ALPHABET_BUDGET_BITS=3
 PROFILE_QUERY_PHASES=false
 QUERY_REPORT_INTERVAL=
 # Resolved after parsing because the default depends on --index-type.
@@ -197,6 +206,10 @@ while [[ $# -gt 0 ]]; do
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
+        --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
+        --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
+        --trie-max-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MAX_FANOUT=$2; shift 2 ;;
+        --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
@@ -236,6 +249,7 @@ fi
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
+[[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
@@ -252,7 +266,14 @@ if [[ $INDEX_TYPE == trie ]]; then
     (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
     (( TRIE_MBR_DIMS <= TS_SIZE / 2 )) || TRIE_MBR_DIMS=$((TS_SIZE / 2))
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
     [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'
+else
+    [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
+    [[ $TRIE_MIN_FANOUT =~ ^(2|4|8|16|32|64|128|256)$ ]] || die '--trie-min-fanout must be a power of two between 2 and 256'
+    [[ $TRIE_MAX_FANOUT =~ ^(2|4|8|16|32|64|128|256)$ ]] || die '--trie-max-fanout must be a power of two between 2 and 256'
+    [[ $TRIE_ALPHABET_BUDGET_BITS =~ ^[1-8]$ ]] || die '--trie-alphabet-budget-bits must be between 1 and 8'
+fi
 fi
 
 if [[ $PROFILE == knn ]]; then
@@ -324,7 +345,16 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
-[[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-fanout "$TRIE_FANOUT")
+if [[ $INDEX_TYPE == trie ]]; then
+    if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
+        COMMON_ARGS+=(--trie-dynamic-alphabet
+                      --trie-min-fanout "$TRIE_MIN_FANOUT"
+                      --trie-max-fanout "$TRIE_MAX_FANOUT"
+                      --trie-alphabet-budget-bits "$TRIE_ALPHABET_BUDGET_BITS")
+    else
+        COMMON_ARGS+=(--trie-fanout "$TRIE_FANOUT")
+    fi
+fi
 if [[ $TRIE_QUERY_PARALLEL == true ]]; then
     COMMON_ARGS+=(--trie-query-parallel)
 fi

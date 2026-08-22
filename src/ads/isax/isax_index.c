@@ -243,6 +243,10 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->index_type = MESSI_INDEX_ISAX;
     settings->trie_bound_dimensions = 0;
     settings->trie_fanout = 8;
+    settings->trie_dynamic_alphabet = 0;
+    settings->trie_min_bits = 1;
+    settings->trie_max_bits = 4;
+    settings->trie_alphabet_budget_bits = 3;
     settings->symbolic_variances = NULL;
     settings->dynamic_root_split_variance = 0;
     settings->root_bit_cardinalities = NULL;
@@ -298,6 +302,7 @@ isax_index * isax_index_init(isax_index_settings *settings)
     index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
     index->pca_mean = NULL;
     index->pca_components = NULL;
+    index->pca_explained_variance = NULL;
     index->pca_components_count = 0;
     index->pca_dim = 0;
     index->trie = NULL;
@@ -348,6 +353,7 @@ void isax_index_destroy(isax_index *index, isax_node *node)
         if (index->pca_components != NULL) {
             free(index->pca_components);
         }
+        free(index->pca_explained_variance);
         index->pca_dim = 0;
         free(index);
     }
@@ -427,6 +433,7 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
         if (index->pca_components != NULL) {
             free(index->pca_components);
         }
+        free(index->pca_explained_variance);
         index->pca_dim = 0;
         free(index);
     }

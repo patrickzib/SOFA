@@ -40,7 +40,7 @@ def read_logs(log_type: str = "query",
                         # print("Queries", i, q, key, q)
                         all_files[key][config_names[i]] = queries + "/" + q
 
-            print("-----------------")
+            # print("-----------------")
 
     return all_files
 

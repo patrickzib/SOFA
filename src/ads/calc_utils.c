@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <float.h>
 #include <time.h>
 #include "math.h"
@@ -90,59 +91,50 @@ root_mask_type isax_root_mask_from_sax(const isax_index *index,
     return mask;
 }
 
-enum response isax_configure_variance_root_split(isax_index *index,
-                                                 ts_type *const *coefficients,
-                                                 unsigned int sample_size) {
+enum response configure_dynamic_bit_allocation(isax_index *index,
+                                                 const double *variance,
+                                                 int dimensions,
+                                                 int budget,
+                                                 int min_bit_val,
+                                                 int max_bit_val) {
     isax_index_settings *settings = index->settings;
     if (!settings->dynamic_root_split_variance && settings->index_type != MESSI_INDEX_TRIE) {
         return SUCCESS;
     }
-    if (coefficients == NULL || sample_size == 0) {
+    if (variance == NULL || dimensions <= 0 || budget < 0 || min_bit_val < 0 || max_bit_val <= 0 ||
+        min_bit_val > max_bit_val) {
         return FAILURE;
     }
+    if (max_bit_val > 8) max_bit_val = 8;
+    if (min_bit_val > max_bit_val || budget < min_bit_val * dimensions) return FAILURE;
 
-    const int dimensions = settings->n_segments;
-    const int budget = dimensions < (int) (sizeof(root_mask_type) * 8)
-                           ? dimensions
-                           : (int) (sizeof(root_mask_type) * 8);
-    sax_type *bits = settings->dynamic_root_split_variance
+    const int allocate_bits = settings->dynamic_root_split_variance ||
+                               (settings->index_type == MESSI_INDEX_TRIE &&
+                                settings->trie_dynamic_alphabet);
+    sax_type *bits = allocate_bits
                          ? calloc((size_t) dimensions, sizeof(*bits)) : NULL;
-    double *variance = calloc((size_t) dimensions, sizeof(*variance));
-    if ((settings->dynamic_root_split_variance && bits == NULL) || variance == NULL) {
+    double *stored_variance = calloc((size_t) dimensions, sizeof(*stored_variance));
+    if ((allocate_bits && bits == NULL) || stored_variance == NULL) {
         free(bits);
-        free(variance);
+        free(stored_variance);
         return FAILURE;
     }
-
-    for (int i = 0; i < dimensions; ++i) {
-        double mean = 0.0;
-        for (unsigned int j = 0; j < sample_size; ++j) {
-            mean += coefficients[i][j];
-        }
-        mean /= sample_size;
-        for (unsigned int j = 0; j < sample_size; ++j) {
-            double delta = coefficients[i][j] - mean;
-            variance[i] += delta * delta;
-        }
-        variance[i] /= sample_size;
-        if (!isfinite(variance[i]) || variance[i] < 0.0) {
-            variance[i] = 0.0;
-        }
-    }
-
+    memcpy(stored_variance, variance, sizeof(*stored_variance) * (size_t) dimensions);
     free(settings->symbolic_variances);
-    settings->symbolic_variances = variance;
+    settings->symbolic_variances = stored_variance;
 
-    if (!settings->dynamic_root_split_variance) return SUCCESS;
+    if (!allocate_bits) return SUCCESS;
 
-    for (int assigned = 0; assigned < budget; ++assigned) {
+    for (int i = 0; i < dimensions; ++i) bits[i] = (sax_type) min_bit_val;
+
+    for (int assigned = min_bit_val * dimensions; assigned < budget; ++assigned) {
         int best = -1;
         double best_gain = -1.0;
         for (int i = 0; i < dimensions; ++i) {
-            if (bits[i] >= settings->sax_bit_cardinality) {
+            if (bits[i] >= max_bit_val) {
                 continue;
             }
-            double gain = ldexp(variance[i], -(int) bits[i] - 1);
+            double gain = ldexp(stored_variance[i], -(int) bits[i] - 1);
             if (gain > best_gain) {
                 best_gain = gain;
                 best = i;
@@ -159,7 +151,8 @@ enum response isax_configure_variance_root_split(isax_index *index,
 
     free(settings->root_bit_cardinalities);
     settings->root_bit_cardinalities = bits;
-    fprintf(stderr, ">>> variance root split (%d bits):", budget);
+    fprintf(stderr, ">>> variance root split (%d bits, min %d, max %d):",
+            budget, min_bit_val, max_bit_val);
     for (int i = 0; i < dimensions; ++i) {
         fprintf(stderr, " %u", (unsigned int) bits[i]);
     }

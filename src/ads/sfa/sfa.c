@@ -227,8 +227,27 @@ enum response sfa_set_bins(
 
     ts_type **root_split_coefficients =
             use_variance ? dft_mem_array_coeff : dft_mem_array;
-    if (isax_configure_variance_root_split(index, root_split_coefficients,
-                                           sample_size) != SUCCESS) {
+    double variance_mean = 0.0;
+    for (int i = 0; i < n_segments; ++i) variance_mean += index->settings->symbolic_variances[i];
+    variance_mean /= (double) n_segments;
+    if (variance_mean > 0.0) {
+        for (int i = 0; i < n_segments; ++i)
+            index->settings->symbolic_variances[i] /= variance_mean;
+    }
+    const int root_budget = index->settings->index_type == MESSI_INDEX_TRIE &&
+                                    index->settings->trie_dynamic_alphabet
+                                ? index->settings->trie_alphabet_budget_bits * n_segments
+                                : (n_segments < (int) (sizeof(root_mask_type) * 8)
+                                       ? n_segments : (int) (sizeof(root_mask_type) * 8));
+    if (configure_dynamic_bit_allocation(index, index->settings->symbolic_variances,
+                                           n_segments, root_budget,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_min_bits : 0,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_max_bits
+                                               : index->settings->sax_bit_cardinality) != SUCCESS) {
         free(input_data);
         free_dft_memory(index, n_segments, root_split_coefficients);
         return FAILURE;
@@ -327,6 +346,8 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         double total_var = var_real + var_imag;
 
         var_coeff_index[i].variance = total_var;
+        var_coeff_index[i].variance_real = var_real;
+        var_coeff_index[i].variance_imag = var_imag;
         var_coeff_index[i].coeff_index = i;
     }
 
@@ -404,6 +425,17 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         }
         fprintf(stderr, "\n");
     }
+
+    /* Keep the training variances aligned with the selected representation.
+     * Dynamic alphabet allocation consumes these values directly. */
+    double *selected_variance = calloc((size_t) n_segments, sizeof(*selected_variance));
+    if (selected_variance == NULL) return NULL;
+    for (int i = 0; i < n_segments / 2; ++i) {
+        selected_variance[i * 2] = var_coeff_index[i].variance_real;
+        selected_variance[i * 2 + 1] = var_coeff_index[i].variance_imag;
+    }
+    free(index->settings->symbolic_variances);
+    index->settings->symbolic_variances = selected_variance;
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     for (int k = 0; k < n_segments; ++k) {

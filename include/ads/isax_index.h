@@ -88,9 +88,13 @@ typedef struct {
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
-    /* Trie-only symbolic partition fanout.  The implementation accepts a
-     * power-of-two prefix partition of 2, 4, or 8 buckets. */
+    /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
+     * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;
+    char trie_dynamic_alphabet;
+    int trie_min_bits;
+    int trie_max_bits;
+    int trie_alphabet_budget_bits;
     double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,
@@ -131,6 +135,7 @@ typedef struct {
     int * coefficients;
     ts_type *pca_mean;
     ts_type *pca_components;
+    double *pca_explained_variance;
     int pca_components_count;
     int pca_dim;
 

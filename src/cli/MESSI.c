@@ -64,6 +64,15 @@ int query_report_interval = 10;
 
 void INThandler(int);
 
+static int fanout_to_bits(int fanout) {
+    int bits = 0;
+    while (fanout > 1 && (fanout & 1) == 0) {
+        fanout >>= 1;
+        ++bits;
+    }
+    return fanout == 1 ? bits : -1;
+}
+
 static FILE *open_logfile_or_tmp(const char *path) {
     FILE *file = fopen(path, "w");
     if (file != NULL) {
@@ -302,6 +311,11 @@ int main(int argc, char **argv) {
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
     static int trie_fanout = 8;
+    static int trie_fanout_specified = 0;
+    static int trie_dynamic_alphabet = 0;
+    static int trie_min_fanout = 2;
+    static int trie_max_fanout = 16;
+    static int trie_alphabet_budget_bits = 3;
     static int query_report_interval_requested = 10;
 
     int calculate_thread = 8;
@@ -370,6 +384,10 @@ int main(int argc, char **argv) {
                 {"trie-query-batch", no_argument, 0, 1003},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-fanout", required_argument, 0, 1005},
+                {"trie-dynamic-alphabet", no_argument, 0, 1009},
+                {"trie-min-fanout", required_argument, 0, 1010},
+                {"trie-max-fanout", required_argument, 0, 1011},
+                {"trie-alphabet-budget-bits", required_argument, 0, 1012},
                 {"query-report-interval", required_argument, 0, 1006},
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
@@ -402,6 +420,19 @@ int main(int argc, char **argv) {
                 break;
             case 1005:
                 trie_fanout = atoi(optarg);
+                trie_fanout_specified = 1;
+                break;
+            case 1009:
+                trie_dynamic_alphabet = 1;
+                break;
+            case 1010:
+                trie_min_fanout = atoi(optarg);
+                break;
+            case 1011:
+                trie_max_fanout = atoi(optarg);
+                break;
+            case 1012:
+                trie_alphabet_budget_bits = atoi(optarg);
                 break;
             case 1006:
                 query_report_interval_requested = atoi(optarg);
@@ -627,6 +658,10 @@ int main(int argc, char **argv) {
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
                 \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
+                \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
+                \t--trie-min-fanout 2|4|...\tMinimum dynamic trie fanout (default: 2)\n\
+                \t--trie-max-fanout 2|4|...\tMaximum dynamic trie fanout (default: 16)\n\
+                \t--trie-alphabet-budget-bits N\tAverage dynamic alphabet budget in bits (default: 3)\n\
                 \t--query-report-interval N\tPrint first, every Nth completed, and final query row (0=none; default: 10)\n\
                 \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
@@ -713,11 +748,27 @@ int main(int argc, char **argv) {
                     n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
             return EXIT_FAILURE;
         }
-        if (trie_fanout != 2 && trie_fanout != 4 && trie_fanout != 8) {
+        if (trie_dynamic_alphabet && trie_fanout_specified) {
+            fprintf(stderr, "error: --trie-dynamic-alphabet cannot be combined with --trie-fanout.\n");
+            return EXIT_FAILURE;
+        }
+        if (!trie_dynamic_alphabet && trie_fanout != 2 && trie_fanout != 4 && trie_fanout != 8) {
             fprintf(stderr, "error: trie fanout must be 2, 4, or 8.\n");
             return EXIT_FAILURE;
         }
-    } else if (trie_fanout != 8) {
+        if (trie_dynamic_alphabet) {
+            const int min_bits = fanout_to_bits(trie_min_fanout);
+            const int max_bits = fanout_to_bits(trie_max_fanout);
+            if (min_bits < 1 || max_bits < min_bits || max_bits > 8) {
+                fprintf(stderr, "error: dynamic trie fanouts must be powers of two between 2 and 256, with min <= max.\n");
+                return EXIT_FAILURE;
+            }
+            if (trie_alphabet_budget_bits < min_bits || trie_alphabet_budget_bits > max_bits) {
+                fprintf(stderr, "error: dynamic trie average budget must be between min and max fanout bits.\n");
+                return EXIT_FAILURE;
+            }
+        }
+    } else if (trie_fanout != 8 || trie_dynamic_alphabet) {
         fprintf(stderr, "error: --trie-fanout requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
@@ -1044,6 +1095,10 @@ int main(int argc, char **argv) {
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_fanout = trie_fanout;
+        index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
+        index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
+        index_settings->trie_max_bits = fanout_to_bits(trie_max_fanout);
+        index_settings->trie_alphabet_budget_bits = trie_alphabet_budget_bits;
         index_settings->sampling_seed = sampling_seed;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;

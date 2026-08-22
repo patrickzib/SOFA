@@ -2201,6 +2201,7 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
     index->coefficients = NULL;
     index->pca_mean = NULL;
     index->pca_components = NULL;
+    index->pca_explained_variance = NULL;
     index->pca_components_count = 0;
     index->pca_dim = 0;
     index->trie = NULL;

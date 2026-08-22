@@ -38,4 +38,4 @@ mkdir -p ../bin
 cp bin/MESSI ../bin/MESSI
 
 # Install Python package in editable mode
-python3 -m pip install -e ../python --no-build-isolation
+# python3 -m pip install -e ../python --no-build-isolation

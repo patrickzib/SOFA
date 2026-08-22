@@ -311,8 +311,21 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
     free(samples);
     double projection_end = messi_monotonic_seconds();
 
-    if (isax_configure_variance_root_split(index, coeff_mem_array,
-                                           sample_size) != SUCCESS) {
+    if (configure_dynamic_bit_allocation(index, index->pca_explained_variance,
+                                           index->settings->n_segments,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_alphabet_budget_bits * index->settings->n_segments
+                                               : (index->settings->n_segments < (int) (sizeof(root_mask_type) * 8)
+                                                      ? index->settings->n_segments
+                                                      : (int) (sizeof(root_mask_type) * 8)),
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_min_bits : 0,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_max_bits
+                                               : index->settings->sax_bit_cardinality) != SUCCESS) {
         for (int k = 0; k < dim; ++k) {
             free(coeff_mem_array[k]);
         }

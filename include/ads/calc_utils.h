@@ -22,9 +22,12 @@ float calculateStdDev(ts_type *data, int n, ts_type mean);
 void znorm(ts_type *data, int n);
 
 void isax_node_mbb_sax_update(isax_node *node, const sax_type *sax, int size);
-enum response isax_configure_variance_root_split(isax_index *index,
-                                                 ts_type *const *coefficients,
-                                                 unsigned int sample_size);
+enum response configure_dynamic_bit_allocation(isax_index *index,
+                                                 const double *variance,
+                                                 int dimensions,
+                                                 int budget,
+                                                 int min_bit_val,
+                                                 int max_bit_val);
 root_mask_type isax_root_mask_from_sax(const isax_index *index,
                                        const sax_type *sax,
                                        int uniform_kn);

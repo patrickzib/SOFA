@@ -56,6 +56,17 @@ See the provided scripts in the `scripts`-folder for examples to run SOFA with S
 - SPARTAN command is `--function-type 5`
 - PISA command is `--function-type 6`
 
+For trie indexes, `--trie-fanout 2|4|8` selects a fixed fanout. Learned
+SFA/SPARTAN/PISA tries can instead use one global, precomputed dynamic
+alphabet allocation with `--trie-dynamic-alphabet`; this uses a 3-bit average
+budget by default and supports 1--4 bits per coefficient (fanouts 2--16).
+The allocation is computed once from the training representation and reused
+for all trie splits. These fixed and dynamic modes are mutually exclusive.
+
+SAX tries remain on the fixed-fanout path. iSAX’s
+`--dynamic-root-split-variance` is a separate legacy root-only allocation and
+does not control trie alphabets.
+
 ```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin
 QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/$QUERY
