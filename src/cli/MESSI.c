@@ -18,6 +18,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
@@ -85,6 +86,24 @@ static FILE *open_logfile_or_tmp(const char *path) {
         perror("tmpfile");
     }
     return file;
+}
+
+static int ensure_directory(const char *path) {
+    char directory[FILENAME_LENGTH];
+    size_t length = strlen(path);
+
+    if (length == 0 || length >= sizeof(directory)) return -1;
+    memcpy(directory, path, length + 1);
+
+    for (char *cursor = directory + 1; *cursor != '\0'; ++cursor) {
+        if (*cursor != '/') continue;
+        *cursor = '\0';
+        if (mkdir(directory, 0777) != 0 && errno != EEXIST) return -1;
+        *cursor = '/';
+    }
+
+    if (mkdir(directory, 0777) != 0 && errno != EEXIST) return -1;
+    return 0;
 }
 
 static double monotonic_seconds(void) {
@@ -984,36 +1003,23 @@ int main(int argc, char **argv) {
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
-        strcat(strcpy(log_file_directory, getenv("HOME")), "/MESSI_logs");
-        strcat(strcpy(log_filename, getenv("HOME")), "/MESSI_logs/settings");
-        strcat(strcpy(log_filename_tree, getenv("HOME")), "/MESSI_logs/tree");
-        strcat(strcpy(log_filename_index, getenv("HOME")), "/MESSI_logs/index");
-        strcat(strcpy(log_filename_query, getenv("HOME")), "/MESSI_logs/query");
+        const char *log_root = getenv("MESSI_LOG_ROOT");
+        if (log_root == NULL || log_root[0] == '\0') log_root = getenv("HOME");
+        if (log_root == NULL || log_root[0] == '\0') log_root = ".";
 
-        //check if logfile directories exist, create them if neccessary
-        struct stat st = {0};
+        snprintf(log_file_directory, sizeof(log_file_directory), "%s", log_root);
+        snprintf(log_filename, sizeof(log_filename), "%s/settings", log_root);
+        snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
+        snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
+        snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
 
-        if (stat(log_file_directory, &st) == -1) {
-            mkdir(log_file_directory, 0777);
+        if (ensure_directory(log_filename) != 0 ||
+            ensure_directory(log_filename_tree) != 0 ||
+            ensure_directory(log_filename_index) != 0 ||
+            ensure_directory(log_filename_query) != 0) {
+            fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
+                    log_root, strerror(errno));
         }
-        if (stat(log_filename, &st) == -1) {
-            mkdir(log_filename, 0777);
-        }
-        if (stat(log_filename_tree, &st) == -1) {
-            mkdir(log_filename_tree, 0777);
-        }
-        if (stat(log_filename_index, &st) == -1) {
-            mkdir(log_filename_index, 0777);
-        }
-        if (stat(log_filename_query, &st) == -1) {
-            mkdir(log_filename_query, 0777);
-        }
-/*
-        mkdir(log_filename, 0777);
-        mkdir(log_filename_tree, 0777);
-        mkdir(log_filename_index, 0777);
-        mkdir(log_filename_query, 0777);
-*/
         //concatenate actual file names
         strcat(log_filename, "/MESSI_SETTINGS_");
         strcat(log_filename, time_str);
