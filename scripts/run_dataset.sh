@@ -106,6 +106,7 @@ format_count() {
 # subsequent methods from starting.
 ACTIVE_MESSI_PID=
 RUN_OUTPUT_FILE=
+RUN_LOG_FILE=
 stop_active_messi() {
     trap - INT TERM
     if [[ -n ${ACTIVE_MESSI_PID:-} ]]; then
@@ -121,7 +122,7 @@ run_messi() {
     capture_dir=$(mktemp -d "${TMPDIR:-/tmp}/messi-run.XXXXXX")
     fifo=$capture_dir/output
     mkfifo "$fifo"
-    tee "$RUN_OUTPUT_FILE" < "$fifo" &
+    tee -a "$RUN_LOG_FILE" "$RUN_OUTPUT_FILE" < "$fifo" &
     tee_pid=$!
     # The wrapper execs MESSI, retaining SIGINT=ignore in the final process.
     bash -c 'trap "" INT; exec "$@"' messi "$@" > "$fifo" 2>&1 &
@@ -397,7 +398,8 @@ collect_run_summary() {
         }
     ' "$transcript")
     if [[ -z $fields ]]; then
-        printf 'warning: could not parse query summary for method=%s; omitting it from suite summary\n' "$method" >&2
+        printf 'warning: could not parse query summary for method=%s; omitting it from suite summary\n' "$method" |
+            tee -a "$RUN_LOG_FILE" >&2
         return 0
     fi
     IFS=$'\t' read -r wall lower lower_pct exact exact_pct <<< "$fields"
@@ -413,20 +415,32 @@ collect_run_summary() {
     esac
     [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
     leaf_cap=$(format_count "$LEAF_SIZE")
-    [[ $INDEX_TYPE == trie ]] && fanout="${TRIE_FANOUT}-way" || fanout='-'
+    if [[ $INDEX_TYPE == trie ]]; then
+        if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
+            fanout="dynamic ${TRIE_MIN_FANOUT}-${TRIE_MAX_FANOUT}"
+        else
+            fanout="${TRIE_FANOUT}-way"
+        fi
+    else
+        fanout='-'
+    fi
     SUMMARY_ROWS+="$layout|$method_name|$binning|$leaf_cap|$fanout|$lower|$lower_pct|$exact|$exact_pct|$wall"$'\n'
 }
 
 print_suite_summary() {
     [[ -n $SUMMARY_ROWS ]] || return 0
-    printf '\n=== Benchmark summary: dataset=%s, profile=%s ===\n' "$DATASET_ID" "$PROFILE" >&2
+    printf '\n=== Benchmark summary: dataset=%s, profile=%s ===\n' "$DATASET_ID" "$PROFILE" |
+        tee -a "$RUN_LOG_FILE" >&2
     printf '%-6s  %-8s  %-5s  %8s  %6s  %18s  %8s  %18s  %8s  %11s\n' \
-        Layout Method Binning 'Leaf cap.' Fanout 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime >&2
-    printf '%s\n' '------------------------------------------------------------------------------------------------------------------------' >&2
+        Layout Method Binning 'Leaf cap.' Fanout 'Lower bounds/query' 'LB %' 'Exact comps/query' 'Exact %' Walltime |
+        tee -a "$RUN_LOG_FILE" >&2
+    printf '%s\n' '------------------------------------------------------------------------------------------------------------------------' |
+        tee -a "$RUN_LOG_FILE" >&2
     while IFS='|' read -r layout method binning leaf_cap fanout lower lower_pct exact exact_pct wall; do
         [[ -n $layout ]] || continue
         printf '%-6s  %-8s  %-5s  %8s  %6s  %18s  %8s  %18s  %8s  %11s\n' \
-            "$layout" "$method" "$binning" "$leaf_cap" "$fanout" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" >&2
+            "$layout" "$method" "$binning" "$leaf_cap" "$fanout" "$lower" "$lower_pct" "$exact" "$exact_pct" "$wall" |
+            tee -a "$RUN_LOG_FILE" >&2
     done <<< "$SUMMARY_ROWS"
 }
 
@@ -465,7 +479,17 @@ run_method() {
     fi
     if [[ $PROFILE == knn ]]; then args+=(--topk --k-size "$K_SIZE"); fi
 
-    printf 'Running dataset=%s profile=%s method=%s\n' "$DATASET_ID" "$PROFILE" "$method" >&2
+    if [[ $DRY_RUN == false && -z $RUN_LOG_FILE ]]; then
+        mkdir -p -- "$MESSI_SHELL_LOG_DIR"
+        RUN_LOG_FILE="$MESSI_SHELL_LOG_DIR/MESSI_${DATASET_ID}_${PROFILE}_$(date +%Y%m%d_%H%M%S)_$$.log"
+        : > "$RUN_LOG_FILE"
+    fi
+    if [[ $DRY_RUN == true ]]; then
+        printf 'Running dataset=%s profile=%s method=%s\n' "$DATASET_ID" "$PROFILE" "$method" >&2
+    else
+        printf 'Running dataset=%s profile=%s method=%s\n' "$DATASET_ID" "$PROFILE" "$method" |
+            tee -a "$RUN_LOG_FILE" >&2
+    fi
     if [[ $DRY_RUN == true ]]; then
         print_command "$MESSI_EXECUTABLE" "${args[@]}"
     else
@@ -473,9 +497,10 @@ run_method() {
         [[ -f $DATASET_PATH ]] || die "dataset file does not exist: $DATASET_PATH"
         [[ -f $QUERY_PATH ]] || die "query file does not exist: $QUERY_PATH"
         mkdir -p -- "$MESSI_SHELL_LOG_DIR"
-        RUN_OUTPUT_FILE="$MESSI_SHELL_LOG_DIR/MESSI_${DATASET_ID}_${PROFILE}_${method}_$(date +%Y%m%d_%H%M%S)_$$.log"
+        RUN_OUTPUT_FILE=$(mktemp "${TMPDIR:-/tmp}/messi-summary.XXXXXX")
         run_messi "$MESSI_EXECUTABLE" "${args[@]}"
         collect_run_summary "$method" "$RUN_OUTPUT_FILE"
+        rm -f -- "$RUN_OUTPUT_FILE"
         RUN_OUTPUT_FILE=
     fi
 }
