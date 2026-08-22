@@ -126,6 +126,15 @@ if MESSI_LOG_ROOT="$TEMP_ROOT/logs" MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SC
 fi
 pass 'result replacement is bounded by the configured results root'
 
+TEST_RUN_MESSI="$TEMP_ROOT/test_run_messi"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "$*"' > "$TEST_RUN_MESSI"
+chmod +x "$TEST_RUN_MESSI"
+OUTPUT=$(MESSI_BIN="$TEST_RUN_MESSI" "$REPO_ROOT/test_run.sh" 4 isax)
+assert_contains "$OUTPUT" '--threads 4'
+assert_contains "$OUTPUT" '--index-type isax'
+assert_contains "$OUTPUT" '--dynamic-root-split-variance'
+pass 'test_run accepts index type as its second argument'
+
 touch "$TEMP_ROOT/astro.bin" "$TEMP_ROOT/astro_queries.bin"
 FAKE_MESSI="$TEMP_ROOT/fake_messi"
 printf '%s\n' '#!/usr/bin/env bash' \
