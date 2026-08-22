@@ -163,6 +163,11 @@ assert_contains "$OUTPUT" '--index-type trie'
 assert_not_contains "$OUTPUT" '--function-type 3'
 pass 'suite forwards the selected index layout to dataset runs'
 
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
+    --methods spartan-depth,spartan-width --trie-mbr-dims 64 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
+pass 'suite forwards trie MBR dimensions to dataset runs'
+
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-dynamic-alphabet'
