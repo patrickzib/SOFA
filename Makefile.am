@@ -22,6 +22,6 @@ TESTS = scripts/tests/test_ed_simd
 scripts_tests_test_ed_simd_SOURCES = scripts/tests/test_ed_simd.c
 scripts_tests_test_ed_simd_LDADD = lib/libads.a -lm
 
-noinst_PROGRAMS = bench_ed_simd
+EXTRA_PROGRAMS = bench_ed_simd
 bench_ed_simd_SOURCES = scripts/bench_ed_simd.c
 bench_ed_simd_LDADD = lib/libads.a -lm
