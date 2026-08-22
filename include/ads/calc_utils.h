@@ -4,9 +4,6 @@
 #include "config.h"
 #include "../../globals.h"
 #include "isax_index.h"
-#include "sax/sax.h"
-#include "sfa/sfa.h"
-#include "spartan/spartan.h"
 
 /* Monotonic wall-clock time for concise construction/query phase reporting. */
 double messi_monotonic_seconds(void);
@@ -42,43 +39,11 @@ int messi_build_record_lb_table(const isax_index *index,
                                 int dimensions,
                                 float table[16][256]);
 
-// Shared minidist dispatch for SAX/SFA.
-static inline ts_type messi_minidist_raw(isax_index *index,
-                                         float *paa_or_fft,
-                                         sax_type *sax,
-                                         sax_type *sax_cardinalities,
-                                         float bsf) {
-    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
-        if (index->settings->function_type == 4 || index->settings->function_type == 6) {
-            return minidist_fft_to_sfa_rawe_SIMD(index, paa_or_fft, sax, sax_cardinalities, bsf);
-        }
-        if (index->settings->function_type == 5) {
-            return minidist_pca_to_spartan_rawe_SIMD(index, paa_or_fft, sax, sax_cardinalities, bsf);
-        }
-        return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
-    }
-
-    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
-        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
-    }
-    if (index->settings->function_type == 5) {
-        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
-    }
-    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 1);
-}
-
-static inline ts_type messi_minidist(isax_index *index,
-                                     float *paa_or_fft,
-                                     sax_type *sax,
-                                     sax_type *sax_cardinalities,
-                                     float bsf) {
-    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
-        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
-    }
-    if (index->settings->function_type == 5) {
-        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
-    }
-    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 0);
-}
+// Shared minidist dispatch. Representation-specific dependencies stay private
+// to calc_utils.c so users of this header do not import SFA or SPARTAN.
+ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
+                           sax_type *sax_cardinalities, float bsf);
+ts_type messi_minidist(isax_index *index, float *paa_or_fft, sax_type *sax,
+                       sax_type *sax_cardinalities, float bsf);
 
 #endif //MESSI_SFA_CALC_UTILS_H

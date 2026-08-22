@@ -34,10 +34,6 @@ int compare_var (const void *a, const void *b);
 int compare_int (const void *a, const void *b);
 
 ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-ts_type minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
-#if !ADS_HAVE_AVX2
-#define minidist_fft_to_sfa_rawe_SIMD minidist_fft_to_sfa
-#endif
 
 long random_at_most(long max);
 long random_at_most_seed(uint64_t *state, long max);

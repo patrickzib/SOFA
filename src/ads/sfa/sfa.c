@@ -12,10 +12,6 @@
 #include "globals.h"
 #include <stdio.h>
 #include <pthread.h>
-#if ADS_HAVE_AVX2
-#include "immintrin.h"
-#endif
-
 #ifdef VALUES
 
 #include <values.h>
@@ -26,8 +22,10 @@
 #include <float.h>
 #include <math.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 #include "ads/isax_index.h"
 #include "ads/sfa/dft.h"
 
@@ -803,197 +801,3 @@ long random_at_most_seed(uint64_t *state, long max) {
     } while (value >= limit);
     return (long) (value % range);
 }
-
-
-#if ADS_HAVE_AVX2
-ts_type
-minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax,
-                              sax_type *sax_cardinalities, float bsf) {
-    int region_upper[16], region_lower[16];
-    float distancef[8], distancef2[8];
-    int offset = 0;
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
-
-    __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
-
-    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
-    __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
-    __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
-    __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
-
-    __m128i saxv8 = _mm_lddqu_si128((const void *) sax);
-    __m256i saxv16 = _mm256_cvtepu8_epi16(saxv8);
-    __m128i saxv16_0 = _mm256_extractf128_si256(saxv16, 0);
-
-    __m256i v_0 = _mm256_cvtepu16_epi32(saxv16_0);
-
-
-    __m256i c_m = _mm256_set1_epi32(max_bit_cardinality);
-    __m256i cm_ccv_0 = _mm256_sub_epi32(c_m, c_cv_0);
-
-    __m256i region_lowerv_0 = _mm256_srlv_epi32(v_0, cm_ccv_0);
-
-    region_lowerv_0 = _mm256_sllv_epi32(region_lowerv_0, cm_ccv_0);
-
-
-    __m256i v1 = _mm256_andnot_si256(_mm256_setzero_si256(), vectorsignbit);
-
-    __m256i region_upperv_0 = _mm256_sllv_epi32(v1, cm_ccv_0);
-
-    region_upperv_0 = _mm256_andnot_si256(region_upperv_0, vectorsignbit);
-    region_upperv_0 = _mm256_or_si256(region_upperv_0, region_lowerv_0);
-
-    //lower
-    __m256i lower_juge_zerov_0 = _mm256_cmpeq_epi32(region_lowerv_0,
-                                                    _mm256_setzero_si256());
-
-
-    __m256i lower_juge_nzerov_0 =
-            _mm256_andnot_si256(lower_juge_zerov_0, vectorsignbit);
-
-    __m256 minvalv = _mm256_set1_ps(MINVAL);
-    __m256i bitsizev = _mm256_set1_epi16(
-        (short) index->settings->sax_alphabet_cardinality - 1);
-    __m256i bit1v = _mm256_set1_epi32(1);
-    __m256i offsetvs = _mm256_set_epi16(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2,
-                                        1, 0);
-
-    __m256i vsssssoffsetvs2 = _mm256_mullo_epi16(bitsizev, offsetvs);
-    __m128i offsetv0s = _mm256_extractf128_si256(vsssssoffsetvs2, 0);
-
-    __m128i offsetv1s = _mm256_extractf128_si256(vsssssoffsetvs2, 1);
-    __m256i offsetv0 = _mm256_cvtepu16_epi32(offsetv0s);
-
-    __m256i region_lowerbinv0 = _mm256_add_epi32(offsetv0, region_lowerv_0);
-
-    region_lowerbinv0 = _mm256_sub_epi32(region_lowerbinv0, bit1v);
-
-    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(
-        index->binsv, region_lowerbinv0, 4);
-
-    __m256 breakpoint_lowerv_0 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(lower_juge_zerov_0, (__m256i) minvalv),
-        _mm256_and_si256(lower_juge_nzerov_0,
-                         (__m256i) lsax_breakpoints_shiftv_0));
-
-
-    //upper
-    __m256i region_upperbinv0 = _mm256_add_epi32(offsetv0, region_upperv_0);
-
-    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(
-        index->binsv, region_upperbinv0, 4);
-
-    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0,
-                                                   _mm256_set1_epi32(
-                                                       index->settings->
-                                                       sax_alphabet_cardinality - 1));
-
-    __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
-
-    __m256 breakpoint_upperv_0 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(upper_juge_maxv_0, (__m256i) _mm256_set1_ps(MAXVAL)),
-        _mm256_and_si256(upper_juge_nmaxv_0, (__m256i) usax_breakpoints_shiftv_0));
-
-
-    //dis
-    __m256 paav_0, paav_1;
-
-    paav_0 = _mm256_loadu_ps(fft);
-
-    __m256 dis_juge_upv_0 = _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_GT_OS);
-
-    __m256 dis_juge_lov_0 = (__m256) _mm256_and_si256(
-        (__m256i) _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_NGT_US),
-        (__m256i) _mm256_cmp_ps(breakpoint_upperv_0, paav_0, _CMP_LT_OS));
-
-    __m256 dis_juge_elv_0 = (__m256) _mm256_andnot_si256(
-        _mm256_or_si256((__m256i) dis_juge_upv_0, (__m256i) dis_juge_lov_0),
-        vectorsignbit);
-
-    __m256 dis_lowv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_0, paav_0),
-                                      _mm256_sub_ps(breakpoint_lowerv_0, paav_0));
-    __m256 dis_uppv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_0, paav_0),
-                                      _mm256_sub_ps(breakpoint_upperv_0, paav_0));
-
-
-    __m256 distancev_0 = (__m256) _mm256_or_si256(
-        _mm256_or_si256(
-            _mm256_and_si256((__m256i) dis_juge_upv_0, (__m256i) dis_lowv_0),
-            _mm256_and_si256((__m256i) dis_juge_lov_0, (__m256i) dis_uppv_0)),
-        _mm256_and_si256((__m256i) dis_juge_elv_0, (__m256i) _mm256_set1_ps(0.0)));
-
-    __m256 distancev2 = _mm256_hadd_ps(distancev_0, distancev_0);
-    __m256 distancevf = _mm256_hadd_ps(distancev2, distancev2);
-
-    _mm256_storeu_ps(distancef, distancevf);
-    if ((distancef[0] + distancef[4]) * 2 > bsf) {
-        return (distancef[0] + distancef[4]) * 2;
-    }
-
-    __m128i sax_cardinalitiesv16_1 = _mm256_extractf128_si256(sax_cardinalitiesv16, 1);
-    __m256i c_cv_1 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_1);
-    __m128i saxv16_1 = _mm256_extractf128_si256(saxv16, 1);
-    __m256i v_1 = _mm256_cvtepu16_epi32(saxv16_1);
-    __m256i cm_ccv_1 = _mm256_sub_epi32(c_m, c_cv_1);
-    __m256i region_lowerv_1 = _mm256_srlv_epi32(v_1, cm_ccv_1);
-    region_lowerv_1 = _mm256_sllv_epi32(region_lowerv_1, cm_ccv_1);
-    __m256i region_upperv_1 = _mm256_sllv_epi32(v1, cm_ccv_1);
-    region_upperv_1 = _mm256_andnot_si256(region_upperv_1, vectorsignbit);
-    region_upperv_1 = _mm256_or_si256(region_upperv_1, region_lowerv_1);
-    __m256i lower_juge_zerov_1 = _mm256_cmpeq_epi32(region_lowerv_1,
-                                                    _mm256_setzero_si256());
-    __m256i lower_juge_nzerov_1 =
-            _mm256_andnot_si256(lower_juge_zerov_1, vectorsignbit);
-    __m256i offsetv1 = _mm256_cvtepu16_epi32(offsetv1s);
-    __m256i region_lowerbinv1 = _mm256_add_epi32(offsetv1, region_lowerv_1);
-    region_lowerbinv1 = _mm256_sub_epi32(region_lowerbinv1, bit1v);
-    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(
-        index->binsv, region_lowerbinv1, 4);
-    __m256 breakpoint_lowerv_1 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(lower_juge_zerov_1, (__m256i) minvalv),
-        _mm256_and_si256(lower_juge_nzerov_1,
-                         (__m256i) lsax_breakpoints_shiftv_1));
-
-    __m256i region_upperbinv1 = _mm256_add_epi32(offsetv1, region_upperv_1);
-    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(
-        index->binsv, region_upperbinv1, 4);
-    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1,
-                                                   _mm256_set1_epi32(
-                                                       index->settings->
-                                                       sax_alphabet_cardinality - 1));
-    __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
-    __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
-        _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
-    paav_1 = _mm256_loadu_ps(&(fft[8]));
-    __m256 dis_juge_upv_1 = _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_GT_OS);
-
-
-    __m256 dis_juge_lov_1 = (__m256) _mm256_and_si256(
-        (__m256i) _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_NGT_US),
-        (__m256i) _mm256_cmp_ps(breakpoint_upperv_1, paav_1, _CMP_LT_OS));
-
-    __m256 dis_juge_elv_1 = (__m256) _mm256_andnot_si256(
-        _mm256_or_si256((__m256i) dis_juge_upv_1, (__m256i) dis_juge_lov_1),
-        vectorsignbit);
-
-    __m256 dis_lowv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_1, paav_1),
-                                      _mm256_sub_ps(breakpoint_lowerv_1, paav_1));
-
-    __m256 dis_uppv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_1, paav_1),
-                                      _mm256_sub_ps(breakpoint_upperv_1, paav_1));
-
-    __m256 distancev_1 = (__m256) _mm256_or_si256(
-        _mm256_or_si256(
-            _mm256_and_si256((__m256i) dis_juge_upv_1, (__m256i) dis_lowv_1),
-            _mm256_and_si256((__m256i) dis_juge_lov_1, (__m256i) dis_uppv_1)),
-        _mm256_and_si256((__m256i) dis_juge_elv_1, (__m256i) _mm256_set1_ps(0.0)));
-
-
-    distancev2 = _mm256_hadd_ps(distancev_1, distancev_1);
-    distancevf = _mm256_hadd_ps(distancev2, distancev2);
-    _mm256_storeu_ps(distancef2, distancevf);
-
-    return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
-}
-#endif

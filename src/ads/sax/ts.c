@@ -10,9 +10,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <math.h>
-#if ADS_HAVE_AVX2
+#if ADS_HAVE_AVX2 || defined(__AVX512F__)
 #include "immintrin.h"
+#endif
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
 #endif
 #include "ads/sax/ts.h"
 
@@ -97,7 +101,28 @@ float ts_euclidean_distance(ts_type *t, ts_type *s, int size, float bound) {
     return distance;
 }
 
-#if ADS_HAVE_AVX2
+#if defined(__AVX512F__)
+float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
+    float distance = 0.0f;
+    const int original_size = size;
+    int i = 0;
+    while (size >= 16 && distance < bound) {
+        const int aligned = (((uintptr_t) &t[i] | (uintptr_t) &s[i]) & 63U) == 0;
+        __m512 vt = aligned ? _mm512_load_ps(&t[i]) : _mm512_loadu_ps(&t[i]);
+        __m512 vs = aligned ? _mm512_load_ps(&s[i]) : _mm512_loadu_ps(&s[i]);
+        __m512 diff = _mm512_sub_ps(vt, vs);
+        __m512 squared = _mm512_mul_ps(diff, diff);
+        distance += _mm512_reduce_add_ps(squared);
+        i += 16;
+        size -= 16;
+    }
+    while (i < original_size && distance < bound) {
+        distance += (t[i] - s[i]) * (t[i] - s[i]);
+        ++i;
+    }
+    return distance;
+}
+#elif ADS_HAVE_AVX2
 float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
     float distance = 0;
     int i = 0;
@@ -106,15 +131,21 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
 
     __m256 v_t, v_s, v_d, distancev;
     while (size >= 8 && distance < bound) {
-        v_t = _mm256_loadu_ps(&t[i]);
-        v_s = _mm256_loadu_ps(&s[i]);
+        const int aligned = (((uintptr_t) &t[i] | (uintptr_t) &s[i]) & 31U) == 0;
+        v_t = aligned ? _mm256_load_ps(&t[i]) : _mm256_loadu_ps(&t[i]);
+        v_s = aligned ? _mm256_load_ps(&s[i]) : _mm256_loadu_ps(&s[i]);
 
         v_d = _mm256_sub_ps(v_t, v_s);
+#if defined(__FMA__)
+        distancev = _mm256_fmadd_ps(v_d, v_d, _mm256_setzero_ps());
+#else
         v_d = _mm256_mul_ps(v_d, v_d);
+        distancev = v_d;
+#endif
         size -= 8;
 
         i = i + 8;
-        distancev = _mm256_hadd_ps(v_d, v_d);
+        distancev = _mm256_hadd_ps(distancev, distancev);
         distancev = _mm256_hadd_ps(distancev, distancev);
         _mm256_storeu_ps(distancef, distancev);
         distance += distancef[0] + distancef[4];
@@ -131,7 +162,26 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
 }
 #else
 float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    float distance = 0.0f;
+    int i = 0;
+    while (size >= 4 && distance < bound) {
+        float32x4_t vt = vld1q_f32(&t[i]);
+        float32x4_t vs = vld1q_f32(&s[i]);
+        float32x4_t diff = vsubq_f32(vt, vs);
+        distance += vaddvq_f32(vmulq_f32(diff, diff));
+        i += 4;
+        size -= 4;
+    }
+    while (size > 0 && distance < bound) {
+        distance += (t[i] - s[i]) * (t[i] - s[i]);
+        ++i;
+        --size;
+    }
+    return distance;
+#else
     return ts_euclidean_distance(t, s, size, bound);
+#endif
 }
 #endif
 

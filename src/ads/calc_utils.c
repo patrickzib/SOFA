@@ -9,12 +9,41 @@
 #include "math.h"
 
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
+#include "ads/sax/sax.h"
+#include "ads/sfa/sfa.h"
+#include "ads/spartan/spartan.h"
 #include "ads/sax/sax_breakpoints.h"
 
 double messi_monotonic_seconds(void) {
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
     return (double) time.tv_sec + (double) time.tv_nsec / 1000000000.0;
+}
+
+ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
+                           sax_type *sax_cardinalities, float bsf) {
+    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
+        if (index->settings->function_type == 4 || index->settings->function_type == 6)
+            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 2.0f);
+        if (index->settings->function_type == 5)
+            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+        return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
+    }
+    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    if (index->settings->function_type == 5)
+        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 1);
+}
+
+ts_type messi_minidist(isax_index *index, float *paa_or_fft, sax_type *sax,
+                       sax_type *sax_cardinalities, float bsf) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    if (index->settings->function_type == 5)
+        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 0);
 }
 
 
