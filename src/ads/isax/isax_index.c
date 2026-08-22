@@ -2809,11 +2809,18 @@ static const char *format_compact_count(unsigned long long value, char buffer[32
 
 void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch) {
     const char *split_name = "informed";
-    char trie_layout[64];
+    char trie_layout[128];
     const char *layout = "iSAX";
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        snprintf(trie_layout, sizeof(trie_layout), "symbolic trie (%d-way fanout)",
-                 settings->trie_fanout);
+        if (settings->trie_dynamic_alphabet) {
+            snprintf(trie_layout, sizeof(trie_layout),
+                     "symbolic trie (dynamic fanout %d-%d)",
+                     1 << settings->trie_min_bits,
+                     1 << settings->trie_max_bits);
+        } else {
+            snprintf(trie_layout, sizeof(trie_layout), "symbolic trie (%d-way fanout)",
+                     settings->trie_fanout);
+        }
         layout = trie_layout;
     }
 	const char *binning = NULL;
@@ -2856,6 +2863,12 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  split policy  : symbolic entropy × variance\n");
         fprintf(stderr, "  root split    : sampled symbolic partition\n");
+        if (settings->trie_dynamic_alphabet) {
+            fprintf(stderr, "  trie alphabet : dynamic, %d-%d fanout, %d-bit average budget\n",
+                    1 << settings->trie_min_bits,
+                    1 << settings->trie_max_bits,
+                    settings->trie_alphabet_budget_bits);
+        }
     } else {
         fprintf(stderr, "  split policy  : %s\n", split_name);
         fprintf(stderr, "  root split    : %s\n",

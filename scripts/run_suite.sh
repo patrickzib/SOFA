@@ -18,6 +18,7 @@ Options:
   --k-values LIST         K values for knn (default: 20,50)
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
+  --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
@@ -59,6 +60,7 @@ THREADS_SET=false
 K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
+METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
@@ -76,6 +78,7 @@ while [[ $# -gt 0 ]]; do
         --k-values) [[ $# -ge 2 ]] || die "$1 requires a value"; K_VALUES_CSV=$2; shift 2 ;;
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
+        --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
@@ -146,6 +149,7 @@ run_one() {
         fi
     fi
     $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
+    [[ -n $METHODS_OVERRIDE ]] && command+=(--methods "$METHODS_OVERRIDE")
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"
@@ -232,8 +236,8 @@ run_query_suite() {
                     "$label" "$threads" "$RESULTS_ROOT" "$label" >&2
                 continue
             fi
-            local methods=sax,sfa-depth,sfa-width
-            [[ $INDEX_TYPE == trie ]] && methods=sfa-depth,sfa-width
+            local methods=${METHODS_OVERRIDE:-sax,sfa-depth,sfa-width}
+            [[ $INDEX_TYPE == trie && -z $METHODS_OVERRIDE ]] && methods=sfa-depth,sfa-width
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
             if [[ $INDEX_TYPE == trie ]]; then
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
