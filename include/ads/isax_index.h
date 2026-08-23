@@ -89,6 +89,8 @@ typedef struct {
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
     char trie_record_mbr_suffix_bound;
+    /* Optional flat k-means/MRB directory inside large terminal trie leaves. */
+    int trie_leaf_kmeans;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

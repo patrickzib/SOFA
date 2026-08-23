@@ -71,6 +71,15 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
 fi
 pass 'trie record/MBR suffix bound is forwarded and scoped to trie'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-kmeans 16 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-kmeans 16'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-kmeans 16 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie leaf k-means for iSAX'
+fi
+pass 'trie leaf k-means is forwarded and scoped to trie'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-interval -1 --dry-run >/dev/null 2>&1; then
@@ -173,7 +182,7 @@ printf '%s\n' '#!/usr/bin/env bash' \
     'printf "%s\\n" "  exact distances  : 567.00 K/query (0.57% of 100.00 M indexed series)" >&2' \
     > "$FAKE_MESSI"
 chmod +x "$FAKE_MESSI"
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --data-root "$TEMP_ROOT" \
+OUTPUT=$(MESSI_SHELL_LOG_DIR="$TEMP_ROOT/logs" "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --data-root "$TEMP_ROOT" \
     --binary "$FAKE_MESSI" --methods spartan-width 2>&1)
 assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-frequency ==='
 assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
@@ -201,6 +210,11 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --ind
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
 pass 'suite forwards the trie record/MBR suffix bound'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-kmeans 16 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-kmeans 16'
+pass 'suite forwards trie leaf k-means'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

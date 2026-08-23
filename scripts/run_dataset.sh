@@ -28,6 +28,7 @@ Options:
   --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
+  --trie-leaf-kmeans K      Build K flat k-means MBR groups inside large trie leaves
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -168,6 +169,7 @@ TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_LEAF_KMEANS=
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -212,6 +214,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --trie-leaf-kmeans) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_KMEANS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -256,6 +259,7 @@ fi
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
+[[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -274,6 +278,10 @@ if [[ $INDEX_TYPE == trie ]]; then
     (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    if [[ -n $TRIE_LEAF_KMEANS ]]; then
+        is_positive_integer "$TRIE_LEAF_KMEANS" || die '--trie-leaf-kmeans must be a positive integer'
+        (( TRIE_LEAF_KMEANS >= 2 && TRIE_LEAF_KMEANS <= 64 )) || die '--trie-leaf-kmeans must be between 2 and 64'
+    fi
     # SFA/PISA need a training pool at least as wide as the trie word.  Keep
     # the historical iSAX coefficient defaults untouched; widen only a trie
     # that explicitly requests more MBR dimensions.
@@ -358,6 +366,7 @@ COMMON_ARGS+=(
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
+[[ -n $TRIE_LEAF_KMEANS ]] && COMMON_ARGS+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet

@@ -330,6 +330,7 @@ int main(int argc, char **argv) {
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
+    static int trie_leaf_kmeans = 0;
     static int trie_fanout = 8;
     static int trie_fanout_specified = 0;
     static int trie_dynamic_alphabet = 0;
@@ -404,6 +405,7 @@ int main(int argc, char **argv) {
                 {"trie-query-batch", no_argument, 0, 1003},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
+                {"trie-leaf-kmeans", required_argument, 0, 1014},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -463,6 +465,9 @@ int main(int argc, char **argv) {
                 break;
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
+                break;
+            case 1014:
+                trie_leaf_kmeans = atoi(optarg);
                 break;
             case 'j':
                 serial_scan = 1;
@@ -682,6 +687,7 @@ int main(int argc, char **argv) {
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
                 \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--128; default: maximum available)\n\
                 \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds\n\
+                \t--trie-leaf-kmeans K\tBuild K flat k-means MBR groups inside trie leaves (2--64; default: off)\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
                 \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
                 \t--trie-min-fanout 2|4|...\tMinimum dynamic trie fanout (default: 2)\n\
@@ -773,6 +779,12 @@ int main(int argc, char **argv) {
                     n_segments, time_series_size < 128 ? time_series_size : 128);
             return EXIT_FAILURE;
         }
+        if (trie_leaf_kmeans != 0 &&
+            (trie_leaf_kmeans < 2 || trie_leaf_kmeans > 64 ||
+             (function_type != 4 && function_type != 5 && function_type != 6))) {
+            fprintf(stderr, "error: --trie-leaf-kmeans requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
+            return EXIT_FAILURE;
+        }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
             fprintf(stderr, "error: --trie-dynamic-alphabet cannot be combined with --trie-fanout.\n");
             return EXIT_FAILURE;
@@ -799,6 +811,10 @@ int main(int argc, char **argv) {
     }
     if (trie_record_mbr_suffix_bound && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_leaf_kmeans && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-leaf-kmeans requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
@@ -1121,6 +1137,7 @@ int main(int argc, char **argv) {
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
+        index_settings->trie_leaf_kmeans = trie_leaf_kmeans;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
