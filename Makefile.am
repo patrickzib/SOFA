@@ -22,7 +22,8 @@ TESTS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds
 scripts_tests_test_ed_simd_SOURCES = scripts/tests/test_ed_simd.c
 scripts_tests_test_ed_simd_LDADD = lib/libads.a -lm
 scripts_tests_test_trie_partitioned_bounds_SOURCES = scripts/tests/test_trie_partitioned_bounds.c
-scripts_tests_test_trie_partitioned_bounds_LDADD = lib/libads.a -lm
+scripts_tests_test_trie_partitioned_bounds_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) -lm
+scripts_tests_test_trie_partitioned_bounds_LDFLAGS = -fopenmp
 
 EXTRA_PROGRAMS = bench_ed_simd
 bench_ed_simd_SOURCES = scripts/bench_ed_simd.c

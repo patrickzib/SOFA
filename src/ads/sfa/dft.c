@@ -63,21 +63,29 @@ enum response fft_from_ts(
     return SUCCESS;
 }
 
+/* Return the first bin boundary strictly above value, preserving the legacy
+ * linear scan's behavior for values equal to a boundary. */
+static unsigned int sfa_symbol_from_value(const ts_type *boundaries, int count,
+                                          ts_type value) {
+    int low = 0, high = count;
+    while (low < high) {
+        const int middle = low + (high - low) / 2;
+        if (value < boundaries[middle]) high = middle;
+        else low = middle + 1;
+    }
+    return (unsigned int) low;
+}
+
 /*
     This function discretized FFT coefficients with the intervals from MCB
     The current transform is pointed to by dft_mem_array
 */
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word) {
-    int n_segments = index->settings->n_segments;
-    for (int k = 0; k < n_segments; ++k) {
-        unsigned int c;
-        for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {
-            if (cur_transform[k] < index->bins[k][c]) {
-                break;
-            }
-        }
-        cur_sfa_word[k] = (sax_type) c;
-    }
+    const int n_segments = index->settings->n_segments;
+    const int boundary_count = index->settings->sax_alphabet_cardinality - 1;
+    for (int k = 0; k < n_segments; ++k)
+        cur_sfa_word[k] = (sax_type) sfa_symbol_from_value(index->bins[k], boundary_count,
+                                                            cur_transform[k]);
 }
 
 /*
