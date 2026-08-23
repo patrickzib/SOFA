@@ -71,6 +71,8 @@ commands and performs no benchmark or log archival.
 For trie runs, `--trie-leaf-kmeans 16` adds a flat, post-build 16-cluster MBR
 directory inside terminal leaves with at least 4 K records. It is disabled by
 default and is intended for direct A/B benchmarking with the MBR suffix bound.
+Construction clusters eligible leaves independently in parallel, using the
+existing `--threads` setting; the build log reports the active worker count.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path
