@@ -3,11 +3,48 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <float.h>
+#include <time.h>
 #include "math.h"
 
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
+#include "ads/sax/sax.h"
+#include "ads/sfa/sfa.h"
+#include "ads/spartan/spartan.h"
 #include "ads/sax/sax_breakpoints.h"
+
+double messi_monotonic_seconds(void) {
+    struct timespec time;
+    clock_gettime(CLOCK_MONOTONIC, &time);
+    return (double) time.tv_sec + (double) time.tv_nsec / 1000000000.0;
+}
+
+ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
+                           sax_type *sax_cardinalities, float bsf) {
+    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
+        if (index->settings->function_type == 4 || index->settings->function_type == 6)
+            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 2.0f);
+        if (index->settings->function_type == 5)
+            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+        return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
+    }
+    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    if (index->settings->function_type == 5)
+        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 1);
+}
+
+ts_type messi_minidist(isax_index *index, float *paa_or_fft, sax_type *sax,
+                       sax_type *sax_cardinalities, float bsf) {
+    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    if (index->settings->function_type == 5)
+        return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
+    return minidist_paa_to_isax(paa_or_fft, sax, sax_cardinalities, index->settings, 0);
+}
 
 
 ////// Utility functions ////
@@ -83,53 +120,50 @@ root_mask_type isax_root_mask_from_sax(const isax_index *index,
     return mask;
 }
 
-enum response isax_configure_variance_root_split(isax_index *index,
-                                                 ts_type *const *coefficients,
-                                                 unsigned int sample_size) {
+enum response configure_dynamic_bit_allocation(isax_index *index,
+                                                 const double *variance,
+                                                 int dimensions,
+                                                 int budget,
+                                                 int min_bit_val,
+                                                 int max_bit_val) {
     isax_index_settings *settings = index->settings;
-    if (!settings->dynamic_root_split_variance) {
+    if (!settings->dynamic_root_split_variance && settings->index_type != MESSI_INDEX_TRIE) {
         return SUCCESS;
     }
-    if (coefficients == NULL || sample_size == 0) {
+    if (variance == NULL || dimensions <= 0 || budget < 0 || min_bit_val < 0 || max_bit_val <= 0 ||
+        min_bit_val > max_bit_val) {
         return FAILURE;
     }
+    if (max_bit_val > 8) max_bit_val = 8;
+    if (min_bit_val > max_bit_val || budget < min_bit_val * dimensions) return FAILURE;
 
-    const int dimensions = settings->n_segments;
-    const int budget = dimensions < (int) (sizeof(root_mask_type) * 8)
-                           ? dimensions
-                           : (int) (sizeof(root_mask_type) * 8);
-    sax_type *bits = calloc((size_t) dimensions, sizeof(*bits));
-    double *variance = calloc((size_t) dimensions, sizeof(*variance));
-    if (bits == NULL || variance == NULL) {
+    const int allocate_bits = settings->dynamic_root_split_variance ||
+                               (settings->index_type == MESSI_INDEX_TRIE &&
+                                settings->trie_dynamic_alphabet);
+    sax_type *bits = allocate_bits
+                         ? calloc((size_t) dimensions, sizeof(*bits)) : NULL;
+    double *stored_variance = calloc((size_t) dimensions, sizeof(*stored_variance));
+    if ((allocate_bits && bits == NULL) || stored_variance == NULL) {
         free(bits);
-        free(variance);
+        free(stored_variance);
         return FAILURE;
     }
+    memcpy(stored_variance, variance, sizeof(*stored_variance) * (size_t) dimensions);
+    free(settings->symbolic_variances);
+    settings->symbolic_variances = stored_variance;
 
-    for (int i = 0; i < dimensions; ++i) {
-        double mean = 0.0;
-        for (unsigned int j = 0; j < sample_size; ++j) {
-            mean += coefficients[i][j];
-        }
-        mean /= sample_size;
-        for (unsigned int j = 0; j < sample_size; ++j) {
-            double delta = coefficients[i][j] - mean;
-            variance[i] += delta * delta;
-        }
-        variance[i] /= sample_size;
-        if (!isfinite(variance[i]) || variance[i] < 0.0) {
-            variance[i] = 0.0;
-        }
-    }
+    if (!allocate_bits) return SUCCESS;
 
-    for (int assigned = 0; assigned < budget; ++assigned) {
+    for (int i = 0; i < dimensions; ++i) bits[i] = (sax_type) min_bit_val;
+
+    for (int assigned = min_bit_val * dimensions; assigned < budget; ++assigned) {
         int best = -1;
         double best_gain = -1.0;
         for (int i = 0; i < dimensions; ++i) {
-            if (bits[i] >= settings->sax_bit_cardinality) {
+            if (bits[i] >= max_bit_val) {
                 continue;
             }
-            double gain = ldexp(variance[i], -(int) bits[i] - 1);
+            double gain = ldexp(stored_variance[i], -(int) bits[i] - 1);
             if (gain > best_gain) {
                 best_gain = gain;
                 best = i;
@@ -137,7 +171,8 @@ enum response isax_configure_variance_root_split(isax_index *index,
         }
         if (best < 0) {
             free(bits);
-            free(variance);
+            free(settings->symbolic_variances);
+            settings->symbolic_variances = NULL;
             return FAILURE;
         }
         ++bits[best];
@@ -145,9 +180,8 @@ enum response isax_configure_variance_root_split(isax_index *index,
 
     free(settings->root_bit_cardinalities);
     settings->root_bit_cardinalities = bits;
-    free(variance);
-
-    fprintf(stderr, ">>> variance root split (%d bits):", budget);
+    fprintf(stderr, ">>> variance root split (%d bits, min %d, max %d):",
+            budget, min_bit_val, max_bit_val);
     for (int i = 0; i < dimensions; ++i) {
         fprintf(stderr, " %u", (unsigned int) bits[i]);
     }
@@ -284,7 +318,7 @@ ts_type messi_minidist_range_raw(isax_index *index,
             float diff = paa_or_fft[i] - breakpoint_upper;
             distance += diff * diff;
         }
-        // if (distance > bsf) {
+        // if (ratio_sqrt * distance > bsf) {
         //     return ratio_sqrt * distance;
         // }
     }
@@ -310,6 +344,55 @@ static ts_type get_lb_distance(const ts_type *bins, float value, sax_type v, sax
         return factor * diff * diff;
     }
     return 0.0f;
+}
+
+/* The query transform is fixed while scanning a leaf.  With full 8-bit
+ * symbols, cache each dimension/symbol contribution once rather than
+ * repeatedly reconstructing its bin interval for every record. */
+int messi_build_record_lb_table(const isax_index *index,
+                                const float *paa_or_fft,
+                                int dimensions,
+                                float table[16][256]) {
+    if (index == NULL || index->settings == NULL || paa_or_fft == NULL || table == NULL ||
+        dimensions != 16 || index->settings->sax_bit_cardinality != 8 ||
+        index->settings->sax_alphabet_cardinality != 256) return 0;
+
+    const isax_index_settings *settings = index->settings;
+    const int function_type = settings->function_type;
+    int sfa_start = 0;
+    if ((function_type == 4 || function_type == 6) && !settings->is_norm &&
+        (settings->n_coefficients == 0 ||
+         (index->coefficients != NULL && index->coefficients[0] == 0))) {
+        sfa_start = settings->n_coefficients == 0 ? 2 : 1;
+    }
+
+    const ts_type *sax_bins = NULL;
+    float sax_factor = 1.0f;
+    if (function_type != 4 && function_type != 5 && function_type != 6) {
+        const int offset = ((settings->sax_alphabet_cardinality - 1) *
+                            (settings->sax_alphabet_cardinality - 2)) / 2;
+        sax_bins = sax_breakpoints + offset;
+        sax_factor = settings->mindist_sqrt;
+    }
+
+    for (int dimension = 0; dimension < dimensions; ++dimension) {
+        const int ignored = (function_type == 4 || function_type == 6) &&
+                            dimension > 0 && dimension < sfa_start;
+        const ts_type *bins = sax_bins;
+        float factor = sax_factor;
+        if (function_type == 4 || function_type == 5 || function_type == 6) {
+            if (index->bins == NULL || index->bins[dimension] == NULL) return 0;
+            bins = index->bins[dimension];
+            factor = (function_type == 4 || function_type == 6)
+                         ? (dimension == 0 && sfa_start > 0 ? 1.0f : 2.0f)
+                         : 1.0f;
+        }
+        for (int symbol = 0; symbol < 256; ++symbol)
+            table[dimension][symbol] = ignored ? 0.0f :
+                get_lb_distance(bins, paa_or_fft[dimension], (sax_type) symbol, 8, 8,
+                                256, factor, 1);
+    }
+    return 1;
 }
 
 float minidist_paa_to_isax(float *paa, sax_type *sax,

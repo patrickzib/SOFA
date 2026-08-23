@@ -98,6 +98,6 @@ isax_node* popbottom(localStack *stk);
 bool isemptyqueue(localStack *stk);
 isax_node* poptop2(localStack *stk);
 isax_node* popbottom2(localStack *stk);
-int  N_PQUEUE;
+extern int N_PQUEUE;
 
 #endif

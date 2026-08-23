@@ -18,6 +18,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <signal.h>
 #include <string.h>
 #include <unistd.h>
@@ -51,6 +52,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/trie/trie.h"
 #include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
 //#define PROGRESS_FLUSH_THREAD_NUMBER 4
@@ -59,8 +61,18 @@
 #define FILENAME_LENGTH 256
 
 isax_index *idx;
+int query_report_interval = 10;
 
 void INThandler(int);
+
+static int fanout_to_bits(int fanout) {
+    int bits = 0;
+    while (fanout > 1 && (fanout & 1) == 0) {
+        fanout >>= 1;
+        ++bits;
+    }
+    return fanout == 1 ? bits : -1;
+}
 
 static FILE *open_logfile_or_tmp(const char *path) {
     FILE *file = fopen(path, "w");
@@ -74,6 +86,77 @@ static FILE *open_logfile_or_tmp(const char *path) {
         perror("tmpfile");
     }
     return file;
+}
+
+static int ensure_directory(const char *path) {
+    char directory[FILENAME_LENGTH];
+    size_t length = strlen(path);
+
+    if (length == 0 || length >= sizeof(directory)) return -1;
+    memcpy(directory, path, length + 1);
+
+    for (char *cursor = directory + 1; *cursor != '\0'; ++cursor) {
+        if (*cursor != '/') continue;
+        *cursor = '\0';
+        if (mkdir(directory, 0777) != 0 && errno != EEXIST) return -1;
+        *cursor = '/';
+    }
+
+    if (mkdir(directory, 0777) != 0 && errno != EEXIST) return -1;
+    return 0;
+}
+
+static double monotonic_seconds(void) {
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
+}
+
+static void format_compact_count(double value, char *buffer, size_t buffer_size) {
+    const char *suffix = "";
+    double scaled = value;
+    if (fabs(value) >= 1000000000.0) { scaled = value / 1000000000.0; suffix = "B"; }
+    else if (fabs(value) >= 1000000.0) { scaled = value / 1000000.0; suffix = "M"; }
+    else if (fabs(value) >= 1000.0) { scaled = value / 1000.0; suffix = "K"; }
+    if (*suffix == '\0') snprintf(buffer, buffer_size, "%.0f", scaled);
+    else snprintf(buffer, buffer_size, "%.2f %s", scaled, suffix);
+}
+
+/* Keep every query engine, including the trie engines, from discovering a
+ * short query file only after an expensive index build. */
+static int clamp_query_count_to_file(const char *path, int timeseries_size,
+                                     int *query_count) {
+    FILE *file;
+    long file_size;
+    unsigned long long available;
+    size_t record_size;
+
+    if (path == NULL || query_count == NULL || *query_count <= 0) return 1;
+    if (timeseries_size <= 0) return 0;
+    file = fopen(path, "rb");
+    if (file == NULL) {
+        fprintf(stderr, "error: cannot open query file: %s\n", path);
+        return 0;
+    }
+    if (fseek(file, 0L, SEEK_END) != 0 || (file_size = ftell(file)) < 0) {
+        fprintf(stderr, "error: cannot determine size of query file: %s\n", path);
+        fclose(file);
+        return 0;
+    }
+    fclose(file);
+    record_size = (size_t) timeseries_size * sizeof(ts_type);
+    available = (unsigned long long) file_size / record_size;
+    if (available == 0) {
+        fprintf(stderr, "error: query file contains no complete records: %s\n", path);
+        return 0;
+    }
+    if ((unsigned long long) *query_count > available) {
+        fprintf(stderr,
+                "warning: query file %s contains only %llu records; reducing --queries-size from %d to %llu.\n",
+                path, available, *query_count, available);
+        *query_count = available > INT_MAX ? INT_MAX : (int) available;
+    }
+    return 1;
 }
 
 #ifndef __linux__
@@ -173,6 +256,11 @@ static int select_numa_cpus(cpu_set_t *selected, const cpu_set_t *allowed, int r
 #endif
 
 int main(int argc, char **argv) {
+    typedef enum {
+        MESSI_ROOT_SPLIT_DEFAULT,
+        MESSI_ROOT_SPLIT_UNIFORM,
+        MESSI_ROOT_SPLIT_VARIANCE
+    } messi_root_split_mode;
     signal(SIGINT, INThandler);
 
 #ifndef BENCHMARK
@@ -219,23 +307,35 @@ int main(int argc, char **argv) {
     static int serial_scan = 0;
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
-    static int cpu_control_type = 0;
     static int requested_threads = 0;
     static int requested_numa_nodes = -1;
-    static int threads_option_set = 0;
-    static int numa_option_set = 0;
     static char inmemory_flag = 0;
-    static char SIMD_flag = 0;
+    /* SIMD is enabled automatically when AVX2 support was compiled in.
+     * --no-simd remains available for scalar comparison runs. */
+    static char SIMD_flag = ADS_HAVE_AVX2 ? 1 : 0;
     static char is_norm = 0;
     static int histogram_type = 1;
     static int sample_type = 1;
+    static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
     static int filetype_int = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
-    static int dynamic_root_split_variance = 0;
-    static int dynamic_root_split_uniform_set = 0;
+    static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
     static int node_split_criterion = 1;
+    static messi_index_type index_type = MESSI_INDEX_ISAX;
+    /* The trie mirrors iSAX's per-query worker scheduling by default. */
+    static int trie_query_batch = 0;
+    static int profile_query_phases_requested = 0;
+    static int queue_number_specified = 0;
+    static int trie_mbr_dimensions = 0;
+    static int trie_fanout = 8;
+    static int trie_fanout_specified = 0;
+    static int trie_dynamic_alphabet = 0;
+    static int trie_min_fanout = 2;
+    static int trie_max_fanout = 16;
+    static int trie_alphabet_budget_bits = 3;
+    static int query_report_interval_requested = 10;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -274,7 +374,6 @@ int main(int argc, char **argv) {
                 {"timeseries-size",     required_argument, 0,    't'},
                 {"min-checked-leaves",  required_argument, 0,    'u'},
                 {"in-memory",           no_argument,       0,    'v'},
-                {"cpu-type",            required_argument, 0,    'w'},
                 {"threads",             required_argument, 0,    'I'},
                 {"numa",                required_argument, 0,    'J'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
@@ -288,7 +387,6 @@ int main(int argc, char **argv) {
                 {"topk",                no_argument,       0,    '4'},
                 {"dtwwindowsize",       required_argument, 0,    '5'},
                 {"queue-number",        required_argument, 0,    '6'},
-                {"SIMD",                no_argument,       0,    '7'},
                 {"sample-size",         required_argument, 0,    '8'},
                 {"is-norm",             no_argument,       0,    '9'},
                 {"histogram-type",      required_argument, 0,    'A'},
@@ -297,9 +395,21 @@ int main(int argc, char **argv) {
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
-                {"dynamic-index",       required_argument, 0,   'H'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
+                {"index-type", required_argument, 0, 1000},
+                {"trie-query-parallel", no_argument, 0, 1001},
+                {"profile-query-phases", no_argument, 0, 1002},
+                {"trie-query-batch", no_argument, 0, 1003},
+                {"trie-mbr-dimensions", required_argument, 0, 1004},
+                {"trie-fanout", required_argument, 0, 1005},
+                {"trie-dynamic-alphabet", no_argument, 0, 1009},
+                {"trie-min-fanout", required_argument, 0, 1010},
+                {"trie-max-fanout", required_argument, 0, 1011},
+                {"trie-alphabet-budget-bits", required_argument, 0, 1012},
+                {"query-report-interval", required_argument, 0, 1006},
+                {"sampling-seed", required_argument, 0, 1007},
+                {"no-simd",             no_argument,       0, 1008},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -310,6 +420,45 @@ int main(int argc, char **argv) {
         if (c == -1)
             break;
         switch (c) {
+            case 1000:
+                if (strcmp(optarg, "isax") == 0) index_type = MESSI_INDEX_ISAX;
+                else if (strcmp(optarg, "trie") == 0) index_type = MESSI_INDEX_TRIE;
+                else { fprintf(stderr, "error: index-type must be isax or trie.\n"); return EXIT_FAILURE; }
+                break;
+            case 1001:
+                trie_query_batch = 0;
+                break;
+            case 1002:
+                profile_query_phases_requested = 1;
+                break;
+            case 1003:
+                trie_query_batch = 1;
+                break;
+            case 1004:
+                trie_mbr_dimensions = atoi(optarg);
+                break;
+            case 1005:
+                trie_fanout = atoi(optarg);
+                trie_fanout_specified = 1;
+                break;
+            case 1009:
+                trie_dynamic_alphabet = 1;
+                break;
+            case 1010:
+                trie_min_fanout = atoi(optarg);
+                break;
+            case 1011:
+                trie_max_fanout = atoi(optarg);
+                break;
+            case 1012:
+                trie_alphabet_budget_bits = atoi(optarg);
+                break;
+            case 1006:
+                query_report_interval_requested = atoi(optarg);
+                break;
+            case 1008:
+                SIMD_flag = 0;
+                break;
             case 'j':
                 serial_scan = 1;
                 break;
@@ -384,11 +533,7 @@ int main(int argc, char **argv) {
             case 'u':
                 min_checked_leaves = atoi(optarg);
                 break;
-            case 'w':
-                cpu_control_type = atoi(optarg);
-                break;
             case 'I':
-                threads_option_set = 1;
                 if (strcmp(optarg, "auto") == 0) {
                     requested_threads = 0;
                 } else {
@@ -400,7 +545,6 @@ int main(int argc, char **argv) {
                 }
                 break;
             case 'J':
-                numa_option_set = 1;
                 if (strcmp(optarg, "auto") == 0) {
                     requested_numa_nodes = -1;
                 } else if (strcmp(optarg, "none") == 0) {
@@ -434,6 +578,7 @@ int main(int argc, char **argv) {
                 break;
             case '2':
                 labelsize = atoi(optarg);
+                break;
             case '3':
                 knnlabel = 1;
                 break;
@@ -445,6 +590,11 @@ int main(int argc, char **argv) {
                 break;
             case '6':
                 N_PQUEUE = atoi(optarg);
+                if (N_PQUEUE <= 0) {
+                    fprintf(stderr, "Error: --queue-number must be a positive integer.\n");
+                    return EXIT_FAILURE;
+                }
+                queue_number_specified = 1;
                 break;
             case '8':
                 sample_size = atoi(optarg);
@@ -455,6 +605,17 @@ int main(int argc, char **argv) {
             case 'C':
                 sample_type = atoi(optarg);
                 break;
+            case 1007: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0' ||
+                    value > UINT_MAX) {
+                    fprintf(stderr, "Error: --sampling-seed must be an unsigned integer.\n");
+                    return EXIT_FAILURE;
+                }
+                sampling_seed = (unsigned int) value;
+                break;
+            }
             case 'D':
                 n_coefficients = atoi(optarg);
                 break;
@@ -472,16 +633,20 @@ int main(int argc, char **argv) {
                     return EXIT_FAILURE;
                 }
                 break;
-            case 'H':
-                dynamic_index = atoi(optarg);
-                dynamic_root_split_uniform_set = 1;
-                break;
             case 'K':
+                if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE) {
+                    fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+                    return EXIT_FAILURE;
+                }
                 dynamic_index = atoi(optarg);
-                dynamic_root_split_uniform_set = 1;
+                root_split_mode = MESSI_ROOT_SPLIT_UNIFORM;
                 break;
             case 'L':
-                dynamic_root_split_variance = 1;
+                if (root_split_mode == MESSI_ROOT_SPLIT_UNIFORM) {
+                    fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+                    return EXIT_FAILURE;
+                }
+                root_split_mode = MESSI_ROOT_SPLIT_VARIANCE;
                 break;
 
             case 'h':
@@ -498,16 +663,26 @@ int main(int argc, char **argv) {
                 \t--index-path XX \t\tThe path of the output folder\n\
                 \t--timeseries-size XX\t\tThe size of each time series\n\
                 \t--sax-cardinality XX\t\tThe maximum sax cardinality in number of bits (power of two).\n\
-                \t--n-segments XX\t\tThe number of segments to divide the time series.\n\
+                \t--n-segments XX\t\tSymbolic dimensions (trie: 16--64; default: 16).\n\
                 \t--leaf-size XX\t\t\tThe maximum size of each leaf\n\
                 \t--min-leaf-size XX\t\tThe minimum size of each leaf\n\
                 \t--initial-lbl-size XX\t\tThe initial lbl buffer size for each buffer.\n\
                 \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
                 \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
                 \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
-                \t--dynamic-index XX\t\tSet dynamic-index (kn) for root mask grouping\n\
-                \t--dynamic-root-split-uniform XX\tUniform root split (alias for --dynamic-index)\n\
+                \t--dynamic-root-split-uniform XX\tUniform root split in bits per symbolic dimension\n\
                 \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
+                \t--index-type isax|trie\tIndex layout (default: isax)\n\
+                \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
+                \t--trie-query-batch\tBatch independent trie queries instead\n\
+                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
+                \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
+                \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
+                \t--trie-min-fanout 2|4|...\tMinimum dynamic trie fanout (default: 2)\n\
+                \t--trie-max-fanout 2|4|...\tMaximum dynamic trie fanout (default: 16)\n\
+                \t--trie-alphabet-budget-bits N\tAverage dynamic alphabet budget in bits (default: 3)\n\
+                \t--query-report-interval N\tPrint first, every Nth completed, and final query row (0=none; default: 10)\n\
+                \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -529,12 +704,13 @@ int main(int argc, char **argv) {
                 \t\t\tMESSI+SFA: 4\n\
                 \t\t\tMESSI+SPARTAN: 5\n\
                 \t\t\tMESSI+PISA: 6\n\
-                \t--SIMD\t\t\tSet for search with SIMD intrinsics\n\
+                \t--no-simd\t\t\tDisable SIMD even when AVX2 is available\n\
                 \t--sample-size\t\t\tSet sample size for MCB\n\
                 \t--sample-type\t\t\tSet for sampling strategy\n\
                 \t\t\tfirst-n-values sampling: 1\n\
                 \t\t\tuniform sampling: 2\n\
                 \t\t\trandom sampling: 3\n\
+                \t--sampling-seed\t\t\tSeed for random binning sampling (default: 1)\n\
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
@@ -544,23 +720,7 @@ int main(int argc, char **argv) {
                 \t\t\tequi-width splitting: 2\n\
                 \t--threads N|auto\t\tWorker threads (default: all CPUs available to this process)\n\
                 \t--numa auto|none|N\tCPU affinity: all available NUMA nodes, disabled, or first N nodes\n\
-                \t--cpu-type\t\t\tDeprecated compatibility option; use --threads and --numa\n\
                 \t--help\n\n\
-                \tLegacy CPU type code:\t\tValues ending in 1 or 2 mean cores * 10 + NUMA nodes\n\
-                \t\t\t\t\t22 : 2 core in 2 CPUs\n\
-                \t\t\t\t\t41 : 4 core in 1 CPU\n\
-                \t\t\t\t\t42 : 4 core in 2 CPUs\n\
-                \t\t\t\t\t61 : 6 core in 1 CPU\n\
-                \t\t\t\t\t62 : 6 core in 2 CPUs\n\
-                \t\t\t\t\t81 : 8 core in 1 CPU\n\
-                \t\t\t\t\t82 : 8 core in 2 CPUs\n\
-                \t\t\t\t\t101: 10 core in 1 CPU\n\
-                \t\t\t\t\t102: 10 core in 2 CPUs\n\
-                \t\t\t\t\t121: 12 core in 1 CPU\n\
-                \t\t\t\t\t122: 12 core in 2 CPUs\n\
-                \t\t\t\t\t181: 18 core in 1 CPU\n\
-                \t\t\t\t\t182: 18 core in 2 CPUs\n\
-                \t\t\t\t\t242: 24 core in 2 CPUs\n\
                 ");
                 return 0;
                 break;
@@ -569,9 +729,6 @@ int main(int argc, char **argv) {
                 break;
             case 'v':
                 inmemory_flag = 1;
-                break;
-            case '7':
-                SIMD_flag = 1;
                 break;
             case '9':
                 is_norm = 1;
@@ -582,12 +739,56 @@ int main(int argc, char **argv) {
         }
     }
     INIT_STATS();
+    profile_query_phases = profile_query_phases_requested;
+    if (query_report_interval_requested < 0) {
+        fprintf(stderr, "error: query report interval must be zero or positive.\n");
+        return EXIT_FAILURE;
+    }
+    query_report_interval = query_report_interval_requested;
 
-    /* --cpu-type is retained for existing invocations.  Its historical
-     * encoding is cores * 10 + NUMA nodes, so 81 means 8 workers on one
-     * node--not 81 workers.  --threads/--numa take precedence when supplied. */
-    if (dynamic_root_split_variance && dynamic_root_split_uniform_set) {
-        fprintf(stderr, "error: --dynamic-root-split-variance cannot be combined with a uniform root split.\n");
+    if (index_type == MESSI_INDEX_TRIE) {
+        if (function_type < 3 || function_type > 6) {
+            fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
+            return EXIT_FAILURE;
+        }
+        if (root_split_mode != MESSI_ROOT_SPLIT_DEFAULT) {
+            fprintf(stderr, "error: dynamic root split options are iSAX-only.\n");
+            return EXIT_FAILURE;
+        }
+        if (n_segments < 16 || n_segments > 64) {
+            fprintf(stderr, "error: trie n-segments must be between 16 and 64.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_mbr_dimensions != 0 &&
+            (trie_mbr_dimensions < n_segments || trie_mbr_dimensions < 16 ||
+             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size / 2)) {
+            fprintf(stderr,
+                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size/2) (%d).\n",
+                    n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+            return EXIT_FAILURE;
+        }
+        if (trie_dynamic_alphabet && trie_fanout_specified) {
+            fprintf(stderr, "error: --trie-dynamic-alphabet cannot be combined with --trie-fanout.\n");
+            return EXIT_FAILURE;
+        }
+        if (!trie_dynamic_alphabet && trie_fanout != 2 && trie_fanout != 4 && trie_fanout != 8) {
+            fprintf(stderr, "error: trie fanout must be 2, 4, or 8.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_dynamic_alphabet) {
+            const int min_bits = fanout_to_bits(trie_min_fanout);
+            const int max_bits = fanout_to_bits(trie_max_fanout);
+            if (min_bits < 1 || max_bits < min_bits || max_bits > 8) {
+                fprintf(stderr, "error: dynamic trie fanouts must be powers of two between 2 and 256, with min <= max.\n");
+                return EXIT_FAILURE;
+            }
+            if (trie_alphabet_budget_bits < min_bits || trie_alphabet_budget_bits > max_bits) {
+                fprintf(stderr, "error: dynamic trie average budget must be between min and max fanout bits.\n");
+                return EXIT_FAILURE;
+            }
+        }
+    } else if (trie_fanout != 8 || trie_dynamic_alphabet) {
+        fprintf(stderr, "error: --trie-fanout requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
@@ -595,22 +796,13 @@ int main(int argc, char **argv) {
                 sax_cardinality);
         return EXIT_FAILURE;
     }
-    if (dynamic_root_split_variance &&
+    if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE &&
         function_type != 4 && function_type != 5 && function_type != 6) {
         fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
         return EXIT_FAILURE;
     }
-
-    if (cpu_control_type > 0 && !threads_option_set) {
-        if (cpu_control_type >= 10 &&
-            (cpu_control_type % 10 == 1 || cpu_control_type % 10 == 2)) {
-            requested_threads = cpu_control_type / 10;
-            if (!numa_option_set) {
-                requested_numa_nodes = cpu_control_type % 10;
-            }
-        } else {
-            requested_threads = cpu_control_type;
-        }
+    if (!clamp_query_count_to_file(queries, time_series_size, &queries_size)) {
+        return EXIT_FAILURE;
     }
 
 #ifdef __linux__
@@ -659,13 +851,16 @@ int main(int argc, char **argv) {
 #endif
     calculate_thread = thread_count;
     maxquerythread = thread_count;
+    /* Keep the default work distribution proportional to the active query
+     * workers.  An explicit --queue-number always takes precedence. */
+    if (!queue_number_specified) N_PQUEUE = thread_count;
     if (use_index) {
         isax_index *idx = index_read(index_path);
         idx->settings->tight_bound = tight_bound;
         idx->settings->aggressive_check = aggressive_check;
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
-        print_settings(idx->settings);
+        print_settings(idx->settings, maxquerythread, trie_query_batch);
         // fprintf(stderr,"total_records: %ld\n", idx->total_records);
         // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
         // create_wedges(idx, NULL);
@@ -738,6 +933,22 @@ int main(int argc, char **argv) {
         isax_index_destroy(idx, NULL);
     } else {
         char rm_command[256];
+        int index_segments = n_segments;
+        int trie_bound_dimensions = 0;
+
+        /* Trie words have extra dimensions available solely for partitioning.
+         * The public n-segments value remains the lower-bound prefix. */
+        if (index_type == MESSI_INDEX_TRIE) {
+            trie_bound_dimensions = index_segments;
+            index_segments = trie_mbr_dimensions > 0
+                                 ? trie_mbr_dimensions
+                                 : (time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+            if (function_type == 4 || function_type == 6) {
+                if (n_coefficients == 0 || n_coefficients < index_segments) {
+                    n_coefficients = index_segments;
+                }
+            }
+        }
 
 
         if (!inmemory_flag) {
@@ -745,27 +956,35 @@ int main(int argc, char **argv) {
             system(rm_command);
         }
         // check if n_segments size is at most timeseries_size
-        if (n_segments > time_series_size) {
+        if (index_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        if (time_series_size % n_segments != 0) {
+        if (index_type == MESSI_INDEX_ISAX && time_series_size % n_segments != 0) {
             fprintf(stderr,
                     "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
                     "is not divisible by n-segments (%d).\n",
                     time_series_size % n_segments, time_series_size, n_segments);
         }
         if (function_type == 4 || function_type == 6) {
-            if (n_segments <= 0 || n_segments % 2 != 0) {
+            if (index_segments <= 0 || index_segments % 2 != 0) {
                 fprintf(stderr, "ERROR: SFA/PISA n-segments must be a positive even number!\n");
                 return -1;
             }
             if (n_coefficients != 0 &&
-                (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
+                (n_coefficients % 2 != 0 || n_coefficients < index_segments ||
                  n_coefficients > time_series_size / 2)) {
                 fprintf(stderr,
                         "ERROR: SFA/PISA coeff number must be even and between %d and %d!\n",
-                        n_segments, time_series_size / 2);
+                        index_segments, time_series_size / 2);
+                return -1;
+            }
+            if (index_type == MESSI_INDEX_TRIE &&
+                (n_coefficients == 0 || n_coefficients < index_segments ||
+                 index_segments > time_series_size / 2)) {
+                fprintf(stderr,
+                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size/2.\n",
+                        index_segments);
                 return -1;
             }
         }
@@ -784,36 +1003,23 @@ int main(int argc, char **argv) {
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
-        strcat(strcpy(log_file_directory, getenv("HOME")), "/MESSI_logs");
-        strcat(strcpy(log_filename, getenv("HOME")), "/MESSI_logs/settings");
-        strcat(strcpy(log_filename_tree, getenv("HOME")), "/MESSI_logs/tree");
-        strcat(strcpy(log_filename_index, getenv("HOME")), "/MESSI_logs/index");
-        strcat(strcpy(log_filename_query, getenv("HOME")), "/MESSI_logs/query");
+        const char *log_root = getenv("MESSI_LOG_ROOT");
+        if (log_root == NULL || log_root[0] == '\0') log_root = getenv("HOME");
+        if (log_root == NULL || log_root[0] == '\0') log_root = ".";
 
-        //check if logfile directories exist, create them if neccessary
-        struct stat st = {0};
+        snprintf(log_file_directory, sizeof(log_file_directory), "%s", log_root);
+        snprintf(log_filename, sizeof(log_filename), "%s/settings", log_root);
+        snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
+        snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
+        snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
 
-        if (stat(log_file_directory, &st) == -1) {
-            mkdir(log_file_directory, 0777);
+        if (ensure_directory(log_filename) != 0 ||
+            ensure_directory(log_filename_tree) != 0 ||
+            ensure_directory(log_filename_index) != 0 ||
+            ensure_directory(log_filename_query) != 0) {
+            fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
+                    log_root, strerror(errno));
         }
-        if (stat(log_filename, &st) == -1) {
-            mkdir(log_filename, 0777);
-        }
-        if (stat(log_filename_tree, &st) == -1) {
-            mkdir(log_filename_tree, 0777);
-        }
-        if (stat(log_filename_index, &st) == -1) {
-            mkdir(log_filename_index, 0777);
-        }
-        if (stat(log_filename_query, &st) == -1) {
-            mkdir(log_filename_query, 0777);
-        }
-/*
-        mkdir(log_filename, 0777);
-        mkdir(log_filename_tree, 0777);
-        mkdir(log_filename_index, 0777);
-        mkdir(log_filename_query, 0777);
-*/
         //concatenate actual file names
         strcat(log_filename, "/MESSI_SETTINGS_");
         strcat(log_filename, time_str);
@@ -865,7 +1071,7 @@ int main(int argc, char **argv) {
 
         isax_index_settings *index_settings = isax_index_settings_init(index_path,         // INDEX DIRECTORY
                                                                        time_series_size,   // TIME SERIES SIZE
-                                                                       n_segments,         // PAA SEGMENTS
+                                                                       index_segments,     // symbolic dimensions
                                                                        sax_cardinality,    // SAX CARDINALITY IN BITS
                                                                        leaf_size,          // LEAF SIZE
                                                                        min_leaf_size,      // MIN LEAF SIZE
@@ -892,15 +1098,24 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
-        index_settings->dynamic_root_split_variance = dynamic_root_split_variance;
+        index_settings->index_type = index_type;
+        index_settings->trie_bound_dimensions = trie_bound_dimensions;
+        index_settings->trie_fanout = trie_fanout;
+        index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
+        index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
+        index_settings->trie_max_bits = fanout_to_bits(trie_max_fanout);
+        index_settings->trie_alphabet_budget_bits = trie_alphabet_budget_bits;
+        index_settings->sampling_seed = sampling_seed;
+        index_settings->dynamic_root_split_variance =
+                root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 
 
         if (!inmemory_flag) {
             idx = isax_index_init(index_settings);
-            print_settings(idx->settings);
+            print_settings(idx->settings, maxquerythread, trie_query_batch);
         } else {
             idx = isax_index_init_inmemory(index_settings);
-            print_settings(idx->settings);
+            print_settings(idx->settings, maxquerythread, trie_query_batch);
         }
 
 #ifdef CLUSTERED
@@ -922,8 +1137,25 @@ int main(int argc, char **argv) {
         else {*/
         /// ########################################
 
+        double query_wall_seconds = 0.0;
+        if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+            if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: trie construction failed.\n");
+                return EXIT_FAILURE;
+            }
+            INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_SAVE_FILE(logfile_query);
+            double query_wall_start = monotonic_seconds();
+            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+                fprintf(stderr, "error: trie query processing failed.\n");
+                return EXIT_FAILURE;
+            }
+            query_wall_seconds = monotonic_seconds() - query_wall_start;
+            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+
         //MESSI-SFA: in-memory flag set with function-type 4
-        if (inmemory_flag && function_type == 4) {
+        } else if (inmemory_flag && function_type == 4) {
             //initialize bins
             sfa_bins_init(idx);
 
@@ -935,15 +1167,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -954,8 +1190,13 @@ int main(int argc, char **argv) {
             //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
             //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
             // } else {
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            query_wall_seconds = monotonic_seconds() - query_wall_start;
+            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -969,15 +1210,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -988,8 +1233,13 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            query_wall_seconds = monotonic_seconds() - query_wall_start;
+            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -1003,15 +1253,19 @@ int main(int argc, char **argv) {
             }
 
             //build index
-            index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            for (int i = 0; i < n_segments; i++) {
+            for (int i = 0; i < idx->settings->n_segments; i++) {
                 memcpy(&idx->binsv[i * (idx->settings->sax_alphabet_cardinality - 1)], idx->bins[i],
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
@@ -1022,8 +1276,13 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            query_wall_seconds = monotonic_seconds() - query_wall_start;
+            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
@@ -1076,8 +1335,11 @@ int main(int argc, char **argv) {
                 }
                     //MESSI-mq: in-memory flag set with function-type 3
                 else if (function_type == 3) {
+                    double query_wall_start = monotonic_seconds();
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                    query_wall_seconds = monotonic_seconds() - query_wall_start;
+                    fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
                     //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
                 } else if (function_type == 8) {
@@ -1115,18 +1377,64 @@ int main(int argc, char **argv) {
             }
         }
 
-        //save querying stats
-        if (inmemory_flag && (function_type == 4 || function_type == 5 || function_type == 6) &&
-            queries_size > 0) {
-            fprintf(stderr,
-                    ">>> distance calculations: lower-bound=%lu (%.2f/query), exact=%lu (%.2f/query)\n",
-                    LBDcalculationnumber_all,
-                    (double) LBDcalculationnumber_all / queries_size,
-                    RDcalculationnumber_all,
-                    (double) RDcalculationnumber_all / queries_size);
-        }
         SAVE_STATS_TOTAL(logfile_query, queries_size)
-        PRINT_STATS(0.00f)
+        if (queries_size > 0 && query_wall_seconds > 0.0) {
+            const double avg_checked_nodes = (double) checked_nodes_all / queries_size;
+            const double avg_lower_bounds = (double) LBDcalculationnumber_all / queries_size;
+            const double avg_exact_distances = (double) RDcalculationnumber_all / queries_size;
+            const double checked_node_percent = total_tree_nodes > 0
+                                                ? 100.0 * avg_checked_nodes / total_tree_nodes
+                                                : 0.0;
+            const double lower_bound_percent = dataset_size > 0
+                                               ? 100.0 * avg_lower_bounds / dataset_size
+                                               : 0.0;
+            const double exact_distance_percent = dataset_size > 0
+                                                  ? 100.0 * avg_exact_distances / dataset_size
+                                                  : 0.0;
+            char nodes[32], lower_bounds[32], exact_distances[32], index_nodes[32], indexed_series[32];
+            char wall_time[32];
+            format_compact_count(avg_checked_nodes, nodes, sizeof(nodes));
+            format_compact_count(avg_lower_bounds, lower_bounds, sizeof(lower_bounds));
+            format_compact_count(avg_exact_distances, exact_distances, sizeof(exact_distances));
+            format_compact_count(total_tree_nodes, index_nodes, sizeof(index_nodes));
+            format_compact_count(dataset_size, indexed_series, sizeof(indexed_series));
+            if (query_wall_seconds < 1.0)
+                snprintf(wall_time, sizeof(wall_time), "%.3f ms", 1000.0 * query_wall_seconds);
+            else
+                snprintf(wall_time, sizeof(wall_time), "%.3f s", query_wall_seconds);
+            fprintf(stderr, "=== Query summary ===\n"
+                   "  queries          : %d\n"
+                   "  wall time        : %s (%.3f ms/query)\n"
+                   "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n"
+                   "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
+                   "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",
+                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size,
+                   nodes, checked_node_percent, index_nodes,
+                   lower_bounds, lower_bound_percent, indexed_series,
+                   exact_distances, exact_distance_percent, indexed_series);
+            if (profile_query_phases) {
+                fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"
+                       "    node MBR bounds  : %.3f\n"
+                       "    record bounds    : %.3f\n"
+                       "    exact distances  : %.3f\n",
+                       total_mbr_dist_calc_time_all / (1000.0 * queries_size),
+                       total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
+                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+                if (index_type == MESSI_INDEX_TRIE) {
+                    fprintf(stderr, "    frontier traversal: %.3f\n"
+                           "    queue locks/pops : %.3f\n"
+                           "    candidate heap   : %.3f\n"
+                           "    synchronization/wait: %.3f\n",
+                           total_trie_frontier_time_all / (1000.0 * queries_size),
+                           total_trie_queue_time_all / (1000.0 * queries_size),
+                           total_trie_heap_time_all / (1000.0 * queries_size),
+                           total_trie_sync_time_all / (1000.0 * queries_size));
+                } else {
+                    fprintf(stderr, "    traversal/queues : %.3f\n",
+                           total_tree_pass_time_all / (1000.0 * queries_size));
+                }
+            }
+        }
 
         /* Do not store index for now
         //save index and get size for analysis
@@ -1169,6 +1477,8 @@ int main(int argc, char **argv) {
 
         } else {
             free(rawfile);
+            rawfile = NULL;
+            if (index_type == MESSI_INDEX_TRIE) symbolic_trie_destroy(idx);
 
             if (function_type == 4) {
                 sfa_free_bins(idx);
@@ -1187,7 +1497,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        printf("\n");
+        fprintf(stderr, "\n");
 
     }
 
@@ -1195,21 +1505,12 @@ int main(int argc, char **argv) {
 }
 
 void INThandler(int sig) {
-    char c;
+    static const char message[] = "\nInterrupted.\n";
 
-    signal(sig, SIG_IGN);
-    fprintf(stderr, "Do you really want to quit? [y/n] ");
-    c = getchar();
-    if (c == 'y' || c == 'Y') {
-        c = getchar();
-        fprintf(stderr, "Do you want to save the index? [y/n] ");
-        c = getchar();
-        if (c == 'y' || c == 'Y') {
-            flush_fbl(idx->fbl, idx);
-            index_write(idx);
-        }
-        exit(0);
-    } else
-        signal(SIGINT, INThandler);
-    getchar(); // Get new line character
+    (void)sig;
+    /* write(2) and _exit(2) are safe in a signal handler.  In particular, do
+     * not prompt, acquire index locks, or attempt to save a partial index
+     * while a worker may be modifying it. */
+    (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(130);
 }

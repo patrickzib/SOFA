@@ -1,0 +1,43 @@
+Unreleased
+==========
+
+Symbolic trie
+-------------
+
+- Added an in-memory symbolic-trie index with configurable 2-, 4-, or 8-way
+  fanout, leaf capacity, sampled root splitting, and entropy × variance-based
+  splits.
+- Stores MBRs and selects split dimensions across the full transform word
+  (up to 64 dimensions); record lower bounds use the leading 16 dimensions.
+- Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
+  optional z-normalization, and query-specific symbolic lower-bound tables.
+- Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
+  bounds, with exact-distance early abandonment.
+- Provides batch and single-query parallel modes with configurable worker and
+  queue counts, plus construction, coverage, and per-phase query timings.
+- Reports split occupancy, non-empty-child, and largest-child diagnostics to
+  make fanout experiments directly comparable.
+
+iSAX
+----
+
+- Added dynamic, variance-driven root-cardinality splitting for symbolic
+  transforms and support for SAX, SFA, PISA, and SPARTAN words.
+- Added full-word node MBR pruning and transform-specific lower bounds,
+  including SIMD-capable exact-distance paths where available.
+- Improved parallel index construction and hybrid query scheduling, including
+  configurable worker/queue counts and robust queue ownership.
+- Unified iSAX and trie benchmark summaries, CSV logs, coverage reporting,
+  construction timings, and optional per-phase query profiling.
+
+Benchmark runners
+-----------------
+
+- `run_dataset.sh` now prints compact K/M/G configuration counts and an
+  end-of-run table of query work, coverage, and wall time for all methods run.
+- `run_suite.sh` accepts `--index-type isax|trie` to run a regular suite across
+  all configured datasets with either layout.
+- iSAX runner methods use variance-driven root cardinalities by default;
+  trie MBR/split dimensions follow each dataset's coefficient setting and can
+  be overridden with `--trie-mbr-dims`; trie fanout is configurable with
+  `--trie-fanout 2|4|8`.

@@ -12,10 +12,6 @@
 #include "globals.h"
 #include <stdio.h>
 #include <pthread.h>
-#if ADS_HAVE_AVX2
-#include "immintrin.h"
-#endif
-
 #ifdef VALUES
 
 #include <values.h>
@@ -26,8 +22,10 @@
 #include <float.h>
 #include <math.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 #include "ads/isax_index.h"
 #include "ads/sfa/dft.h"
 
@@ -109,6 +107,7 @@ enum response sfa_set_bins(
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
     COUNT_BINNING_TIME_START
+    double binning_start = messi_monotonic_seconds();
 
     ts_type **dft_mem_array = calloc(n_coefficients, sizeof(*dft_mem_array));
     if (dft_mem_array == NULL) {
@@ -206,6 +205,7 @@ enum response sfa_set_bins(
             return FAILURE;
         }
     }
+    double sampling_end = messi_monotonic_seconds();
 
     /*
      * Optional variance-based coefficient selection
@@ -225,12 +225,32 @@ enum response sfa_set_bins(
 
     ts_type **root_split_coefficients =
             use_variance ? dft_mem_array_coeff : dft_mem_array;
-    if (isax_configure_variance_root_split(index, root_split_coefficients,
-                                           sample_size) != SUCCESS) {
+    double variance_mean = 0.0;
+    for (int i = 0; i < n_segments; ++i) variance_mean += index->settings->symbolic_variances[i];
+    variance_mean /= (double) n_segments;
+    if (variance_mean > 0.0) {
+        for (int i = 0; i < n_segments; ++i)
+            index->settings->symbolic_variances[i] /= variance_mean;
+    }
+    const int root_budget = index->settings->index_type == MESSI_INDEX_TRIE &&
+                                    index->settings->trie_dynamic_alphabet
+                                ? index->settings->trie_alphabet_budget_bits * n_segments
+                                : (n_segments < (int) (sizeof(root_mask_type) * 8)
+                                       ? n_segments : (int) (sizeof(root_mask_type) * 8));
+    if (configure_dynamic_bit_allocation(index, index->settings->symbolic_variances,
+                                           n_segments, root_budget,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_min_bits : 0,
+                                           index->settings->index_type == MESSI_INDEX_TRIE &&
+                                                   index->settings->trie_dynamic_alphabet
+                                               ? index->settings->trie_max_bits
+                                               : index->settings->sax_bit_cardinality) != SUCCESS) {
         free(input_data);
         free_dft_memory(index, n_segments, root_split_coefficients);
         return FAILURE;
     }
+    double selection_end = messi_monotonic_seconds();
 
     /*
      * Phase 2:
@@ -266,6 +286,7 @@ enum response sfa_set_bins(
     for (int i = 0; i < worker_threads; ++i) {
         pthread_join(threadid[i], NULL);
     }
+    double bins_end = messi_monotonic_seconds();
 
     free(input_data);
 
@@ -274,6 +295,15 @@ enum response sfa_set_bins(
     COUNT_BINNING_TIME_END
 
     sfa_print_bins(index);
+    fprintf(stderr, ">>> SFA binning timing\n");
+    fprintf(stderr, "    sample + DFT          : %.3f s\n",
+            sampling_end - binning_start);
+    fprintf(stderr, "    variance + root split : %.3f s\n",
+            selection_end - sampling_end);
+    fprintf(stderr, "    bin sorting           : %.3f s\n",
+            bins_end - selection_end);
+    fprintf(stderr, "    total                 : %.3f s\n",
+            bins_end - binning_start);
     fprintf(stderr, ">>> Finished binning\n");
     return SUCCESS;
 }
@@ -314,6 +344,8 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         double total_var = var_real + var_imag;
 
         var_coeff_index[i].variance = total_var;
+        var_coeff_index[i].variance_real = var_real;
+        var_coeff_index[i].variance_imag = var_imag;
         var_coeff_index[i].coeff_index = i;
     }
 
@@ -328,10 +360,16 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
 
     qsort(var_coeff_index, n_coefficients / 2, sizeof(var_coeff_index[0]), compare_var);
 
-    fprintf(stderr, ">>> SFA: Best Indices Sorted:\n");
-    for (int i = 0; i < n_coefficients / 2; ++i) {
+    const int candidate_complex = n_coefficients / 2;
+    const int print_candidates = candidate_complex < 8 ? candidate_complex : 8;
+    fprintf(stderr, ">>> SFA: variance ranking (top %d/%d):\n",
+            print_candidates, candidate_complex);
+    for (int i = 0; i < print_candidates; ++i) {
         fprintf(stderr, "%d, (%.4f) ", var_coeff_index[i].coeff_index,
                 var_coeff_index[i].variance);
+    }
+    if (print_candidates < candidate_complex) {
+        fprintf(stderr, "... (+%d more)", candidate_complex - print_candidates);
     }
     fprintf(stderr, "\n");
 
@@ -339,13 +377,63 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         index->coefficients[i] = var_coeff_index[i].coeff_index;
     }
 
-    // sorting needed?
-    qsort(index->coefficients, n_segments / 2, sizeof(int), compare_int);
-    fprintf(stderr, ">>> SFA: Hightest Variance Coeffs Sorted: ");
-    for (int i = 0; i < n_segments / 2; ++i) {
+    /*
+     * iSAX uses all transformed dimensions as its bound, so retain the
+     * historical coefficient-index order there.  Trie, however, keeps extra
+     * dimensions for MBRs/splitting and uses only a prefix for record bounds.
+     * Put the strongest coefficients at the front of that prefix; otherwise
+     * truncating the numerically sorted list silently discards the variance
+     * ranking.
+     */
+    const int selected_complex = n_segments / 2;
+    const int record_complex =
+            (index->settings->index_type == MESSI_INDEX_TRIE &&
+             index->settings->trie_bound_dimensions > 0)
+                ? index->settings->trie_bound_dimensions / 2
+                : selected_complex;
+
+    if (index->settings->index_type != MESSI_INDEX_TRIE) {
+        qsort(index->coefficients, selected_complex, sizeof(int), compare_int);
+    } else {
+        /* The ranking array is already descending by variance.  The first
+         * record_complex entries become the trie record-bound prefix and the
+         * remaining selected entries are retained for MBR dimensions. */
+        int *ordered = calloc((size_t) selected_complex, sizeof(*ordered));
+        if (ordered == NULL) {
+            return NULL;
+        }
+        for (int i = 0; i < selected_complex; ++i) {
+            ordered[i] = var_coeff_index[i].coeff_index;
+        }
+        memcpy(index->coefficients, ordered,
+               sizeof(*ordered) * (size_t) selected_complex);
+        free(ordered);
+    }
+
+    fprintf(stderr, ">>> SFA: Coefficients Used: ");
+    for (int i = 0; i < selected_complex; ++i) {
         fprintf(stderr, "%d, ", index->coefficients[i]);
     }
     fprintf(stderr, "\n");
+
+    if (index->settings->index_type == MESSI_INDEX_TRIE) {
+        fprintf(stderr, ">>> SFA: Trie record-bound coeffs: ");
+        for (int i = 0; i < record_complex && i < selected_complex; ++i) {
+            fprintf(stderr, "%d, ", index->coefficients[i]);
+        }
+        fprintf(stderr, "\n");
+    }
+
+    /* Keep the training variances aligned with the selected representation.
+     * Dynamic alphabet allocation consumes these values directly. */
+    double *selected_variance = calloc((size_t) n_segments, sizeof(*selected_variance));
+    if (selected_variance == NULL) return NULL;
+    for (int i = 0; i < n_segments / 2; ++i) {
+        selected_variance[i * 2] = var_coeff_index[i].variance_real;
+        selected_variance[i * 2 + 1] = var_coeff_index[i].variance_imag;
+    }
+    free(index->settings->symbolic_variances);
+    index->settings->symbolic_variances = selected_variance;
 
     ts_type **dft_mem_array_coeff = (ts_type **) calloc(n_segments, sizeof(ts_type *));
     for (int k = 0; k < n_segments; ++k) {
@@ -377,6 +465,8 @@ void *set_bins_worker_dft(void *transferdata) {
     isax_index *index = ((bins_data_inmemory *) transferdata)->index;
     unsigned long start_number = bins_data->start_number;
     unsigned long stop_number = bins_data->stop_number;
+    uint64_t rng_state = ((uint64_t) index->settings->sampling_seed << 32) ^
+                         (uint64_t) (bins_data->workernumber + 1);
 
     unsigned long ts_length = index->settings->timeseries_size;
     long records = bins_data->records;
@@ -450,7 +540,8 @@ void *set_bins_worker_dft(void *transferdata) {
         if (index->settings->sample_type == 3) {
             unsigned long span = stop_number - start_number;
             unsigned long position = start_number +
-                                     (unsigned long) random_at_most((long int) span - 1);
+                                     (unsigned long) random_at_most_seed(&rng_state,
+                                                                         (long int) span - 1);
             fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
         }
 
@@ -692,196 +783,21 @@ long random_at_most(long max) {
     return x / bin_size;
 }
 
-
-#if ADS_HAVE_AVX2
-ts_type
-minidist_fft_to_sfa_rawe_SIMD(isax_index *index, float *fft, sax_type *sax,
-                              sax_type *sax_cardinalities, float bsf) {
-    int region_upper[16], region_lower[16];
-    float distancef[8], distancef2[8];
-    int offset = 0;
-    sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
-
-    __m256i vectorsignbit = _mm256_set1_epi32(0xffffffff);
-
-    __m128i sax_cardinalitiesv8 = _mm_lddqu_si128((const void *) sax_cardinalities);
-    __m256i sax_cardinalitiesv16 = _mm256_cvtepu8_epi16(sax_cardinalitiesv8);
-    __m128i sax_cardinalitiesv16_0 = _mm256_extractf128_si256(sax_cardinalitiesv16, 0);
-    __m256i c_cv_0 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_0);
-
-    __m128i saxv8 = _mm_lddqu_si128((const void *) sax);
-    __m256i saxv16 = _mm256_cvtepu8_epi16(saxv8);
-    __m128i saxv16_0 = _mm256_extractf128_si256(saxv16, 0);
-
-    __m256i v_0 = _mm256_cvtepu16_epi32(saxv16_0);
-
-
-    __m256i c_m = _mm256_set1_epi32(max_bit_cardinality);
-    __m256i cm_ccv_0 = _mm256_sub_epi32(c_m, c_cv_0);
-
-    __m256i region_lowerv_0 = _mm256_srlv_epi32(v_0, cm_ccv_0);
-
-    region_lowerv_0 = _mm256_sllv_epi32(region_lowerv_0, cm_ccv_0);
-
-
-    __m256i v1 = _mm256_andnot_si256(_mm256_setzero_si256(), vectorsignbit);
-
-    __m256i region_upperv_0 = _mm256_sllv_epi32(v1, cm_ccv_0);
-
-    region_upperv_0 = _mm256_andnot_si256(region_upperv_0, vectorsignbit);
-    region_upperv_0 = _mm256_or_si256(region_upperv_0, region_lowerv_0);
-
-    //lower
-    __m256i lower_juge_zerov_0 = _mm256_cmpeq_epi32(region_lowerv_0,
-                                                    _mm256_setzero_si256());
-
-
-    __m256i lower_juge_nzerov_0 =
-            _mm256_andnot_si256(lower_juge_zerov_0, vectorsignbit);
-
-    __m256 minvalv = _mm256_set1_ps(MINVAL);
-    __m256i bitsizev = _mm256_set1_epi16(
-        (short) index->settings->sax_alphabet_cardinality - 1);
-    __m256i bit1v = _mm256_set1_epi32(1);
-    __m256i offsetvs = _mm256_set_epi16(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2,
-                                        1, 0);
-
-    __m256i vsssssoffsetvs2 = _mm256_mullo_epi16(bitsizev, offsetvs);
-    __m128i offsetv0s = _mm256_extractf128_si256(vsssssoffsetvs2, 0);
-
-    __m128i offsetv1s = _mm256_extractf128_si256(vsssssoffsetvs2, 1);
-    __m256i offsetv0 = _mm256_cvtepu16_epi32(offsetv0s);
-
-    __m256i region_lowerbinv0 = _mm256_add_epi32(offsetv0, region_lowerv_0);
-
-    region_lowerbinv0 = _mm256_sub_epi32(region_lowerbinv0, bit1v);
-
-    __m256 lsax_breakpoints_shiftv_0 = _mm256_i32gather_ps(
-        index->binsv, region_lowerbinv0, 4);
-
-    __m256 breakpoint_lowerv_0 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(lower_juge_zerov_0, (__m256i) minvalv),
-        _mm256_and_si256(lower_juge_nzerov_0,
-                         (__m256i) lsax_breakpoints_shiftv_0));
-
-
-    //upper
-    __m256i region_upperbinv0 = _mm256_add_epi32(offsetv0, region_upperv_0);
-
-    __m256 usax_breakpoints_shiftv_0 = _mm256_i32gather_ps(
-        index->binsv, region_upperbinv0, 4);
-
-    __m256i upper_juge_maxv_0 = _mm256_cmpeq_epi32(region_upperv_0,
-                                                   _mm256_set1_epi32(
-                                                       index->settings->
-                                                       sax_alphabet_cardinality - 1));
-
-    __m256i upper_juge_nmaxv_0 = _mm256_andnot_si256(upper_juge_maxv_0, vectorsignbit);
-
-    __m256 breakpoint_upperv_0 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(upper_juge_maxv_0, (__m256i) _mm256_set1_ps(MAXVAL)),
-        _mm256_and_si256(upper_juge_nmaxv_0, (__m256i) usax_breakpoints_shiftv_0));
-
-
-    //dis
-    __m256 paav_0, paav_1;
-
-    paav_0 = _mm256_loadu_ps(fft);
-
-    __m256 dis_juge_upv_0 = _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_GT_OS);
-
-    __m256 dis_juge_lov_0 = (__m256) _mm256_and_si256(
-        (__m256i) _mm256_cmp_ps(breakpoint_lowerv_0, paav_0, _CMP_NGT_US),
-        (__m256i) _mm256_cmp_ps(breakpoint_upperv_0, paav_0, _CMP_LT_OS));
-
-    __m256 dis_juge_elv_0 = (__m256) _mm256_andnot_si256(
-        _mm256_or_si256((__m256i) dis_juge_upv_0, (__m256i) dis_juge_lov_0),
-        vectorsignbit);
-
-    __m256 dis_lowv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_0, paav_0),
-                                      _mm256_sub_ps(breakpoint_lowerv_0, paav_0));
-    __m256 dis_uppv_0 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_0, paav_0),
-                                      _mm256_sub_ps(breakpoint_upperv_0, paav_0));
-
-
-    __m256 distancev_0 = (__m256) _mm256_or_si256(
-        _mm256_or_si256(
-            _mm256_and_si256((__m256i) dis_juge_upv_0, (__m256i) dis_lowv_0),
-            _mm256_and_si256((__m256i) dis_juge_lov_0, (__m256i) dis_uppv_0)),
-        _mm256_and_si256((__m256i) dis_juge_elv_0, (__m256i) _mm256_set1_ps(0.0)));
-
-    __m256 distancev2 = _mm256_hadd_ps(distancev_0, distancev_0);
-    __m256 distancevf = _mm256_hadd_ps(distancev2, distancev2);
-
-    _mm256_storeu_ps(distancef, distancevf);
-    if ((distancef[0] + distancef[4]) * 2 > bsf) {
-        return (distancef[0] + distancef[4]) * 2;
-    }
-
-    __m128i sax_cardinalitiesv16_1 = _mm256_extractf128_si256(sax_cardinalitiesv16, 1);
-    __m256i c_cv_1 = _mm256_cvtepu16_epi32(sax_cardinalitiesv16_1);
-    __m128i saxv16_1 = _mm256_extractf128_si256(saxv16, 1);
-    __m256i v_1 = _mm256_cvtepu16_epi32(saxv16_1);
-    __m256i cm_ccv_1 = _mm256_sub_epi32(c_m, c_cv_1);
-    __m256i region_lowerv_1 = _mm256_srlv_epi32(v_1, cm_ccv_1);
-    region_lowerv_1 = _mm256_sllv_epi32(region_lowerv_1, cm_ccv_1);
-    __m256i region_upperv_1 = _mm256_sllv_epi32(v1, cm_ccv_1);
-    region_upperv_1 = _mm256_andnot_si256(region_upperv_1, vectorsignbit);
-    region_upperv_1 = _mm256_or_si256(region_upperv_1, region_lowerv_1);
-    __m256i lower_juge_zerov_1 = _mm256_cmpeq_epi32(region_lowerv_1,
-                                                    _mm256_setzero_si256());
-    __m256i lower_juge_nzerov_1 =
-            _mm256_andnot_si256(lower_juge_zerov_1, vectorsignbit);
-    __m256i offsetv1 = _mm256_cvtepu16_epi32(offsetv1s);
-    __m256i region_lowerbinv1 = _mm256_add_epi32(offsetv1, region_lowerv_1);
-    region_lowerbinv1 = _mm256_sub_epi32(region_lowerbinv1, bit1v);
-    __m256 lsax_breakpoints_shiftv_1 = _mm256_i32gather_ps(
-        index->binsv, region_lowerbinv1, 4);
-    __m256 breakpoint_lowerv_1 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(lower_juge_zerov_1, (__m256i) minvalv),
-        _mm256_and_si256(lower_juge_nzerov_1,
-                         (__m256i) lsax_breakpoints_shiftv_1));
-
-    __m256i region_upperbinv1 = _mm256_add_epi32(offsetv1, region_upperv_1);
-    __m256 usax_breakpoints_shiftv_1 = _mm256_i32gather_ps(
-        index->binsv, region_upperbinv1, 4);
-    __m256i upper_juge_maxv_1 = _mm256_cmpeq_epi32(region_upperv_1,
-                                                   _mm256_set1_epi32(
-                                                       index->settings->
-                                                       sax_alphabet_cardinality - 1));
-    __m256i upper_juge_nmaxv_1 = _mm256_andnot_si256(upper_juge_maxv_1, vectorsignbit);
-    __m256 breakpoint_upperv_1 = (__m256) _mm256_or_si256(
-        _mm256_and_si256(upper_juge_maxv_1, (__m256i) _mm256_set1_ps(MAXVAL)),
-        _mm256_and_si256(upper_juge_nmaxv_1, (__m256i) usax_breakpoints_shiftv_1));
-    paav_1 = _mm256_loadu_ps(&(fft[8]));
-    __m256 dis_juge_upv_1 = _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_GT_OS);
-
-
-    __m256 dis_juge_lov_1 = (__m256) _mm256_and_si256(
-        (__m256i) _mm256_cmp_ps(breakpoint_lowerv_1, paav_1, _CMP_NGT_US),
-        (__m256i) _mm256_cmp_ps(breakpoint_upperv_1, paav_1, _CMP_LT_OS));
-
-    __m256 dis_juge_elv_1 = (__m256) _mm256_andnot_si256(
-        _mm256_or_si256((__m256i) dis_juge_upv_1, (__m256i) dis_juge_lov_1),
-        vectorsignbit);
-
-    __m256 dis_lowv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_lowerv_1, paav_1),
-                                      _mm256_sub_ps(breakpoint_lowerv_1, paav_1));
-
-    __m256 dis_uppv_1 = _mm256_mul_ps(_mm256_sub_ps(breakpoint_upperv_1, paav_1),
-                                      _mm256_sub_ps(breakpoint_upperv_1, paav_1));
-
-    __m256 distancev_1 = (__m256) _mm256_or_si256(
-        _mm256_or_si256(
-            _mm256_and_si256((__m256i) dis_juge_upv_1, (__m256i) dis_lowv_1),
-            _mm256_and_si256((__m256i) dis_juge_lov_1, (__m256i) dis_uppv_1)),
-        _mm256_and_si256((__m256i) dis_juge_elv_1, (__m256i) _mm256_set1_ps(0.0)));
-
-
-    distancev2 = _mm256_hadd_ps(distancev_1, distancev_1);
-    distancevf = _mm256_hadd_ps(distancev2, distancev2);
-    _mm256_storeu_ps(distancef2, distancevf);
-
-    return (distancef[0] + distancef[4] + distancef2[0] + distancef2[4]) * 2;
+/* Deterministic, worker-local generator used by SFA/PISA bin sampling. */
+static uint64_t sfa_rng_next(uint64_t *state) {
+    uint64_t value = (*state += UINT64_C(0x9e3779b97f4a7c15));
+    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
+    return value ^ (value >> 31);
 }
-#endif
+
+long random_at_most_seed(uint64_t *state, long max) {
+    if (max <= 0) return 0;
+    const uint64_t range = (uint64_t) max + 1;
+    const uint64_t limit = UINT64_MAX - (UINT64_MAX % range);
+    uint64_t value;
+    do {
+        value = sfa_rng_next(state);
+    } while (value >= limit);
+    return (long) (value % range);
+}

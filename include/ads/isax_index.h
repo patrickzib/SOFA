@@ -27,6 +27,11 @@ typedef struct {
     unsigned long disk_data_partial;
 } meminfo;
 
+typedef enum {
+    MESSI_INDEX_ISAX = 0,
+    MESSI_INDEX_TRIE = 1
+} messi_index_type;
+
 
 typedef struct {
     char new_index;
@@ -76,8 +81,21 @@ typedef struct {
     unsigned int sample_size;
     int histogram_type;
     int sample_type;
+    unsigned int sampling_seed;
     int n_coefficients;
     int node_split_criterion;
+    messi_index_type index_type;
+    /* Trie-only: public --n-segments remains the lower-bound dimensionality,
+     * while the trie may materialize a wider symbolic word for splitting. */
+    int trie_bound_dimensions;
+    /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
+     * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
+    int trie_fanout;
+    char trie_dynamic_alphabet;
+    int trie_min_bits;
+    int trie_max_bits;
+    int trie_alphabet_budget_bits;
+    double *symbolic_variances;
 
     /* Root-only partitioning for in-memory symbolic indexes.  When enabled,
      * this contains the number of leading SAX bits used per dimension. */
@@ -117,8 +135,11 @@ typedef struct {
     int * coefficients;
     ts_type *pca_mean;
     ts_type *pca_components;
+    double *pca_explained_variance;
     int pca_components_count;
     int pca_dim;
+
+    struct symbolic_trie_index *trie;
 
 } isax_index;
 
@@ -141,7 +162,7 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
                                                 int function_type, char inmemory_flag, char SIMD_flag,
                                                 int sample_size, char is_norm, int histogram_type,
                                                 int sample_type, int n_coefficients);
-void print_settings(isax_index_settings *settings);
+void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node,
                                isax_node_record *record,

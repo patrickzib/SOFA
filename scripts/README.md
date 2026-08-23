@@ -21,6 +21,32 @@ Use `run_suite.sh` for the complete benchmark matrices. It also exposes the
 `generated-queries`, `hard-queries`, and `noise-workloads` suites migrated from
 `scripts/old/`.
 
+## Trie fanout and dynamic alphabets
+
+Trie runs support either one fixed fanout or one globally precomputed dynamic
+alphabet allocation; the two modes are mutually exclusive.
+
+```bash
+# Fixed fanout
+scripts/run_suite.sh standard --threads 64 --index-type trie --trie-fanout 8
+
+# Dynamic alphabet: average 3 bits, bounded to 1--4 bits per coefficient
+scripts/run_suite.sh standard --threads 64 --index-type trie \
+  --trie-dynamic-alphabet \
+  --trie-min-fanout 2 --trie-max-fanout 16 \
+  --trie-alphabet-budget-bits 3
+```
+
+Dynamic trie alphabets are computed once from the global training
+representation for SFA, SPARTAN, and PISA. The resulting per-dimension bit
+allocation is reused at every trie split; node-local alphabets are not
+recomputed. A 1--4 bit range corresponds to fanouts 2, 4, 8, and 16.
+
+SAX tries use the fixed-fanout path because SAX has no learned training
+variance allocation. iSAX’s `--dynamic-root-split-variance` option is separate
+and intentionally retains its legacy root-only bit allocation; it is not the
+trie dynamic-alphabet mechanism.
+
 ## Paths
 
 Command-line path options take precedence over these environment variables:

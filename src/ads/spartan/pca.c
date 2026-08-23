@@ -21,6 +21,8 @@ static void pca_free_model(isax_index *index) {
     }
     index->pca_components_count = 0;
     index->pca_dim = 0;
+    free(index->pca_explained_variance);
+    index->pca_explained_variance = NULL;
 }
 
 void pca_free(isax_index *index) {
@@ -163,9 +165,14 @@ enum response pca_fit(
     }
     qsort(ranked, dim, sizeof(double) * 2, pca_compare_variance);
 
-    fprintf(stderr, ">>> SPARTAN: PCA Eigenvalues Sorted:\n");
-    for (int i = 0; i < components; ++i) {
+    fprintf(stderr, ">>> SPARTAN: PCA eigenvalue ranking (top %d/%d):\n",
+            components < 8 ? components : 8, components);
+    const int print_components = components < 8 ? components : 8;
+    for (int i = 0; i < print_components; ++i) {
         fprintf(stderr, "%d, (%.4f) ", (int) ranked[i * 2], ranked[i * 2 + 1]);
+    }
+    if (print_components < components) {
+        fprintf(stderr, "... (+%d more)", components - print_components);
     }
     fprintf(stderr, "\n");
 
@@ -178,6 +185,22 @@ enum response pca_fit(
 
     index->pca_mean = mean;
     index->pca_components = components_matrix;
+    index->pca_explained_variance = calloc((size_t) index->settings->n_segments,
+                                           sizeof(*index->pca_explained_variance));
+    if (index->pca_explained_variance == NULL) {
+        pca_free_model(index);
+        free(cov);
+        free(eigvecs);
+        free(eigvals);
+        free(ranked);
+        return FAILURE;
+    }
+    double variance_sum = 0.0;
+    for (int k = 0; k < components; ++k) variance_sum += ranked[k * 2 + 1];
+    for (int k = 0; k < components; ++k) {
+        index->pca_explained_variance[k] = variance_sum > 0.0
+            ? ranked[k * 2 + 1] / variance_sum : 0.0;
+    }
     index->pca_components_count = components;
     index->pca_dim = dim;
 
