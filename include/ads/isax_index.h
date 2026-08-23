@@ -88,6 +88,9 @@ typedef struct {
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
+    /* Candidate prefix considered by trie split selection; node MBRs retain
+     * the full materialized word. */
+    int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
     /* Optional flat k-means/MRB directory inside large terminal trie leaves. */
     int trie_leaf_kmeans;

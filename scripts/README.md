@@ -74,6 +74,11 @@ default and is intended for direct A/B benchmarking with the MBR suffix bound.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
+`--trie-mbr-dims` controls the full node-MBR width, while
+`--trie-split-dims` limits only split-dimension selection. The latter defaults
+to 64 dimensions (or the smaller MBR width), retaining full-width MBR pruning
+while avoiding entropy scans over the complete MBR suffix.
+
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path
 components, and the destination is checked before removal.

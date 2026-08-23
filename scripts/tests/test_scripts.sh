@@ -123,6 +123,16 @@ assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
 assert_contains "$OUTPUT" '--sfa-n-coefficients 100'
 pass 'trie MBR dimensions remain capped by the 100-value series length'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 100 --trie-split-dims 64 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--trie-split-dimensions 64'
+if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 64 --trie-split-dims 100 --dry-run >/dev/null 2>&1; then
+    fail 'trie runner accepted split dimensions wider than the MBR'
+fi
+pass 'trie split dimensions are independently forwarded and bounded by the MBR width'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
 assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
 assert_contains "$OUTPUT" '--sample-size 100000'
@@ -205,6 +215,11 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --ind
     --methods spartan-depth,spartan-width --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 pass 'suite forwards trie MBR dimensions to dataset runs'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
+    --trie-mbr-dims 64 --trie-split-dims 32 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-split-dimensions 32'
+pass 'suite forwards trie split dimensions to dataset runs'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)

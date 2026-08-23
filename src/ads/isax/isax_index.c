@@ -2858,8 +2858,10 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     fprintf(stderr, "  index root    : %s\n", settings->root_directory);
     fprintf(stderr, "  layout        : %s\n", layout);
     if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
-        fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
-                settings->trie_bound_dimensions, settings->n_segments);
+        fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs; %d for splitting\n",
+                settings->trie_bound_dimensions, settings->n_segments,
+                settings->trie_split_dimensions > 0 ? settings->trie_split_dimensions
+                                                     : (settings->n_segments < 64 ? settings->n_segments : 64));
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     char max_leaf_size[32], min_leaf_size[32], sample_size[32];

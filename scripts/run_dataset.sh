@@ -25,7 +25,8 @@ Options:
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
-  --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
+  --trie-mbr-dims N         Trie MBR dimensions (16--128; capped by series length)
+  --trie-split-dims N       Trie split-choice dimensions (default: min(64, MBR dimensions))
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-leaf-kmeans K      Build K flat k-means MBR groups inside large trie leaves
@@ -168,6 +169,7 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_LEAF_KMEANS=
 TRIE_FANOUT=8
@@ -213,6 +215,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-leaf-kmeans) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_KMEANS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
@@ -258,6 +261,7 @@ fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
+[[ -z $TRIE_SPLIT_DIMS || $INDEX_TYPE == trie ]] || die '--trie-split-dims requires --index-type trie'
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
@@ -278,6 +282,11 @@ if [[ $INDEX_TYPE == trie ]]; then
     (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    if [[ -n $TRIE_SPLIT_DIMS ]]; then
+        is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
+        (( TRIE_SPLIT_DIMS >= 16 && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
+            die '--trie-split-dims must be between 16 and --trie-mbr-dims'
+    fi
     if [[ -n $TRIE_LEAF_KMEANS ]]; then
         is_positive_integer "$TRIE_LEAF_KMEANS" || die '--trie-leaf-kmeans must be a positive integer'
         (( TRIE_LEAF_KMEANS >= 2 && TRIE_LEAF_KMEANS <= 64 )) || die '--trie-leaf-kmeans must be between 2 and 64'
@@ -365,6 +374,7 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ -n $TRIE_SPLIT_DIMS ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
 [[ -n $TRIE_LEAF_KMEANS ]] && COMMON_ARGS+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
 if [[ $INDEX_TYPE == trie ]]; then
