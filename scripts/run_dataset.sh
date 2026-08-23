@@ -21,7 +21,7 @@ Options:
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes
-  --sampling-seed N         Seed random binning sampling (default: 1)
+  --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
@@ -480,7 +480,9 @@ run_method() {
         args+=(--dynamic-root-split-variance)
     fi
     if [[ -n $histogram_type ]]; then
-        args+=(--sample-size "$SAMPLE_SIZE" --sample-type 3 --is-norm --histogram-type "$histogram_type")
+        # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
+        # previously issued one scattered seek/read for each sampled record.
+        args+=(--sample-size "$SAMPLE_SIZE" --sample-type 2 --is-norm --histogram-type "$histogram_type")
         [[ $function_type == 4 || $function_type == 6 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
         if [[ $PROFILE == standard && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
         if [[ $DATASET_ID == sift1b && $histogram_type == 1 && ( $PROFILE == knn || $PROFILE == sampling ) ]]; then

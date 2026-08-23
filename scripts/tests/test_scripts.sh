@@ -19,8 +19,10 @@ assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'
 assert_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--tight-bound'
+assert_contains "$OUTPUT" '--sample-type 2'
+assert_not_contains "$OUTPUT" '--sample-type 3'
 [[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'iSAX should enable variance root splits for learned methods by default'
-pass 'standard profile emits the complete method matrix with quoted paths'
+pass 'standard profile emits the complete method matrix with uniform binning samples'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_not_contains "$OUTPUT" '--queue-number'
