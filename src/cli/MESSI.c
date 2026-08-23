@@ -720,7 +720,7 @@ int main(int argc, char **argv) {
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
-                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n_segments/2 and timeseries-size/2)\n\
+                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n-segments and timeseries-size)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
@@ -767,10 +767,10 @@ int main(int argc, char **argv) {
         }
         if (trie_mbr_dimensions != 0 &&
             (trie_mbr_dimensions < n_segments || trie_mbr_dimensions < 16 ||
-             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size / 2)) {
+             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size)) {
             fprintf(stderr,
-                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size/2) (%d).\n",
-                    n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size) (%d).\n",
+                    n_segments, time_series_size < 64 ? time_series_size : 64);
             return EXIT_FAILURE;
         }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
@@ -952,7 +952,7 @@ int main(int argc, char **argv) {
             trie_bound_dimensions = index_segments;
             index_segments = trie_mbr_dimensions > 0
                                  ? trie_mbr_dimensions
-                                 : (time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+                                 : (time_series_size < 64 ? time_series_size : 64);
             if (function_type == 4 || function_type == 6) {
                 if (n_coefficients == 0 || n_coefficients < index_segments) {
                     n_coefficients = index_segments;
@@ -983,17 +983,17 @@ int main(int argc, char **argv) {
             }
             if (n_coefficients != 0 &&
                 (n_coefficients % 2 != 0 || n_coefficients < index_segments ||
-                 n_coefficients > time_series_size / 2)) {
+                 n_coefficients > time_series_size)) {
                 fprintf(stderr,
                         "ERROR: SFA/PISA coeff number must be even and between %d and %d!\n",
-                        index_segments, time_series_size / 2);
+                        index_segments, time_series_size);
                 return -1;
             }
             if (index_type == MESSI_INDEX_TRIE &&
                 (n_coefficients == 0 || n_coefficients < index_segments ||
-                 index_segments > time_series_size / 2)) {
+                 index_segments > time_series_size)) {
                 fprintf(stderr,
-                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size/2.\n",
+                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size.\n",
                         index_segments);
                 return -1;
             }

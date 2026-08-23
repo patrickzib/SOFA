@@ -87,11 +87,11 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
         }
         if (n_coefficients != 0 &&
             (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
-             n_coefficients > timeseries_size / 2)) {
+             n_coefficients > timeseries_size)) {
             fprintf(stderr,
                     "error: SFA/PISA coefficient count must be even and between n-segments (%d) "
-                    "and timeseries-size/2 (%d).\n",
-                    n_segments, timeseries_size / 2);
+                    "and timeseries-size (%d).\n",
+                    n_segments, timeseries_size);
             return NULL;
         }
     }

@@ -94,6 +94,12 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number
 assert_contains "$OUTPUT" '--sfa-n-coefficients 48'
 pass 'short series use the largest valid even coefficient pool'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 64 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
+pass 'trie MBR dimensions are capped by series length, not half length'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
 assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
 assert_contains "$OUTPUT" '--sample-size 100000'

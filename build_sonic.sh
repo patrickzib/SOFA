@@ -24,4 +24,4 @@ make clean || true
 ./configure --with-fftw="$FFTW_PREFIX"
 make -j
 
-python3 -m pip install -e ./python --no-build-isolation
+# python3 -m pip install -e ./python --no-build-isolation

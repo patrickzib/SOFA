@@ -270,8 +270,12 @@ if [[ $INDEX_TYPE == trie ]]; then
     TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
     (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
-    (( TRIE_MBR_DIMS <= TS_SIZE / 2 )) || TRIE_MBR_DIMS=$((TS_SIZE / 2))
+    (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    # SFA/PISA need a training pool at least as wide as the trie word.  Keep
+    # the historical iSAX coefficient defaults untouched; widen only a trie
+    # that explicitly requests more MBR dimensions.
+    (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
     [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'
 else

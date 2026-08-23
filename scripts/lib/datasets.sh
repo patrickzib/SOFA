@@ -14,8 +14,9 @@ load_dataset() {
     TS_SIZE=
     DATASET_SIZE=
     # SFA/PISA coefficient counts include real and imaginary dimensions.
-    # Prefer a 64-dimensional training pool, but respect the FFT limit of
-    # timeseries_size / 2 complex coefficients (the CLI's doubled count).
+    # Prefer a 64-dimensional training pool, but preserve the historical
+    # timeseries_size / 2 default cap. Trie runs widen this only when a
+    # larger MBR word is explicitly requested.
     COEFF_NUMBER=64
     APPLY_Z_NORM=false
     FILETYPE_INT=false
