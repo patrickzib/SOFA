@@ -244,6 +244,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
+    settings->trie_leaf_kmeans = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
@@ -2954,8 +2955,12 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s\n",
-                settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "");
+        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s%s\n",
+                settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "",
+                settings->trie_leaf_kmeans ? " + leaf k-means MBRs" : "");
+        if (settings->trie_leaf_kmeans)
+            fprintf(stderr, "  leaf k-means  : %d groups for leaves with at least 4 K records\n",
+                    settings->trie_leaf_kmeans);
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

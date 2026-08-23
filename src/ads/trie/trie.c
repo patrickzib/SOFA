@@ -43,6 +43,11 @@ typedef struct {
     uint64_t high;
 } trie_dimension_mask;
 
+typedef struct {
+    int offset;
+    int size;
+} trie_leaf_cluster;
+
 typedef struct symbolic_trie_node {
     struct symbolic_trie_node *children[TRIE_MAX_FANOUT];
     struct symbolic_trie_node *parent;
@@ -59,6 +64,10 @@ typedef struct symbolic_trie_node {
     unsigned char leaf;
     unsigned char mbb_valid;
     unsigned char split_exhausted;
+    trie_leaf_cluster *clusters;
+    sax_type *cluster_min_words;
+    sax_type *cluster_max_words;
+    int cluster_count;
 } symbolic_trie_node;
 
 struct symbolic_trie_index {
@@ -73,6 +82,8 @@ struct symbolic_trie_index {
     int dynamic_alphabet;
     unsigned long split_exhausted_leaves;
     unsigned long node_count;
+    unsigned long clustered_leaves;
+    unsigned long long cluster_count;
 };
 
 static int trie_dimension_is_used(const symbolic_trie_node *node, int dimension) {
@@ -122,6 +133,9 @@ typedef struct trie_query_stats {
     unsigned long long queue_microseconds;
     unsigned long long candidate_heap_microseconds;
     unsigned long long synchronization_microseconds;
+    unsigned long cluster_bounds;
+    unsigned long cluster_pruned;
+    unsigned long cluster_records_pruned;
     float approximate_distance;
 } trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
@@ -183,7 +197,7 @@ static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
 
 static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
                                     isax_index *index, const ts_type *transform,
-                                    const symbolic_trie_node *node,
+                                    const sax_type *min_word, const sax_type *max_word,
                                     const trie_query_scratch *scratch) {
     if (!index->settings->trie_record_mbr_suffix_bound || scratch == NULL ||
         !scratch->record_lb_table_ready ||
@@ -194,7 +208,7 @@ static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
     shadow_index.settings = &shadow_settings;
     float suffix = 0.0f;
     (void) messi_minidist_range_raw_partitioned(&shadow_index, (float *) transform,
-                                                node->min_word, node->max_word,
+                                                (sax_type *) min_word, (sax_type *) max_word,
                                                 shadow_settings.max_sax_cardinalities,
                                                 FLT_MAX, trie->bound_dimensions, &suffix);
     return suffix;
@@ -233,7 +247,8 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
 static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
-    free(node->words); free(node->positions); free(node->min_word); free(node->max_word); free(node);
+    free(node->words); free(node->positions); free(node->min_word); free(node->max_word);
+    free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words); free(node);
 }
 
 static unsigned long trie_node_count(const symbolic_trie_node *node) {
@@ -286,6 +301,10 @@ static void trie_print_query_stats(int query_index, const struct symbolic_trie_i
            query_index, trie->node_count, stats->checked_nodes,
            stats->approximate_distance, distance,
            (double) cumulative_microseconds / 1000.0);
+    if (trie->cluster_count != 0) {
+        fprintf(stderr, "    leaf clusters: checked=%lu pruned=%lu records skipped=%lu\n",
+                stats->cluster_bounds, stats->cluster_pruned, stats->cluster_records_pruned);
+    }
 }
 
 static void trie_save_query_stats(const struct symbolic_trie_index *trie,
@@ -350,6 +369,182 @@ static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
         }
     }
 }
+
+#define TRIE_LEAF_KMEANS_MIN_SIZE 4096
+#define TRIE_LEAF_KMEANS_TRAIN_SIZE 2048
+#define TRIE_LEAF_KMEANS_MAX_ITERATIONS 10
+
+static double trie_cluster_distance(const sax_type *word, const float *centroid,
+                                    const float *centers, int dimensions, int alphabet) {
+    double distance = 0.0;
+    for (int d = 0; d < dimensions; ++d) {
+        const double delta = (double) centers[(size_t) d * alphabet + word[d]] - centroid[d];
+        distance += delta * delta;
+    }
+    return distance;
+}
+
+static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
+                             int cluster_count, const float *centers) {
+    const int size = node->size;
+    if (size < TRIE_LEAF_KMEANS_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
+    const int train_size = size < TRIE_LEAF_KMEANS_TRAIN_SIZE ? size : TRIE_LEAF_KMEANS_TRAIN_SIZE;
+    float *centroids = calloc((size_t) cluster_count * dimensions, sizeof(*centroids));
+    float *sums = calloc((size_t) cluster_count * dimensions, sizeof(*sums));
+    int *assignments = malloc((size_t) size * sizeof(*assignments));
+    int *counts = calloc((size_t) cluster_count, sizeof(*counts));
+    if (centroids == NULL || sums == NULL || assignments == NULL || counts == NULL) {
+        free(centroids); free(sums); free(assignments); free(counts); return 0;
+    }
+    for (int cluster = 0; cluster < cluster_count; ++cluster) {
+        const int record = (int) (((long long) cluster * size) / cluster_count);
+        for (int d = 0; d < dimensions; ++d)
+            centroids[(size_t) cluster * dimensions + d] =
+                centers[(size_t) d * alphabet + node->words[record][d]];
+    }
+    for (int i = 0; i < size; ++i) assignments[i] = -1;
+
+    for (int iteration = 0; iteration < TRIE_LEAF_KMEANS_MAX_ITERATIONS; ++iteration) {
+        memset(sums, 0, (size_t) cluster_count * dimensions * sizeof(*sums));
+        memset(counts, 0, (size_t) cluster_count * sizeof(*counts));
+        int changed = 0;
+        for (int sample = 0; sample < train_size; ++sample) {
+            const int record = (int) (((long long) sample * size) / train_size);
+            const sax_type *word = node->words[record];
+            int best = 0;
+            double best_distance = trie_cluster_distance(word, centroids, centers, dimensions, alphabet);
+            for (int cluster = 1; cluster < cluster_count; ++cluster) {
+                const double distance = trie_cluster_distance(word,
+                    centroids + (size_t) cluster * dimensions, centers, dimensions, alphabet);
+                if (distance < best_distance) { best_distance = distance; best = cluster; }
+            }
+            if (assignments[record] != best) { assignments[record] = best; changed = 1; }
+            ++counts[best];
+            for (int d = 0; d < dimensions; ++d)
+                sums[(size_t) best * dimensions + d] += centers[(size_t) d * alphabet + word[d]];
+        }
+        for (int cluster = 0; cluster < cluster_count; ++cluster) {
+            if (counts[cluster] == 0) {
+                const int record = (int) (((long long) cluster * size) / cluster_count);
+                for (int d = 0; d < dimensions; ++d)
+                    centroids[(size_t) cluster * dimensions + d] =
+                        centers[(size_t) d * alphabet + node->words[record][d]];
+            } else {
+                for (int d = 0; d < dimensions; ++d)
+                    centroids[(size_t) cluster * dimensions + d] =
+                        sums[(size_t) cluster * dimensions + d] / counts[cluster];
+            }
+        }
+        if (!changed) break;
+    }
+
+    memset(counts, 0, (size_t) cluster_count * sizeof(*counts));
+    for (int record = 0; record < size; ++record) {
+        const sax_type *word = node->words[record];
+        int best = 0;
+        double best_distance = trie_cluster_distance(word, centroids, centers, dimensions, alphabet);
+        for (int cluster = 1; cluster < cluster_count; ++cluster) {
+            const double distance = trie_cluster_distance(word,
+                centroids + (size_t) cluster * dimensions, centers, dimensions, alphabet);
+            if (distance < best_distance) { best_distance = distance; best = cluster; }
+        }
+        assignments[record] = best;
+        ++counts[best];
+    }
+    int active = 0;
+    for (int cluster = 0; cluster < cluster_count; ++cluster) if (counts[cluster] != 0) ++active;
+    if (active < 2) { free(centroids); free(sums); free(assignments); free(counts); return 1; }
+
+    trie_leaf_cluster *clusters = calloc((size_t) active, sizeof(*clusters));
+    sax_type *min_words = malloc((size_t) active * dimensions);
+    sax_type *max_words = calloc((size_t) active * dimensions, sizeof(*max_words));
+    sax_type **ordered_words = malloc((size_t) size * sizeof(*ordered_words));
+    file_position_type *ordered_positions = malloc((size_t) size * sizeof(*ordered_positions));
+    int *offsets = calloc((size_t) cluster_count, sizeof(*offsets));
+    int *cursors = calloc((size_t) cluster_count, sizeof(*cursors));
+    int *remap = malloc((size_t) cluster_count * sizeof(*remap));
+    if (clusters == NULL || min_words == NULL || max_words == NULL || ordered_words == NULL ||
+        ordered_positions == NULL || offsets == NULL || cursors == NULL || remap == NULL) {
+        free(clusters); free(min_words); free(max_words); free(ordered_words); free(ordered_positions);
+        free(offsets); free(cursors); free(remap); free(centroids); free(sums); free(assignments); free(counts);
+        return 0;
+    }
+    int offset = 0, compact = 0;
+    for (int cluster = 0; cluster < cluster_count; ++cluster) {
+        offsets[cluster] = offset;
+        cursors[cluster] = offset;
+        if (counts[cluster] == 0) { remap[cluster] = -1; continue; }
+        remap[cluster] = compact;
+        clusters[compact].offset = offset;
+        clusters[compact].size = counts[cluster];
+        memset(min_words + (size_t) compact * dimensions, UCHAR_MAX, (size_t) dimensions);
+        offset += counts[cluster]; ++compact;
+    }
+    for (int record = 0; record < size; ++record) {
+        const int cluster = assignments[record];
+        const int position = cursors[cluster]++;
+        ordered_words[position] = node->words[record];
+        ordered_positions[position] = node->positions[record];
+        const int group = remap[cluster];
+        sax_type *minimum = min_words + (size_t) group * dimensions;
+        sax_type *maximum = max_words + (size_t) group * dimensions;
+        for (int d = 0; d < dimensions; ++d) {
+            if (node->words[record][d] < minimum[d]) minimum[d] = node->words[record][d];
+            if (node->words[record][d] > maximum[d]) maximum[d] = node->words[record][d];
+        }
+    }
+    memcpy(node->words, ordered_words, (size_t) size * sizeof(*node->words));
+    memcpy(node->positions, ordered_positions, (size_t) size * sizeof(*node->positions));
+    node->clusters = clusters;
+    node->cluster_min_words = min_words;
+    node->cluster_max_words = max_words;
+    node->cluster_count = active;
+    free(ordered_words); free(ordered_positions); free(offsets); free(cursors); free(remap);
+    free(centroids); free(sums); free(assignments); free(counts);
+    return 1;
+}
+
+static int trie_cluster_leaves(struct symbolic_trie_index *trie, symbolic_trie_node *node,
+                               const isax_index *index, const float *centers) {
+    if (node == NULL) return 1;
+    if (!node->leaf) {
+        for (int i = 0; i < node->split_fanout; ++i)
+            if (!trie_cluster_leaves(trie, node->children[i], index, centers)) return 0;
+        return 1;
+    }
+    if (node->size < TRIE_LEAF_KMEANS_MIN_SIZE) return 1;
+    if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
+                           index->settings->trie_leaf_kmeans, centers)) return 0;
+    if (node->cluster_count != 0) {
+        ++trie->clustered_leaves;
+        trie->cluster_count += (unsigned long long) node->cluster_count;
+    }
+    return 1;
+}
+
+static float *trie_build_bin_centers(const isax_index *index, int dimensions) {
+    const int alphabet = index->settings->sax_alphabet_cardinality;
+    if (index->bins == NULL || alphabet < 2) return NULL;
+    float *centers = malloc((size_t) dimensions * alphabet * sizeof(*centers));
+    if (centers == NULL) return NULL;
+    for (int d = 0; d < dimensions; ++d) {
+        const float *bins = index->bins[d];
+        if (bins == NULL) { free(centers); return NULL; }
+        for (int symbol = 0; symbol < alphabet; ++symbol) {
+            float lower, upper;
+            if (symbol == 0) {
+                const float width = alphabet > 2 && bins[1] > bins[0] ? bins[1] - bins[0] : 0.0f;
+                lower = bins[0] - 0.5f * width; upper = bins[0];
+            } else if (symbol == alphabet - 1) {
+                const float width = bins[alphabet - 2] > bins[alphabet - 3]
+                                        ? bins[alphabet - 2] - bins[alphabet - 3] : 0.0f;
+                lower = bins[alphabet - 2]; upper = bins[alphabet - 2] + 0.5f * width;
+            } else { lower = bins[symbol - 1]; upper = bins[symbol]; }
+            centers[(size_t) d * alphabet + symbol] = isfinite(lower) && isfinite(upper)
+                                                           ? 0.5f * (lower + upper) : (float) symbol;
+        }
+    }
+    return centers;
 
 static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
     if (scratch == NULL) return 0;
@@ -922,6 +1117,18 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             }
         }
     }
+    if (index->settings->trie_leaf_kmeans != 0) {
+        const double clustering_start = messi_monotonic_seconds();
+        float *centers = trie_build_bin_centers(index, trie->dimensions);
+        if (centers == NULL || !trie_cluster_leaves(trie, trie->root, index, centers)) {
+            fprintf(stderr, "warning: unable to build trie leaf k-means directories; using plain leaf scans.\n");
+        }
+        free(centers);
+        fprintf(stderr, ">>> trie leaf k-means timing\n");
+        fprintf(stderr, "    clustered leaves : %lu\n", trie->clustered_leaves);
+        fprintf(stderr, "    clusters         : %llu\n", trie->cluster_count);
+        fprintf(stderr, "    total            : %.3f s\n", messi_monotonic_seconds() - clustering_start);
+    }
     trie->node_count = trie_node_count(trie->root);
     unsigned long internal_nodes = 0;
     unsigned long long nonempty_children = 0;
@@ -956,14 +1163,15 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     return SUCCESS;
 }
 
-static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_node *node,
-                                       const ts_type *query, const ts_type *transform, float bsf,
-                                       trie_query_stats *stats, trie_query_scratch *scratch) {
-    const float mbr_suffix = trie_record_mbr_suffix(index->trie, index, transform, node, scratch);
-    if (!trie_scratch_reserve(scratch, node->size)) {
+static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *node,
+                                  int offset, int count, float mbr_suffix,
+                                  const ts_type *query, const ts_type *transform, float bsf,
+                                  trie_query_stats *stats, trie_query_scratch *scratch) {
+    const int end = offset + count;
+    if (!trie_scratch_reserve(scratch, count)) {
         /* Allocation failure is not a correctness failure: retain the former
          * streaming order rather than dropping candidates. */
-        for (int i = 0; i < node->size; ++i) {
+        for (int i = offset; i < end; ++i) {
             if (stats != NULL) ++stats->lower_bounds;
             else __sync_fetch_and_add(&LBDcalculationnumber, 1);
             unsigned long long bound_start = profile_query_phases && stats != NULL
@@ -987,7 +1195,7 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     int candidate_count = 0;
     unsigned long long bound_start = profile_query_phases && stats != NULL
                                          ? trie_monotonic_microseconds() : 0;
-    for (int i = 0; i < node->size; ++i) {
+    for (int i = offset; i < end; ++i) {
         if (stats != NULL) ++stats->lower_bounds;
         else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
@@ -1016,6 +1224,49 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
                                       rawfile + node->positions[candidate.record_index],
                                       index->settings->timeseries_size, bsf, stats);
         if (d < bsf) bsf = d;
+    }
+    return bsf;
+}
+
+static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_node *node,
+                                       const ts_type *query, const ts_type *transform, float bsf,
+                                       trie_query_stats *stats, trie_query_scratch *scratch) {
+    if (node->cluster_count == 0) {
+        const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
+                                                    node->min_word, node->max_word, scratch);
+        return trie_scan_leaf_range(index, node, 0, node->size, suffix,
+                                    query, transform, bsf, stats, scratch);
+    }
+    typedef struct { int cluster; float bound; } trie_cluster_bound;
+    trie_cluster_bound ordered[64];
+    int count = 0;
+    for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
+        const trie_leaf_cluster *group = &node->clusters[cluster];
+        if (stats != NULL) ++stats->cluster_bounds;
+        const float bound = trie_lower_bound(index->trie, index, transform,
+            node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
+            node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
+            index->trie->dimensions, bsf, stats);
+        if (bound >= bsf) {
+            if (stats != NULL) { ++stats->cluster_pruned; stats->cluster_records_pruned += group->size; }
+            continue;
+        }
+        ordered[count++] = (trie_cluster_bound) { cluster, bound };
+    }
+    for (int i = 1; i < count; ++i) {
+        trie_cluster_bound current = ordered[i]; int j = i - 1;
+        while (j >= 0 && ordered[j].bound > current.bound) { ordered[j + 1] = ordered[j]; --j; }
+        ordered[j + 1] = current;
+    }
+    for (int i = 0; i < count; ++i) {
+        const int cluster = ordered[i].cluster;
+        const trie_leaf_cluster *group = &node->clusters[cluster];
+        const sax_type *minimum = node->cluster_min_words + (size_t) cluster * index->trie->dimensions;
+        const sax_type *maximum = node->cluster_max_words + (size_t) cluster * index->trie->dimensions;
+        const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
+                                                    minimum, maximum, scratch);
+        bsf = trie_scan_leaf_range(index, node, group->offset, group->size, suffix,
+                                   query, transform, bsf, stats, scratch);
     }
     return bsf;
 }
@@ -1319,6 +1570,9 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->queue_microseconds += worker_stats[i].queue_microseconds;
         result_stats->candidate_heap_microseconds += worker_stats[i].candidate_heap_microseconds;
         result_stats->synchronization_microseconds += worker_stats[i].synchronization_microseconds;
+        result_stats->cluster_bounds += worker_stats[i].cluster_bounds;
+        result_stats->cluster_pruned += worker_stats[i].cluster_pruned;
+        result_stats->cluster_records_pruned += worker_stats[i].cluster_records_pruned;
     }
     for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
     for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
@@ -1400,6 +1654,9 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.queue_microseconds += parallel_stats.queue_microseconds;
             stats.candidate_heap_microseconds += parallel_stats.candidate_heap_microseconds;
             stats.synchronization_microseconds += parallel_stats.synchronization_microseconds;
+            stats.cluster_bounds += parallel_stats.cluster_bounds;
+            stats.cluster_pruned += parallel_stats.cluster_pruned;
+            stats.cluster_records_pruned += parallel_stats.cluster_records_pruned;
         } else {
             distance = trie_search_node(index, index->trie->root, query, transform,
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch);

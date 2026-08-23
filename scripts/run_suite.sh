@@ -36,6 +36,7 @@ Options:
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                           Add leaf-MBR contributions outside the 16 record-bound dimensions
+  --trie-leaf-kmeans K     Build K flat k-means MBR groups inside large trie leaves
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
@@ -108,6 +109,7 @@ TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_LEAF_KMEANS=
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
@@ -150,6 +152,7 @@ while [[ $# -gt 0 ]]; do
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --trie-leaf-kmeans) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_KMEANS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -199,6 +202,7 @@ esac
     die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
     die '--dynamic-root-split-variance requires --index-type isax'
+[[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
@@ -253,6 +257,7 @@ run_one() {
         command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
         [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
+        [[ -n $TRIE_LEAF_KMEANS ]] && command+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                       --trie-max-fanout "$TRIE_MAX_FANOUT"
@@ -378,6 +383,7 @@ run_query_suite() {
                 command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
                 [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
                 $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
+                [[ -n $TRIE_LEAF_KMEANS ]] && command+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
                     command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                               --trie-max-fanout "$TRIE_MAX_FANOUT"
