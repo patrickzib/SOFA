@@ -8,15 +8,40 @@ Symbolic trie
   fanout, leaf capacity, sampled root splitting, and entropy × variance-based
   splits.
 - Stores MBRs and selects split dimensions across the full transform word
-  (up to 64 dimensions); record lower bounds use the leading 16 dimensions.
+  (up to 128 dimensions, capped by the series length); record lower bounds
+  use the leading 16 dimensions.
 - Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
   optional z-normalization, and query-specific symbolic lower-bound tables.
 - Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
-  bounds, with exact-distance early abandonment.
+  bounds, with exact-distance early abandonment.  An optional disjoint
+  leaf-MBR suffix contribution strengthens record bounds beyond the first
+  16 dimensions (`--trie-record-mbr-suffix-bound`).
+- Added an optional post-build, flat k-means directory inside large SFA, PISA,
+  and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
+  groups before their records are scanned, without changing the main trie;
+  eligible leaves are clustered in parallel during construction.
 - Provides batch and single-query parallel modes with configurable worker and
   queue counts, plus construction, coverage, and per-phase query timings.
 - Reports split occupancy, non-empty-child, and largest-child diagnostics to
   make fanout experiments directly comparable.
+
+SIMD and distance kernels
+-------------------------
+
+- Improved BSF-aware SIMD Euclidean-distance and symbolic lower-bound paths,
+  including register-only horizontal reductions and alignment selection
+  outside the vector loop where supported.
+- Added scalar-reference coverage for exact distance and lower-bound SIMD
+  kernels, plus a target-CPU exact-distance microbenchmark.
+- Configuration output now identifies the SIMD instruction set in use (or
+  states when no SIMD ISA was compiled in).
+
+Sampling
+--------
+
+- Reworked SPARTAN uniform and random binning samples to read contiguous
+  blocks instead of seeking separately for every sampled record.  This avoids
+  the severe random-I/O slowdown on large datasets.
 
 iSAX
 ----
@@ -39,5 +64,14 @@ Benchmark runners
   all configured datasets with either layout.
 - iSAX runner methods use variance-driven root cardinalities by default;
   trie MBR/split dimensions follow each dataset's coefficient setting and can
-  be overridden with `--trie-mbr-dims`; trie fanout is configurable with
-  `--trie-fanout 2|4|8`.
+  be overridden with `--trie-mbr-dims` (16--128, capped by series length);
+  trie fanout is configurable with `--trie-fanout 2|4|8`.
+- Trie suite and dataset runners forward the record-MBR suffix and leaf
+  k-means options.  Runner and MESSI logs again default to
+  `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
+
+Build integration
+-----------------
+
+- Kept generated Autotools configuration headers out of source control, so
+  local configure/build output does not pollute commits.

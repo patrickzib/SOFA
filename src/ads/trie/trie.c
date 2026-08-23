@@ -504,22 +504,89 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
     return 1;
 }
 
-static int trie_cluster_leaves(struct symbolic_trie_index *trie, symbolic_trie_node *node,
-                               const isax_index *index, const float *centers) {
+typedef struct {
+    symbolic_trie_node **items;
+    size_t size;
+    size_t capacity;
+} trie_cluster_leaf_list;
+
+/* The tree is already immutable at this point. First collect eligible leaves
+ * on one thread, then let workers cluster independent leaves without sharing
+ * k-means scratch state or modifying common tree counters. */
+static int trie_collect_cluster_leaves(symbolic_trie_node *node,
+                                       trie_cluster_leaf_list *leaves) {
     if (node == NULL) return 1;
     if (!node->leaf) {
         for (int i = 0; i < node->split_fanout; ++i)
-            if (!trie_cluster_leaves(trie, node->children[i], index, centers)) return 0;
+            if (!trie_collect_cluster_leaves(node->children[i], leaves)) return 0;
         return 1;
     }
     if (node->size < TRIE_LEAF_KMEANS_MIN_SIZE) return 1;
-    if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
-                           index->settings->trie_leaf_kmeans, centers)) return 0;
-    if (node->cluster_count != 0) {
-        ++trie->clustered_leaves;
-        trie->cluster_count += (unsigned long long) node->cluster_count;
+    if (leaves->size == leaves->capacity) {
+        size_t capacity = leaves->capacity == 0 ? 128 : leaves->capacity * 2;
+        if (capacity > SIZE_MAX / sizeof(*leaves->items)) return 0;
+        symbolic_trie_node **items = realloc(leaves->items, capacity * sizeof(*items));
+        if (items == NULL) return 0;
+        leaves->items = items;
+        leaves->capacity = capacity;
     }
+    leaves->items[leaves->size++] = node;
     return 1;
+}
+
+static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
+                                        const isax_index *index, const float *centers,
+                                        int *active_workers, size_t *eligible_leaves) {
+    trie_cluster_leaf_list leaves = {0};
+    if (!trie_collect_cluster_leaves(trie->root, &leaves)) {
+        free(leaves.items);
+        return 0;
+    }
+    if (eligible_leaves != NULL) *eligible_leaves = leaves.size;
+
+    const int requested_workers = maxquerythread > 0 ? maxquerythread : 1;
+    int workers = 1;
+    unsigned long clustered_leaves = 0;
+    unsigned long long cluster_count = 0;
+    int failed = 0;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(requested_workers) reduction(+:clustered_leaves, cluster_count) reduction(|:failed)
+    {
+#pragma omp single
+        workers = omp_get_num_threads();
+#pragma omp for schedule(dynamic, 1)
+        for (size_t i = 0; i < leaves.size; ++i) {
+            symbolic_trie_node *node = leaves.items[i];
+            if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
+                                   index->settings->trie_leaf_kmeans, centers)) {
+                failed = 1;
+                continue;
+            }
+            if (node->cluster_count != 0) {
+                ++clustered_leaves;
+                cluster_count += (unsigned long long) node->cluster_count;
+            }
+        }
+    }
+#else
+    for (size_t i = 0; i < leaves.size; ++i) {
+        symbolic_trie_node *node = leaves.items[i];
+        if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
+                               index->settings->trie_leaf_kmeans, centers)) {
+            failed = 1;
+            continue;
+        }
+        if (node->cluster_count != 0) {
+            ++clustered_leaves;
+            cluster_count += (unsigned long long) node->cluster_count;
+        }
+    }
+#endif
+    free(leaves.items);
+    trie->clustered_leaves = clustered_leaves;
+    trie->cluster_count = cluster_count;
+    if (active_workers != NULL) *active_workers = workers;
+    return !failed;
 }
 
 static float *trie_build_bin_centers(const isax_index *index, int dimensions) {
@@ -1120,11 +1187,16 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     if (index->settings->trie_leaf_kmeans != 0) {
         const double clustering_start = messi_monotonic_seconds();
         float *centers = trie_build_bin_centers(index, trie->dimensions);
-        if (centers == NULL || !trie_cluster_leaves(trie, trie->root, index, centers)) {
-            fprintf(stderr, "warning: unable to build trie leaf k-means directories; using plain leaf scans.\n");
+        int clustering_workers = 1;
+        size_t eligible_leaves = 0;
+        if (centers == NULL || !trie_cluster_leaves_parallel(trie, index, centers,
+                                                              &clustering_workers, &eligible_leaves)) {
+            fprintf(stderr, "warning: unable to build some trie leaf k-means directories; affected leaves use plain scans.\n");
         }
         free(centers);
         fprintf(stderr, ">>> trie leaf k-means timing\n");
+        fprintf(stderr, "    eligible leaves  : %zu\n", eligible_leaves);
+        fprintf(stderr, "    workers          : %d\n", clustering_workers);
         fprintf(stderr, "    clustered leaves : %lu\n", trie->clustered_leaves);
         fprintf(stderr, "    clusters         : %llu\n", trie->cluster_count);
         fprintf(stderr, "    total            : %.3f s\n", messi_monotonic_seconds() - clustering_start);
