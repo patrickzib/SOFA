@@ -245,50 +245,64 @@ static ts_type messi_minidist_range_bins(const ts_type *bins,
     return 0.0f;
 }
 
-ts_type messi_minidist_range_raw(isax_index *index,
-                                 float *paa_or_fft,
-                                 sax_type *sax_min,
-                                 sax_type *sax_max,
-                                 sax_type *sax_cardinalities,
-                                 float bsf) {
+ts_type messi_minidist_range_raw_partitioned(isax_index *index,
+                                             float *paa_or_fft,
+                                             sax_type *sax_min,
+                                             sax_type *sax_max,
+                                             sax_type *sax_cardinalities,
+                                             float bsf,
+                                             uint64_t selected_dimensions,
+                                             float *unselected_distance) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
     int number_of_segments = index->settings->n_segments;
 
     ts_type distance = 0.0f;
+    ts_type unselected = 0.0f;
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         int i = 0;
         if (!index->settings->is_norm &&
             (index->settings->n_coefficients == 0 || index->coefficients[0] == 0)) {
-            distance += messi_minidist_range_bins(index->bins[0], paa_or_fft[0],
-                                                  sax_min[0], sax_max[0],
-                                                  max_cardinality, 1.0f);
+            const ts_type contribution = messi_minidist_range_bins(index->bins[0], paa_or_fft[0],
+                                                                    sax_min[0], sax_max[0],
+                                                                    max_cardinality, 1.0f);
+            distance += contribution;
+            if (!(selected_dimensions & UINT64_C(1))) unselected += contribution;
             if (distance > bsf) {
+                if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
             }
             i = (index->settings->n_coefficients == 0) ? 2 : 1;
         }
         for (; i < number_of_segments; ++i) {
-            distance += messi_minidist_range_bins(index->bins[i], paa_or_fft[i],
-                                                  sax_min[i], sax_max[i],
-                                                  max_cardinality, 2.0f);
+            const ts_type contribution = messi_minidist_range_bins(index->bins[i], paa_or_fft[i],
+                                                                    sax_min[i], sax_max[i],
+                                                                    max_cardinality, 2.0f);
+            distance += contribution;
+            if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
             if (distance > bsf) {
+                if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
             }
         }
+        if (unselected_distance != NULL) *unselected_distance = unselected;
         return distance;
     }
 
     if (index->settings->function_type == 5) {
         for (int i = 0; i < number_of_segments; i++) {
-            distance += messi_minidist_range_bins(index->bins[i], paa_or_fft[i],
-                                                  sax_min[i], sax_max[i],
-                                                  max_cardinality, 1.0f);
+            const ts_type contribution = messi_minidist_range_bins(index->bins[i], paa_or_fft[i],
+                                                                    sax_min[i], sax_max[i],
+                                                                    max_cardinality, 1.0f);
+            distance += contribution;
+            if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
             if (distance > bsf) {
+                if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
             }
         }
+        if (unselected_distance != NULL) *unselected_distance = unselected;
         return distance;
     }
 
@@ -311,19 +325,33 @@ ts_type messi_minidist_range_raw(isax_index *index,
                 ? MAXVAL
                 : sax_breakpoints[offset + region_upper];
 
+        ts_type contribution = 0.0f;
         if (breakpoint_lower > paa_or_fft[i]) {
             float diff = breakpoint_lower - paa_or_fft[i];
-            distance += diff * diff;
+            contribution = diff * diff;
         } else if (breakpoint_upper < paa_or_fft[i]) {
             float diff = paa_or_fft[i] - breakpoint_upper;
-            distance += diff * diff;
+            contribution = diff * diff;
         }
+        distance += contribution;
+        if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
         // if (ratio_sqrt * distance > bsf) {
         //     return ratio_sqrt * distance;
         // }
     }
 
+    if (unselected_distance != NULL) *unselected_distance = ratio_sqrt * unselected;
     return ratio_sqrt * distance;
+}
+
+ts_type messi_minidist_range_raw(isax_index *index,
+                                 float *paa_or_fft,
+                                 sax_type *sax_min,
+                                 sax_type *sax_max,
+                                 sax_type *sax_cardinalities,
+                                 float bsf) {
+    return messi_minidist_range_raw_partitioned(index, paa_or_fft, sax_min, sax_max,
+                                                 sax_cardinalities, bsf, 0, NULL);
 }
 
 static ts_type get_lb_distance(const ts_type *bins, float value, sax_type v, sax_type c_c,

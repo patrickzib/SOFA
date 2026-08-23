@@ -142,15 +142,17 @@ typedef struct {
  * other layouts retain the existing generic dispatcher. */
 static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
                                      isax_index *index, const ts_type *transform,
-                                     sax_type *word, float bsf,
+                                     sax_type *word, float bsf, float mbr_suffix,
                                      const trie_query_scratch *scratch) {
     if (scratch != NULL && scratch->record_lb_table_ready) {
         float distance = 0.0f;
+        const float record_limit = bsf - mbr_suffix;
+        if (record_limit <= 0.0f) return mbr_suffix;
         for (int dimension = 0; dimension < trie->bound_dimensions; ++dimension) {
             distance += scratch->record_lb_table[dimension][word[dimension]];
-            if (distance > bsf) return distance;
+            if (distance > record_limit) return mbr_suffix + distance;
         }
-        return distance;
+        return mbr_suffix + distance;
     }
     isax_index shadow_index = *index;
     isax_index_settings shadow_settings = *index->settings;
@@ -158,6 +160,26 @@ static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
     shadow_index.settings = &shadow_settings;
     return messi_minidist_raw(&shadow_index, (float *) transform, word,
                                shadow_settings.max_sax_cardinalities, bsf);
+}
+
+static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
+                                    isax_index *index, const ts_type *transform,
+                                    const symbolic_trie_node *node,
+                                    const trie_query_scratch *scratch) {
+    if (!index->settings->trie_record_mbr_suffix_bound || scratch == NULL ||
+        !scratch->record_lb_table_ready || trie->bound_dimensions != 16 ||
+        trie->dimensions <= trie->bound_dimensions) return 0.0f;
+    isax_index shadow_index = *index;
+    isax_index_settings shadow_settings = *index->settings;
+    shadow_settings.n_segments = trie->dimensions;
+    shadow_index.settings = &shadow_settings;
+    float suffix = 0.0f;
+    const uint64_t record_dimensions = (UINT64_C(1) << trie->bound_dimensions) - 1;
+    (void) messi_minidist_range_raw_partitioned(&shadow_index, (float *) transform,
+                                                node->min_word, node->max_word,
+                                                shadow_settings.max_sax_cardinalities,
+                                                FLT_MAX, record_dimensions, &suffix);
+    return suffix;
 }
 
 static void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
@@ -787,6 +809,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_node *node,
                                        const ts_type *query, const ts_type *transform, float bsf,
                                        trie_query_stats *stats, trie_query_scratch *scratch) {
+    const float mbr_suffix = trie_record_mbr_suffix(index->trie, index, transform, node, scratch);
     if (!trie_scratch_reserve(scratch, node->size)) {
         /* Allocation failure is not a correctness failure: retain the former
          * streaming order rather than dropping candidates. */
@@ -795,7 +818,8 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
             else __sync_fetch_and_add(&LBDcalculationnumber, 1);
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
-            if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf, scratch) < bsf) {
+            if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
+                                        mbr_suffix, scratch) < bsf) {
                 if (bound_start != 0)
                     stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
                 if (stats != NULL) ++stats->exact_distances;
@@ -817,7 +841,7 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
         if (stats != NULL) ++stats->lower_bounds;
         else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
-                                                     node->words[i], bsf, scratch);
+                                                     node->words[i], bsf, mbr_suffix, scratch);
         if (lower_bound < bsf) {
             scratch->candidates[candidate_count].lower_bound = lower_bound;
             scratch->candidates[candidate_count++].record_index = i;
@@ -923,7 +947,8 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     for (int i = 0; i < node->size; ++i) {
         pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
         __sync_fetch_and_add(&LBDcalculationnumber, 1);
-        if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf, NULL) < bsf) {
+        if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
+                                    0.0f, NULL) < bsf) {
             __sync_fetch_and_add(&RDcalculationnumber, 1);
             float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
             if (d < bsf) { pthread_mutex_lock(bsf_lock); if (d < *shared_bsf) *shared_bsf = d; pthread_mutex_unlock(bsf_lock); }

@@ -88,6 +88,7 @@ typedef struct {
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
+    char trie_record_mbr_suffix_bound;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

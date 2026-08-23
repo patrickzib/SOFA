@@ -60,6 +60,15 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --queue-
 assert_contains "$OUTPUT" '--trie-query-parallel'
 pass 'trie query-parallel option is forwarded'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-record-mbr-suffix-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie record/MBR suffix bound for iSAX'
+fi
+pass 'trie record/MBR suffix bound is forwarded and scoped to trie'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-interval -1 --dry-run >/dev/null 2>&1; then
@@ -167,6 +176,11 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --ind
     --methods spartan-depth,spartan-width --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 pass 'suite forwards trie MBR dimensions to dataset runs'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+pass 'suite forwards the trie record/MBR suffix bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

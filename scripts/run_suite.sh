@@ -21,6 +21,8 @@ Options:
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
   --trie-mbr-dims N       Trie MBR/split dimensions (default: dataset coefficient count)
+  --trie-record-mbr-suffix-bound
+                          Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
@@ -65,6 +67,7 @@ METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
+TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
@@ -83,6 +86,7 @@ while [[ $# -gt 0 ]]; do
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -109,6 +113,8 @@ esac
     die '--trie-fanout requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || \
     die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
@@ -146,6 +152,7 @@ run_one() {
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
     if [[ $INDEX_TYPE == trie ]]; then
         [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
+        $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                       --trie-max-fanout "$TRIE_MAX_FANOUT"
@@ -247,6 +254,7 @@ run_query_suite() {
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
             if [[ $INDEX_TYPE == trie ]]; then
                 [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
+                $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
                     command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                               --trie-max-fanout "$TRIE_MAX_FANOUT"

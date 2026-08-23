@@ -26,6 +26,8 @@ Options:
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
+  --trie-record-mbr-suffix-bound
+                            Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -165,6 +167,7 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -206,6 +209,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -249,6 +253,7 @@ fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -346,6 +351,7 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet

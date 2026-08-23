@@ -242,6 +242,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->node_split_criterion = 1;
     settings->index_type = MESSI_INDEX_ISAX;
     settings->trie_bound_dimensions = 0;
+    settings->trie_record_mbr_suffix_bound = 0;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2934,7 +2935,8 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds\n");
+        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s\n",
+                settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "");
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",
