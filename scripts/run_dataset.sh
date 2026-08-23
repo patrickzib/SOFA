@@ -25,7 +25,7 @@ Options:
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
-  --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
+  --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
@@ -180,7 +180,9 @@ DYNAMIC_ROOT_SPLIT_VARIANCE=
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
-MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-$SCRIPT_DIR}
+# Keep the shell transcript with MESSI's CSV logs by default.  An explicit
+# MESSI_SHELL_LOG_DIR remains useful for CI or a separate transcript archive.
+MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-${MESSI_LOG_ROOT:-"$HOME/MESSI_logs"}}
 DATA_ROOT=${MESSI_DATA_ROOT:-/vol/tmp/schaefpa/messi_datasets}
 SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/vol/tmp/schaefpa/seismic}
 QUERY_ROOT=${MESSI_QUERY_ROOT:-}
@@ -269,7 +271,7 @@ MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must b
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
-    (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
+    (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
     # SFA/PISA need a training pool at least as wide as the trie word.  Keep

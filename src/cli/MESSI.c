@@ -680,7 +680,7 @@ int main(int argc, char **argv) {
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
-                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
+                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--128; default: maximum available)\n\
                 \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
                 \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
@@ -767,10 +767,10 @@ int main(int argc, char **argv) {
         }
         if (trie_mbr_dimensions != 0 &&
             (trie_mbr_dimensions < n_segments || trie_mbr_dimensions < 16 ||
-             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size)) {
+             trie_mbr_dimensions > 128 || trie_mbr_dimensions > time_series_size)) {
             fprintf(stderr,
-                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size) (%d).\n",
-                    n_segments, time_series_size < 64 ? time_series_size : 64);
+                    "error: trie MBR dimensions must be between n-segments (%d) and min(128, timeseries-size) (%d).\n",
+                    n_segments, time_series_size < 128 ? time_series_size : 128);
             return EXIT_FAILURE;
         }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
@@ -952,7 +952,7 @@ int main(int argc, char **argv) {
             trie_bound_dimensions = index_segments;
             index_segments = trie_mbr_dimensions > 0
                                  ? trie_mbr_dimensions
-                                 : (time_series_size < 64 ? time_series_size : 64);
+                                 : (time_series_size < 128 ? time_series_size : 128);
             if (function_type == 4 || function_type == 6) {
                 if (n_coefficients == 0 || n_coefficients < index_segments) {
                     n_coefficients = index_segments;
@@ -1013,9 +1013,18 @@ int main(int argc, char **argv) {
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
+        char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
-        if (log_root == NULL || log_root[0] == '\0') log_root = getenv("HOME");
-        if (log_root == NULL || log_root[0] == '\0') log_root = ".";
+        if (log_root == NULL || log_root[0] == '\0') {
+            const char *home = getenv("HOME");
+            if (home != NULL && home[0] != '\0' &&
+                snprintf(default_log_root, sizeof(default_log_root), "%s/MESSI_logs", home) <
+                    (int) sizeof(default_log_root)) {
+                log_root = default_log_root;
+            } else {
+                log_root = "MESSI_logs";
+            }
+        }
 
         snprintf(log_file_directory, sizeof(log_file_directory), "%s", log_root);
         snprintf(log_filename, sizeof(log_filename), "%s/settings", log_root);
@@ -1099,7 +1108,8 @@ int main(int argc, char **argv) {
                                                                        is_norm,            //input normalized for fft
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
-                                                                       n_coefficients       //coeff number
+                                                                       n_coefficients,      //coeff number
+                                                                       index_type           //index layout
         );
 
         if (index_settings == NULL) {

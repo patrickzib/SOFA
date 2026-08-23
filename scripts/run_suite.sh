@@ -20,7 +20,7 @@ Options:
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
-  --trie-mbr-dims N       Trie MBR/split dimensions (default: dataset coefficient count)
+  --trie-mbr-dims N       Trie MBR/split dimensions (16--128; capped by series length)
   --trie-record-mbr-suffix-bound
                           Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)

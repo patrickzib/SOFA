@@ -35,14 +35,14 @@ ts_type messi_minidist_range_raw(isax_index *index,
                                  sax_type *sax_cardinalities,
                                  float bsf);
 /* Return the full node-MBR lower bound and, when requested, the contribution
- * from dimensions not selected by selected_dimensions. */
+ * from dimensions starting at unselected_start_dimension. */
 ts_type messi_minidist_range_raw_partitioned(isax_index *index,
                                              float *paa_or_fft,
                                              sax_type *sax_min,
                                              sax_type *sax_max,
                                              sax_type *sax_cardinalities,
                                              float bsf,
-                                             uint64_t selected_dimensions,
+                                             int unselected_start_dimension,
                                              float *unselected_distance);
 int messi_build_record_lb_table(const isax_index *index,
                                 const float *paa_or_fft,

@@ -251,7 +251,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
                                              sax_type *sax_max,
                                              sax_type *sax_cardinalities,
                                              float bsf,
-                                             uint64_t selected_dimensions,
+                                             int unselected_start_dimension,
                                              float *unselected_distance) {
     sax_type max_bit_cardinality = index->settings->sax_bit_cardinality;
     int max_cardinality = index->settings->sax_alphabet_cardinality;
@@ -268,7 +268,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
                                                                     sax_min[0], sax_max[0],
                                                                     max_cardinality, 1.0f);
             distance += contribution;
-            if (!(selected_dimensions & UINT64_C(1))) unselected += contribution;
+            if (i >= unselected_start_dimension) unselected += contribution;
             if (distance > bsf) {
                 if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
@@ -280,7 +280,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
                                                                     sax_min[i], sax_max[i],
                                                                     max_cardinality, 2.0f);
             distance += contribution;
-            if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
+            if (i >= unselected_start_dimension) unselected += contribution;
             if (distance > bsf) {
                 if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
@@ -296,7 +296,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
                                                                     sax_min[i], sax_max[i],
                                                                     max_cardinality, 1.0f);
             distance += contribution;
-            if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
+            if (i >= unselected_start_dimension) unselected += contribution;
             if (distance > bsf) {
                 if (unselected_distance != NULL) *unselected_distance = unselected;
                 return distance;
@@ -334,7 +334,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
             contribution = diff * diff;
         }
         distance += contribution;
-        if (!(selected_dimensions & (UINT64_C(1) << i))) unselected += contribution;
+        if (i >= unselected_start_dimension) unselected += contribution;
         // if (ratio_sqrt * distance > bsf) {
         //     return ratio_sqrt * distance;
         // }
@@ -351,7 +351,8 @@ ts_type messi_minidist_range_raw(isax_index *index,
                                  sax_type *sax_cardinalities,
                                  float bsf) {
     return messi_minidist_range_raw_partitioned(index, paa_or_fft, sax_min, sax_max,
-                                                 sax_cardinalities, bsf, 0, NULL);
+                                                 sax_cardinalities, bsf,
+                                                 index->settings->n_segments, NULL);
 }
 
 static ts_type get_lb_distance(const ts_type *bins, float value, sax_type v, sax_type c_c,

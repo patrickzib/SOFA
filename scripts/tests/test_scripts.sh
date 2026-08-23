@@ -102,6 +102,18 @@ assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
 pass 'trie MBR dimensions are capped by series length, not half length'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --index-type trie \
+    --trie-mbr-dims 128 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+pass 'trie supports 128 MBR dimensions for 128-value series'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 128 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 100'
+pass 'trie MBR dimensions remain capped by the 100-value series length'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
 assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
 assert_contains "$OUTPUT" '--sample-size 100000'

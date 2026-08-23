@@ -15,12 +15,11 @@ static unsigned int next_random(void) {
 }
 
 int main(void) {
-    enum { DIMENSIONS = 32, RECORD_DIMENSIONS = 16, BINS = 255 };
+    enum { DIMENSIONS = 128, RECORD_DIMENSIONS = 16, BINS = 255 };
     isax_index index;
     isax_index_settings settings;
     float values[DIMENSIONS];
     sax_type sax_min[DIMENSIONS], sax_max[DIMENSIONS], cardinalities[DIMENSIONS];
-    const uint64_t record_dimensions = (UINT64_C(1) << RECORD_DIMENSIONS) - 1;
 
     memset(&index, 0, sizeof(index));
     memset(&settings, 0, sizeof(settings));
@@ -53,24 +52,43 @@ int main(void) {
         }
         for (int function_type = 4; function_type <= 6; ++function_type) {
             float suffix = 0.0f;
-            float prefix = 0.0f;
             settings.function_type = function_type;
             const float full = messi_minidist_range_raw(&index, values, sax_min, sax_max,
                                                          cardinalities, FLT_MAX);
             const float partitioned = messi_minidist_range_raw_partitioned(
                 &index, values, sax_min, sax_max, cardinalities, FLT_MAX,
-                record_dimensions, &suffix);
-            (void) messi_minidist_range_raw_partitioned(
-                &index, values, sax_min, sax_max, cardinalities, FLT_MAX,
-                ~record_dimensions, &prefix);
+                RECORD_DIMENSIONS, &suffix);
             if (fabsf(full - partitioned) > 1e-4f * fmaxf(1.0f, full) ||
-                fabsf(full - (prefix + suffix)) > 1e-4f * fmaxf(1.0f, full)) {
-                fprintf(stderr, "partitioned MBR mismatch: type=%d full=%g prefix=%g suffix=%g\n",
-                        function_type, full, prefix, suffix);
+                suffix < 0.0f || suffix > full + 1e-4f * fmaxf(1.0f, full)) {
+                fprintf(stderr, "partitioned MBR mismatch: type=%d full=%g suffix=%g\n",
+                        function_type, full, suffix);
                 for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
                 free(index.bins);
                 return 1;
             }
+        }
+    }
+
+    /* Ensure the suffix really includes dimensions above the old 64-bit mask
+     * limit: make only the suffix lie outside its MBR. */
+    for (int i = 0; i < DIMENSIONS; ++i) {
+        values[i] = i < RECORD_DIMENSIONS ? 0.0f : 100.0f;
+        sax_min[i] = 120;
+        sax_max[i] = 136;
+        cardinalities[i] = 8;
+    }
+    for (int function_type = 4; function_type <= 6; ++function_type) {
+        float suffix = 0.0f;
+        settings.function_type = function_type;
+        const float full = messi_minidist_range_raw_partitioned(
+            &index, values, sax_min, sax_max, cardinalities, FLT_MAX,
+            RECORD_DIMENSIONS, &suffix);
+        if (fabsf(full - suffix) > 1e-4f * fmaxf(1.0f, full)) {
+            fprintf(stderr, "128-D suffix mismatch: type=%d full=%g suffix=%g\n",
+                    function_type, full, suffix);
+            for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
+            free(index.bins);
+            return 1;
         }
     }
     for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
