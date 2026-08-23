@@ -417,17 +417,25 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
     return SUCCESS;
 }
 
-void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out) {
-    int n_segments = index->settings->n_segments;
-    for (int k = 0; k < n_segments; ++k) {
-        unsigned int c;
-        for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {
-            if (coeffs[k] < index->bins[k][c]) {
-                break;
-            }
-        }
-        sax_out[k] = (sax_type) c;
+/* Return the first boundary strictly above value.  This is equivalent to the
+ * former linear scan, including its treatment of values equal to a boundary,
+ * but reduces 256-symbol quantization from up to 255 comparisons to eight. */
+static unsigned int spartan_symbol_from_value(const ts_type *boundaries, int count,
+                                              ts_type value) {
+    int low = 0, high = count;
+    while (low < high) {
+        const int middle = low + (high - low) / 2;
+        if (value < boundaries[middle]) high = middle;
+        else low = middle + 1;
     }
+    return (unsigned int) low;
+}
+
+void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out) {
+    const int n_segments = index->settings->n_segments;
+    const int boundary_count = index->settings->sax_alphabet_cardinality - 1;
+    for (int k = 0; k < n_segments; ++k)
+        sax_out[k] = (sax_type) spartan_symbol_from_value(index->bins[k], boundary_count, coeffs[k]);
 }
 
 enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,

@@ -329,6 +329,28 @@ static void trie_node_update_mbb(symbolic_trie_node *node, const sax_type *word,
     }
 }
 
+/* Root partitioning already computes exact MBRs for all populated children.
+ * Merge them instead of making a second full scan over the root's records. */
+static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
+                                       symbolic_trie_node *const *children,
+                                       int fanout, int dimensions) {
+    node->mbb_valid = 0;
+    for (int bucket = 0; bucket < fanout; ++bucket) {
+        const symbolic_trie_node *child = children[bucket];
+        if (child == NULL || !child->mbb_valid) continue;
+        if (!node->mbb_valid) {
+            memcpy(node->min_word, child->min_word, (size_t) dimensions);
+            memcpy(node->max_word, child->max_word, (size_t) dimensions);
+            node->mbb_valid = 1;
+            continue;
+        }
+        for (int d = 0; d < dimensions; ++d) {
+            if (child->min_word[d] < node->min_word[d]) node->min_word[d] = child->min_word[d];
+            if (child->max_word[d] > node->max_word[d]) node->max_word[d] = child->max_word[d];
+        }
+    }
+}
+
 static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
     if (scratch == NULL) return 0;
     if (capacity <= scratch->capacity) return 1;
@@ -604,6 +626,7 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         }
         children[bucket]->mbb_valid = 1;
     }
+    trie_node_merge_child_mbbs(node, children, fanout, dimensions);
     free(counts); free(offsets); free(local_min); free(local_max);
     free(node->words); free(node->positions);
     node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
@@ -762,8 +785,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     }
     if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
     double transform_end = messi_monotonic_seconds();
-    for (long i = 0; i < ts_num; ++i) trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
-    double root_mbb_end = messi_monotonic_seconds();
+    double root_mbb_end = transform_end;
+    int root_mbb_merged_during_split = 0;
 
     /* Split the initially enormous root before entering the task region.  The
      * sampled splitter uses OpenMP worksharing itself; nested worksharing from
@@ -774,6 +797,17 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
             return FAILURE;
         }
+        if (root_split > 0) {
+            root_mbb_merged_during_split = 1;
+        } else {
+            for (long i = 0; i < ts_num; ++i)
+                trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
+            root_mbb_end = messi_monotonic_seconds();
+        }
+    } else {
+        for (long i = 0; i < ts_num; ++i)
+            trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
+        root_mbb_end = messi_monotonic_seconds();
     }
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
@@ -805,7 +839,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     fprintf(stderr, ">>> trie build timing\n");
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
     fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);
-    fprintf(stderr, "    root MBR   : %.3f s\n", root_mbb_end - transform_end);
+    fprintf(stderr, "    root MBR   : %.3f s%s\n", root_mbb_end - transform_end,
+            root_mbb_merged_during_split ? " (merged during root partition)" : "");
     fprintf(stderr, "    split      : %.3f s\n", split_end - root_mbb_end);
     fprintf(stderr, "    total      : %.3f s\n", split_end - build_start);
     if (internal_nodes != 0) {
