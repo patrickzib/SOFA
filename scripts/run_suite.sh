@@ -20,11 +20,11 @@ Options:
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
-  --trie-mbr-dims N       Trie MBR dimensions (16--128; capped by series length)
-  --trie-split-dims N     Trie split-choice dimensions (default: min(64, MBR dimensions))
+  --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
+  --trie-split-dims N     Trie split-choice dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                           Add leaf-MBR contributions outside the 16 record-bound dimensions
-  --trie-leaf-kmeans K     Build K flat k-means MBR groups inside large trie leaves
+  --trie-leaf-kmeans K     Build K flat k-means MBR groups inside large trie leaves (default: 8)
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)

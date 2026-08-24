@@ -184,6 +184,14 @@ extern int query_report_interval;
 
         unsigned long int LBDcalculationnumber_all;
         unsigned long int RDcalculationnumber_all;
+        /* Trie leaf k-means diagnostics; kept separate from record lower-bound
+         * counts because a pruned cluster avoids many record-bound checks. */
+        unsigned long int trie_cluster_bounds;
+        unsigned long int trie_cluster_pruned;
+        unsigned long int trie_cluster_records_pruned;
+        unsigned long int trie_cluster_bounds_all;
+        unsigned long int trie_cluster_pruned_all;
+        unsigned long int trie_cluster_records_pruned_all;
 
         #define INIT_STATS() total_input_time = 0;\
                             total_output_time = 0;\
@@ -205,6 +213,12 @@ extern int query_report_interval;
                             RDcalculationnumber=0;\
                             LBDcalculationnumber_all=0;\
                             RDcalculationnumber_all=0;\
+                            trie_cluster_bounds=0;\
+                            trie_cluster_pruned=0;\
+                            trie_cluster_records_pruned=0;\
+                            trie_cluster_bounds_all=0;\
+                            trie_cluster_pruned_all=0;\
+                            trie_cluster_records_pruned_all=0;\
                             total_querying_time_all=0.0;\
                             bytes_accessed_all=0;\
                             approximate_all = 0.0;\
@@ -280,6 +294,12 @@ extern int query_report_interval;
         RDcalculationnumber = 0;\
         LBDcalculationnumber_all += LBDcalculationnumber;\
         LBDcalculationnumber = 0;\
+        trie_cluster_bounds_all += trie_cluster_bounds;\
+        trie_cluster_bounds = 0;\
+        trie_cluster_pruned_all += trie_cluster_pruned;\
+        trie_cluster_pruned = 0;\
+        trie_cluster_records_pruned_all += trie_cluster_records_pruned;\
+        trie_cluster_records_pruned = 0;\
         checked_nodes_all += checked_nodes;\
         checked_nodes = 0;\
         loaded_nodes_all += loaded_nodes;\

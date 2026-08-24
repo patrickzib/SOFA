@@ -76,8 +76,12 @@ existing `--threads` setting; the build log reports the active worker count.
 
 `--trie-mbr-dims` controls the full node-MBR width, while
 `--trie-split-dims` limits only split-dimension selection. The latter defaults
-to 64 dimensions (or the smaller MBR width), retaining full-width MBR pruning
+to 32 dimensions (or the smaller MBR width), retaining full-width MBR pruning
 while avoiding entropy scans over the complete MBR suffix.
+
+Trie benchmark runs default to 128 MBR dimensions (capped by series length)
+and 8 leaf k-means groups. The record-MBR suffix bound is opt-in with
+`--trie-record-mbr-suffix-bound`, so it can be benchmarked independently.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path

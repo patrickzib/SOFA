@@ -25,11 +25,11 @@ Options:
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
-  --trie-mbr-dims N         Trie MBR dimensions (16--128; capped by series length)
-  --trie-split-dims N       Trie split-choice dimensions (default: min(64, MBR dimensions))
+  --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
+  --trie-split-dims N       Trie split-choice dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
-  --trie-leaf-kmeans K      Build K flat k-means MBR groups inside large trie leaves
+  --trie-leaf-kmeans K      Build K flat k-means MBR groups inside large trie leaves (default: 8)
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -277,16 +277,16 @@ MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
 MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
-    TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
+    TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-128}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
     (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
-    if [[ -n $TRIE_SPLIT_DIMS ]]; then
-        is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
-        (( TRIE_SPLIT_DIMS >= 16 && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
-            die '--trie-split-dims must be between 16 and --trie-mbr-dims'
-    fi
+    TRIE_SPLIT_DIMS=${TRIE_SPLIT_DIMS:-$(( TRIE_MBR_DIMS < 32 ? TRIE_MBR_DIMS : 32 ))}
+    is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
+    (( TRIE_SPLIT_DIMS >= 16 && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
+        die '--trie-split-dims must be between 16 and --trie-mbr-dims'
+    TRIE_LEAF_KMEANS=${TRIE_LEAF_KMEANS:-8}
     if [[ -n $TRIE_LEAF_KMEANS ]]; then
         is_positive_integer "$TRIE_LEAF_KMEANS" || die '--trie-leaf-kmeans must be a positive integer'
         (( TRIE_LEAF_KMEANS >= 2 && TRIE_LEAF_KMEANS <= 64 )) || die '--trie-leaf-kmeans must be between 2 and 64'

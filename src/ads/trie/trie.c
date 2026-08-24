@@ -302,10 +302,6 @@ static void trie_print_query_stats(int query_index, const struct symbolic_trie_i
            query_index, trie->node_count, stats->checked_nodes,
            stats->approximate_distance, distance,
            (double) cumulative_microseconds / 1000.0);
-    if (trie->cluster_count != 0) {
-        fprintf(stderr, "    leaf clusters: checked=%lu pruned=%lu records skipped=%lu\n",
-                stats->cluster_bounds, stats->cluster_pruned, stats->cluster_records_pruned);
-    }
 }
 
 static void trie_save_query_stats(const struct symbolic_trie_index *trie,
@@ -333,6 +329,9 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     total_time = (double) cumulative_microseconds;
     LBDcalculationnumber = stats->lower_bounds;
     RDcalculationnumber = stats->exact_distances;
+    trie_cluster_bounds = stats->cluster_bounds;
+    trie_cluster_pruned = stats->cluster_pruned;
+    trie_cluster_records_pruned = stats->cluster_records_pruned;
     SAVE_STATS(distance)
 }
 
