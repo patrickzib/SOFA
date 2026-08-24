@@ -12,6 +12,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
                                        int filetype_int, int apply_znorm, float minimum_distance);
 enum response symbolic_trie_query_file_batch(isax_index *index, const char *path, int query_count,
                                              int filetype_int, int apply_znorm, float minimum_distance);
+/* Write the same aggregate tree metrics schema used by the iSAX tree CSV. */
+void symbolic_trie_write_stats(FILE *stream, const isax_index *index);
 void symbolic_trie_destroy(isax_index *index);
 
 #endif

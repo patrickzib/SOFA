@@ -241,6 +241,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->spartan_pca_pieces = 1;
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
@@ -2857,8 +2858,20 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     fprintf(stderr, "  index root    : %s\n", settings->root_directory);
     fprintf(stderr, "  layout        : %s\n", layout);
     if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
-        fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
-                settings->trie_bound_dimensions, settings->n_segments);
+        const int record_dimensions = settings->trie_bound_dimensions;
+        const int symbolic_dimensions = settings->n_segments;
+        fprintf(stderr, "  trie symbols  : %d dimensions (node/leaf MBRs and split candidates)\n",
+                symbolic_dimensions);
+        fprintf(stderr, "  record bound  : symbolic prefix, dimensions 0--%d (%d total)\n",
+                record_dimensions - 1, record_dimensions);
+        if (settings->trie_record_mbr_suffix_bound &&
+            symbolic_dimensions > record_dimensions) {
+            fprintf(stderr, "  MBR suffix    : dimensions %d--%d, combined with the record prefix\n",
+                    record_dimensions, symbolic_dimensions - 1);
+        } else if (symbolic_dimensions > record_dimensions) {
+            fprintf(stderr, "  MBR suffix    : dimensions %d--%d (disabled)\n",
+                    record_dimensions, symbolic_dimensions - 1);
+        }
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     char max_leaf_size[32], min_leaf_size[32], sample_size[32];
@@ -2924,6 +2937,9 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         fprintf(stderr, "  transform     : SPARTAN, %d PCA coefficients, alphabet %d (%d bits)\n",
                 settings->n_segments, settings->sax_alphabet_cardinality,
                 settings->sax_bit_cardinality);
+        if (settings->spartan_pca_pieces > 1)
+            fprintf(stderr, "  PCA layout    : %d contiguous pieces; one component per piece, then variance-ranked\n",
+                    settings->spartan_pca_pieces);
     }
     else if (settings->function_type == 6) {
         int fft_coefficients = settings->n_coefficients > 0 ? settings->n_coefficients : settings->n_segments;
@@ -2939,8 +2955,11 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s\n",
-                settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "");
+        fprintf(stderr, "  query bounds  : node MBRs + symbolic record prefix%s\n",
+                settings->trie_record_mbr_suffix_bound &&
+                settings->n_segments > settings->trie_bound_dimensions
+                    ? " + MBR suffix"
+                    : "");
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

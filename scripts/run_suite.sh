@@ -19,10 +19,13 @@ Options:
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
+  --spartan-pca-pieces N  Train N contiguous local PCAs for SPARTAN (default: 1)
   --index-type TYPE       Index layout: isax (default) or trie
   --trie-mbr-dims N       Trie MBR/split dimensions (16--128; capped by series length)
   --trie-record-mbr-suffix-bound
-                          Add leaf-MBR contributions outside the 16 record-bound dimensions
+                          Add leaf-MBR contributions outside the 16 record-bound dimensions (default for trie)
+  --no-trie-record-mbr-suffix-bound
+                          Disable the trie record/MBR suffix bound for an A/B comparison
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
@@ -64,10 +67,11 @@ K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 METHODS_OVERRIDE=
+SPARTAN_PCA_PIECES=1
 INDEX_TYPE=isax
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
-TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
@@ -84,9 +88,11 @@ while [[ $# -gt 0 ]]; do
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
+        --spartan-pca-pieces) [[ $# -ge 2 ]] || die "$1 requires a value"; SPARTAN_PCA_PIECES=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -107,6 +113,10 @@ case "$SUITE" in
     *) die "unknown suite '$SUITE'" ;;
 esac
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+if [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND ]]; then
+    [[ $INDEX_TYPE == trie ]] && TRIE_RECORD_MBR_SUFFIX_BOUND=true || TRIE_RECORD_MBR_SUFFIX_BOUND=false
+fi
+[[ $SPARTAN_PCA_PIECES =~ ^[1-9][0-9]*$ ]] || die '--spartan-pca-pieces must be a positive integer'
 [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || \
     die '--trie-fanout must be 2, 4, or 8'
 [[ $INDEX_TYPE == trie || $TRIE_FANOUT == 8 ]] || \
@@ -163,6 +173,7 @@ run_one() {
     fi
     $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
     [[ -n $METHODS_OVERRIDE ]] && command+=(--methods "$METHODS_OVERRIDE")
+    [[ $SPARTAN_PCA_PIECES != 1 ]] && command+=(--spartan-pca-pieces "$SPARTAN_PCA_PIECES")
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)
     "${command[@]}"

@@ -240,6 +240,37 @@ static unsigned long trie_node_count(const symbolic_trie_node *node) {
     return count;
 }
 
+static void trie_collect_tree_stats(const symbolic_trie_node *node, unsigned int depth,
+                                    unsigned long long *total_depth,
+                                    unsigned long long *node_count,
+                                    unsigned long long *leaf_count,
+                                    unsigned long long *leaf_records) {
+    if (node == NULL) return;
+    ++*node_count;
+    *total_depth += depth;
+    if (node->leaf) {
+        ++*leaf_count;
+        *leaf_records += (unsigned long long) node->size;
+        return;
+    }
+    for (int i = 0; i < node->split_fanout; ++i)
+        trie_collect_tree_stats(node->children[i], depth + 1, total_depth,
+                                node_count, leaf_count, leaf_records);
+}
+
+void symbolic_trie_write_stats(FILE *stream, const isax_index *index) {
+    const struct symbolic_trie_index *trie = index == NULL ? NULL : index->trie;
+    unsigned long long total_depth = 0, node_count = 0, leaf_count = 0, leaf_records = 0;
+    if (stream == NULL || trie == NULL || trie->root == NULL) return;
+
+    trie_collect_tree_stats(trie->root, 0, &total_depth, &node_count,
+                            &leaf_count, &leaf_records);
+    fprintf(stream, "subtrees,average depth,average leaf size\n"
+                    "1,%.6f,%.6f\n",
+            node_count == 0 ? 0.0 : (double) total_depth / (double) node_count,
+            leaf_count == 0 ? 0.0 : (double) leaf_records / (double) leaf_count);
+}
+
 /* Compute split quality from the completed tree so parallel construction does
  * not need shared diagnostic counters.  Child record counts are recovered
  * from their subtrees because internal nodes release their leaf arrays. */

@@ -83,6 +83,8 @@ typedef struct {
     int sample_type;
     unsigned int sampling_seed;
     int n_coefficients;
+    /* SPARTAN-only: contiguous local PCA models; one preserves global PCA. */
+    int spartan_pca_pieces;
     int node_split_criterion;
     messi_index_type index_type;
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,

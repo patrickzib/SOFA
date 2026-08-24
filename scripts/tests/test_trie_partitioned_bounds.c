@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "ads/calc_utils.h"
+#include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
 
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
@@ -21,6 +22,95 @@ static sax_type linear_spartan_symbol(const ts_type *boundaries, int count, ts_t
     int symbol = 0;
     while (symbol < count && value >= boundaries[symbol]) ++symbol;
     return (sax_type) symbol;
+}
+
+static int test_piecewise_pca(void) {
+    enum { SERIES = 7, PIECES = 3, COMPONENTS = 4, SAMPLES = 12 };
+    const int starts[PIECES] = {0, 3, 5};
+    const int widths[PIECES] = {3, 2, 2};
+    ts_type samples[SAMPLES * SERIES];
+    ts_type first[SERIES], second[SERIES], first_projection[COMPONENTS], second_projection[COMPONENTS];
+    isax_index index;
+    isax_index_settings settings;
+    memset(&index, 0, sizeof(index));
+    memset(&settings, 0, sizeof(settings));
+    settings.n_segments = COMPONENTS;
+    settings.spartan_pca_pieces = PIECES;
+    index.settings = &settings;
+    for (int sample = 0; sample < SAMPLES; ++sample) {
+        for (int dimension = 0; dimension < SERIES; ++dimension) {
+            const int scale = dimension < 3 ? 7 : (dimension < 5 ? 3 : 1);
+            samples[sample * SERIES + dimension] = (ts_type) ((sample - 5) * scale + dimension * (sample % 3));
+        }
+    }
+    if (pca_fit(&index, samples, SAMPLES, SERIES) != SUCCESS ||
+        index.pca_components_count != COMPONENTS || index.pca_dim != SERIES) {
+        fprintf(stderr, "piecewise PCA fit failed\n");
+        pca_free(&index);
+        return 1;
+    }
+    int represented[PIECES] = {0};
+    for (int component = 0; component < COMPONENTS; ++component) {
+        const ts_type *vector = index.pca_components + component * SERIES;
+        double norm = 0.0;
+        int owning_piece = -1;
+        for (int dimension = 0; dimension < SERIES; ++dimension)
+            norm += (double) vector[dimension] * vector[dimension];
+        for (int piece = 0; piece < PIECES; ++piece) {
+            double inside = 0.0, outside = 0.0;
+            for (int dimension = 0; dimension < SERIES; ++dimension) {
+                const double value = vector[dimension];
+                if (dimension >= starts[piece] && dimension < starts[piece] + widths[piece]) inside += value * value;
+                else outside += value * value;
+            }
+            if (inside > 0.99 && outside < 1e-5) owning_piece = piece;
+        }
+        if (owning_piece < 0 || fabs(norm - 1.0) > 1e-4) {
+            fprintf(stderr, "piecewise PCA component support/normalization mismatch\n");
+            pca_free(&index);
+            return 1;
+        }
+        represented[owning_piece] = 1;
+        for (int other = 0; other < component; ++other) {
+            const ts_type *previous = index.pca_components + other * SERIES;
+            double dot = 0.0;
+            for (int dimension = 0; dimension < SERIES; ++dimension) dot += vector[dimension] * previous[dimension];
+            if (fabs(dot) > 1e-4) {
+                fprintf(stderr, "piecewise PCA components are not orthogonal\n");
+                pca_free(&index);
+                return 1;
+            }
+        }
+    }
+    for (int piece = 0; piece < PIECES; ++piece) if (!represented[piece]) {
+        fprintf(stderr, "piecewise PCA did not retain a component for piece %d\n", piece);
+        pca_free(&index);
+        return 1;
+    }
+    for (int dimension = 0; dimension < SERIES; ++dimension) {
+        first[dimension] = (ts_type) (dimension * 0.75f - 2.0f);
+        second[dimension] = (ts_type) (dimension * -0.5f + 1.0f);
+    }
+    if (pca_from_ts(&index, first, first_projection) != SUCCESS ||
+        pca_from_ts(&index, second, second_projection) != SUCCESS) {
+        pca_free(&index);
+        return 1;
+    }
+    double projected = 0.0, raw = 0.0;
+    for (int component = 0; component < COMPONENTS; ++component) {
+        const double difference = first_projection[component] - second_projection[component];
+        projected += difference * difference;
+    }
+    for (int dimension = 0; dimension < SERIES; ++dimension) {
+        const double difference = first[dimension] - second[dimension];
+        raw += difference * difference;
+    }
+    pca_free(&index);
+    if (projected > raw + 1e-4 * fmax(1.0, raw)) {
+        fprintf(stderr, "piecewise PCA projected distance exceeds raw ED\n");
+        return 1;
+    }
+    return 0;
 }
 
 int main(void) {
@@ -141,5 +231,6 @@ int main(void) {
     }
     for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
     free(index.bins);
+    if (test_piecewise_pca() != 0) return 1;
     return 0;
 }

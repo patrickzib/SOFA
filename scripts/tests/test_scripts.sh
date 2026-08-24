@@ -62,6 +62,13 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --queue-
 assert_contains "$OUTPUT" '--trie-query-parallel'
 pass 'trie query-parallel option is forwarded'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --no-trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+pass 'trie record/MBR suffix bound defaults on and can be disabled'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
@@ -189,13 +196,24 @@ pass 'migrated generated-query suite expands expected workloads'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--index-type trie'
+assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
 assert_not_contains "$OUTPUT" '--function-type 3'
-pass 'suite forwards the selected index layout to dataset runs'
+pass 'suite forwards the selected index layout and default suffix bound to dataset runs'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --no-trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+pass 'suite can disable the default trie record/MBR suffix bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
     --methods spartan-depth,spartan-width --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 pass 'suite forwards trie MBR dimensions to dataset runs'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --methods spartan-depth --spartan-pca-pieces 4 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--spartan-pca-pieces 4'
+pass 'suite forwards the SPARTAN piecewise PCA option'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)

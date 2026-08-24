@@ -74,6 +74,17 @@ static int fanout_to_bits(int fanout) {
     return fanout == 1 ? bits : -1;
 }
 
+static const char *function_type_name(int function_type) {
+    switch (function_type) {
+        case 0: return "iSAX";
+        case 3: return "SAX";
+        case 4: return "SFA";
+        case 5: return "SPARTAN";
+        case 6: return "PISA";
+        default: return "unknown";
+    }
+}
+
 static FILE *open_logfile_or_tmp(const char *path) {
     FILE *file = fopen(path, "w");
     if (file != NULL) {
@@ -318,6 +329,7 @@ int main(int argc, char **argv) {
     static int sample_type = 1;
     static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
+    static int spartan_pca_pieces = 1;
     static int filetype_int = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
@@ -393,6 +405,7 @@ int main(int argc, char **argv) {
                 {"histogram-type",      required_argument, 0,    'A'},
                 {"sample-type",         required_argument, 0,    'C'},
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
+                {"spartan-pca-pieces",  required_argument, 0, 1014},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
@@ -463,6 +476,9 @@ int main(int argc, char **argv) {
                 break;
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
+                break;
+            case 1014:
+                spartan_pca_pieces = atoi(optarg);
                 break;
             case 'j':
                 serial_scan = 1;
@@ -721,6 +737,7 @@ int main(int argc, char **argv) {
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
                 \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n-segments and timeseries-size)\n\
+                \t--spartan-pca-pieces N\t\tTrain N contiguous local PCAs for SPARTAN (default: 1, global PCA).\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
@@ -799,6 +816,14 @@ int main(int argc, char **argv) {
     }
     if (trie_record_mbr_suffix_bound && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (spartan_pca_pieces < 1) {
+        fprintf(stderr, "error: --spartan-pca-pieces must be positive.\n");
+        return EXIT_FAILURE;
+    }
+    if (spartan_pca_pieces != 1 && function_type != 5) {
+        fprintf(stderr, "error: --spartan-pca-pieces is supported by SPARTAN (function type 5) only.\n");
         return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
@@ -970,6 +995,13 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
+        if (function_type == 5 &&
+            (spartan_pca_pieces > time_series_size || spartan_pca_pieces > index_segments)) {
+            fprintf(stderr,
+                    "error: --spartan-pca-pieces (%d) must not exceed SPARTAN dimensions (%d) or series length (%d).\n",
+                    spartan_pca_pieces, index_segments, time_series_size);
+            return EXIT_FAILURE;
+        }
         if (index_type == MESSI_INDEX_ISAX && time_series_size % n_segments != 0) {
             fprintf(stderr,
                     "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
@@ -1077,10 +1109,43 @@ int main(int argc, char **argv) {
 
         SET_LOGFILE(logfile_query);
 
+        /* Keep the legacy key/value prefix, then describe the resolved trie
+         * representation.  In a trie run n_segments below is the full
+         * symbolic word / MBR width, whereas trie_bound_dimensions is the
+         * shorter per-record symbolic prefix. */
         fprintf(logfile,
-                "MESSI SETTINGS\nFunction type,%d\nSIMD,%u\ntimeseries length,%d\npaa segments,%d\nisax-cardinality,%d\nleaf size,%d\nsample-size,%d\nsample type,%d\n",
-                function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
-                sample_type);
+                "MESSI SETTINGS\n"
+                "run timestamp,%s\n"
+                "method,%s\n"
+                "Function type,%d\n"
+                "index layout,%s\n"
+                "SIMD,%u\n"
+                "timeseries length,%d\n"
+                "paa segments,%d\n"
+                "symbolic dimensions,%d\n"
+                "isax-cardinality,%d\n"
+                "leaf size,%d\n"
+                "sample-size,%d\n"
+                "sample type,%d\n",
+                time_str, function_type_name(function_type), function_type,
+                index_type == MESSI_INDEX_TRIE ? "trie" : "isax", SIMD_flag,
+                time_series_size, n_segments, index_segments, sax_cardinality,
+                leaf_size, sample_size, sample_type);
+        if (index_type == MESSI_INDEX_TRIE) {
+            fprintf(logfile,
+                    "trie record-bound dimensions,%d\n"
+                    "trie MBR dimensions,%d\n"
+                    "trie split-candidate dimensions,%d\n"
+                    "trie record-MBR suffix bound,%s\n"
+                    "trie fanout,%d\n"
+                    "trie dynamic alphabet,%s\n",
+                    trie_bound_dimensions, index_segments, index_segments,
+                    trie_record_mbr_suffix_bound ? "enabled" : "disabled",
+                    trie_fanout, trie_dynamic_alphabet ? "enabled" : "disabled");
+        }
+        if (function_type == 5) {
+            fprintf(logfile, "SPARTAN PCA pieces,%d\n", spartan_pca_pieces);
+        }
 
         if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5 || function_type == 6)) {
             fprintf(stderr, "warning: function_type %d requires in-memory mode; enabling --inmemory.\n",
@@ -1118,6 +1183,7 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->spartan_pca_pieces = spartan_pca_pieces;
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
@@ -1164,6 +1230,7 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "error: trie construction failed.\n");
                 return EXIT_FAILURE;
             }
+            symbolic_trie_write_stats(logfile_tree, idx);
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             double query_wall_start = monotonic_seconds();
@@ -1195,7 +1262,8 @@ int main(int argc, char **argv) {
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_TRIE) symbolic_trie_write_stats(logfile_tree, idx);
+            else calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
@@ -1238,7 +1306,8 @@ int main(int argc, char **argv) {
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_TRIE) symbolic_trie_write_stats(logfile_tree, idx);
+            else calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);
@@ -1281,7 +1350,8 @@ int main(int argc, char **argv) {
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
 
             //calculate depth (for analysis logfile only)
-            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
+            if (index_type == MESSI_INDEX_TRIE) symbolic_trie_write_stats(logfile_tree, idx);
+            else calculate_average_depth(logfile_tree, idx);
 
             //save index building stats
             INIT_INDEX_STATS_FILE(logfile_index);

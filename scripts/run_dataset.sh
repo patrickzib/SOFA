@@ -22,12 +22,15 @@ Options:
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes
   --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
+  --spartan-pca-pieces N    Train N contiguous local PCAs for SPARTAN (default: 1)
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
   --trie-record-mbr-suffix-bound
-                            Add leaf-MBR contributions outside the 16 record-bound dimensions
+                            Add leaf-MBR contributions outside the 16 record-bound dimensions (default for trie)
+  --no-trie-record-mbr-suffix-bound
+                            Disable the trie record/MBR suffix bound for an A/B comparison
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -167,7 +170,8 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
-TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_RECORD_MBR_SUFFIX_BOUND=
+SPARTAN_PCA_PIECES=1
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -205,6 +209,7 @@ while [[ $# -gt 0 ]]; do
         --sample-factor) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTOR=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --spartan-pca-pieces) [[ $# -ge 2 ]] || die "$1 requires a value"; SPARTAN_PCA_PIECES=$2; shift 2 ;;
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
@@ -212,6 +217,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -235,11 +241,19 @@ done
 
 load_dataset "$DATASET_ARG" "$PROFILE"
 
+# The suffix contributes dimensions that are absent from the 16-dimensional
+# record bound, so enable it for all trie benchmark runs unless explicitly
+# disabled.  It has no meaning for iSAX.
+if [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND ]]; then
+    [[ $INDEX_TYPE == trie ]] && TRIE_RECORD_MBR_SUFFIX_BOUND=true || TRIE_RECORD_MBR_SUFFIX_BOUND=false
+fi
+
 [[ -n $DATASET_OVERRIDE ]] && DATASET_FILE=$DATASET_OVERRIDE
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
 
 [[ -n $THREADS ]] || die '--threads is required'
+is_positive_integer "$SPARTAN_PCA_PIECES" || die '--spartan-pca-pieces must be a positive integer'
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
@@ -476,6 +490,9 @@ run_method() {
     fi
 
     args+=(--function-type "$function_type")
+    if [[ $function_type == 5 && $SPARTAN_PCA_PIECES != 1 ]]; then
+        args+=(--spartan-pca-pieces "$SPARTAN_PCA_PIECES")
+    fi
     # SAX has no learned transform variance.  Keep its legacy uniform root
     # split while applying the learned root-bit allocation to SFA/PISA/SPARTAN.
     if [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true && $function_type != 3 ]]; then
