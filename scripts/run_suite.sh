@@ -359,7 +359,20 @@ run_query_suite() {
             fi
             local methods=${METHODS_OVERRIDE:-sax,sfa-depth,sfa-width}
             [[ $INDEX_TYPE == trie && -z $METHODS_OVERRIDE ]] && methods=sfa-depth,sfa-width
-            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+            local queue_number=${QUEUE_NUMBER:-$threads}
+            local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" \
+                --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+            [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
+            [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
+            [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+            [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
+            [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
+            [[ -n $MESSI_EXECUTABLE ]] && command+=(--binary "$MESSI_EXECUTABLE")
+            [[ -n $DATA_ROOT ]] && command+=(--data-root "$DATA_ROOT")
+            [[ -n $QUERY_ROOT ]] && command+=(--query-root "$QUERY_ROOT")
+            [[ -n $SEISBENCH_ROOT ]] && command+=(--seisbench-root "$SEISBENCH_ROOT")
+            [[ -n $SEISBENCH_QUERY_ROOT ]] && command+=(--seisbench-query-root "$SEISBENCH_QUERY_ROOT")
+            $NO_SIMD && command+=(--no-simd)
             if [[ $INDEX_TYPE == trie ]]; then
                 [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
                 command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
@@ -373,7 +386,14 @@ run_query_suite() {
                     command+=(--trie-fanout "$TRIE_FANOUT")
                 fi
             fi
-            $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
+            [[ -n $LEAF_SIZE ]] && command+=(--leaf-size "$LEAF_SIZE")
+            [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
+            $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
+            $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+            [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
+            $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
+            [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
+            [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods" --no-tight-bound)
             $DRY_RUN && command+=(--dry-run)
             "${command[@]}"
