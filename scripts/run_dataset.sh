@@ -25,7 +25,8 @@ Options:
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
-  --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
+  --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
+  --trie-split-dims N       Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
@@ -167,6 +168,7 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
@@ -211,6 +213,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
@@ -269,11 +272,15 @@ MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
 MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
-    TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
+    TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-128}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
     (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    TRIE_SPLIT_DIMS=${TRIE_SPLIT_DIMS:-$(( TRIE_MBR_DIMS < 32 ? TRIE_MBR_DIMS : 32 ))}
+    is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
+    (( TRIE_SPLIT_DIMS >= 16 && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
+        die '--trie-split-dims must be between 16 and --trie-mbr-dims'
     # SFA/PISA need a training pool at least as wide as the trie word.  Keep
     # the historical iSAX coefficient defaults untouched; widen only a trie
     # that explicitly requests more MBR dimensions.
@@ -357,6 +364,7 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then

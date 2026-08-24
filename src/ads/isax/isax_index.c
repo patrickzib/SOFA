@@ -245,6 +245,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
     settings->trie_bound_dimensions = 0;
+    settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
@@ -2857,8 +2858,23 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     fprintf(stderr, "  index root    : %s\n", settings->root_directory);
     fprintf(stderr, "  layout        : %s\n", layout);
     if (settings->index_type == MESSI_INDEX_TRIE && settings->trie_bound_dimensions > 0) {
-        fprintf(stderr, "  trie dims     : %d for record bounds; %d for MBRs and splitting\n",
-                settings->trie_bound_dimensions, settings->n_segments);
+        const int record_dimensions = settings->trie_bound_dimensions;
+        const int symbolic_dimensions = settings->n_segments;
+        fprintf(stderr, "  trie symbols  : %d dimensions (node/leaf MBRs)\n",
+                symbolic_dimensions);
+        fprintf(stderr, "  split dims    : dimensions 0--%d (%d candidates)\n",
+                settings->trie_split_dimensions - 1,
+                settings->trie_split_dimensions);
+        fprintf(stderr, "  record bound  : symbolic prefix, dimensions 0--%d (%d total)\n",
+                record_dimensions - 1, record_dimensions);
+        if (settings->trie_record_mbr_suffix_bound &&
+            symbolic_dimensions > record_dimensions) {
+            fprintf(stderr, "  MBR suffix    : dimensions %d--%d, combined with the record prefix\n",
+                    record_dimensions, symbolic_dimensions - 1);
+        } else if (symbolic_dimensions > record_dimensions) {
+            fprintf(stderr, "  MBR suffix    : dimensions %d--%d (disabled)\n",
+                    record_dimensions, symbolic_dimensions - 1);
+        }
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     char max_leaf_size[32], min_leaf_size[32], sample_size[32];

@@ -329,6 +329,7 @@ int main(int argc, char **argv) {
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
+    static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_fanout = 8;
     static int trie_fanout_specified = 0;
@@ -403,6 +404,7 @@ int main(int argc, char **argv) {
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
+                {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
@@ -438,6 +440,9 @@ int main(int argc, char **argv) {
                 break;
             case 1004:
                 trie_mbr_dimensions = atoi(optarg);
+                break;
+            case 1015:
+                trie_split_dimensions = atoi(optarg);
                 break;
             case 1005:
                 trie_fanout = atoi(optarg);
@@ -680,7 +685,8 @@ int main(int argc, char **argv) {
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
-                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--128; default: maximum available)\n\
+                \t--trie-mbr-dimensions XX\tTrie MBR dimensions (16--128; default: maximum available)\n\
+                \t--trie-split-dimensions XX\tTrie split-candidate dimensions (default: min(32, MBR dimensions))\n\
                 \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
                 \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
@@ -953,6 +959,16 @@ int main(int argc, char **argv) {
             index_segments = trie_mbr_dimensions > 0
                                  ? trie_mbr_dimensions
                                  : (time_series_size < 128 ? time_series_size : 128);
+            if (trie_split_dimensions == 0) {
+                trie_split_dimensions = index_segments < 32 ? index_segments : 32;
+            }
+            if (trie_split_dimensions < trie_bound_dimensions ||
+                trie_split_dimensions > index_segments) {
+                fprintf(stderr,
+                        "error: trie split dimensions must be between record-bound dimensions (%d) and symbolic dimensions (%d).\n",
+                        trie_bound_dimensions, index_segments);
+                return EXIT_FAILURE;
+            }
             if (function_type == 4 || function_type == 6) {
                 if (n_coefficients == 0 || n_coefficients < index_segments) {
                     n_coefficients = index_segments;
@@ -1120,6 +1136,7 @@ int main(int argc, char **argv) {
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
+        index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;

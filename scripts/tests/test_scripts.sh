@@ -34,9 +34,20 @@ assert_not_contains "$OUTPUT" '--function-type 3'
 assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--function-type 6'
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--trie-split-dimensions 32'
 assert_contains "$OUTPUT" '--trie-fanout 8'
 pass 'trie standard profile excludes SAX from its method matrix'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 128 --trie-split-dims 32 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--trie-split-dimensions 32'
+if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 64 --trie-split-dims 65 --dry-run >/dev/null 2>&1; then
+    fail 'trie benchmark accepted split dimensions wider than its MBR dimensions'
+fi
+pass 'trie split candidates are independent from MBR dimensions'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie --trie-fanout 4 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-fanout 4'
