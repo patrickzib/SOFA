@@ -6,11 +6,17 @@
 /* Create a benchmark version */
 #undef BENCHMARK
 
+/* Header providing CBLAS */
+#undef CBLAS_HEADER
+
 /* Enable clustering */
 #undef CLUSTERED
 
 /* Enable debugging info */
 #undef DEBUG
+
+/* Define if CBLAS SGEMM is available */
+#undef HAVE_CBLAS
 
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H

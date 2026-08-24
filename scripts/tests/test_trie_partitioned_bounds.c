@@ -7,6 +7,7 @@
 
 #include "ads/calc_utils.h"
 #include "ads/lower_bound_simd.h"
+#include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
 
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
@@ -176,6 +177,58 @@ int main(void) {
             return 1;
         }
     }
+
+    /* The optional CBLAS batch projection must agree with the scalar PCA
+     * projection used for queries and for builds without CBLAS. */
+    enum { BATCH_ROWS = 3 };
+    ts_type batch_input[BATCH_ROWS * DIMENSIONS];
+    ts_type batch_output[BATCH_ROWS * DIMENSIONS];
+    ts_type scalar_output[DIMENSIONS];
+    index.pca_dim = DIMENSIONS;
+    index.pca_components_count = DIMENSIONS;
+    index.pca_components = calloc((size_t) DIMENSIONS * DIMENSIONS,
+                                  sizeof(*index.pca_components));
+    index.pca_bias = calloc(DIMENSIONS, sizeof(*index.pca_bias));
+    if (index.pca_components == NULL || index.pca_bias == NULL) {
+        pca_free(&index);
+        for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
+        free(index.bins);
+        return 1;
+    }
+    for (int i = 0; i < DIMENSIONS; ++i) {
+        index.pca_components[i * DIMENSIONS + i] = 1.0f;
+        index.pca_bias[i] = (double) (i % 7) * 0.125;
+    }
+    for (int row = 0; row < BATCH_ROWS; ++row)
+        for (int i = 0; i < DIMENSIONS; ++i)
+            batch_input[row * DIMENSIONS + i] = (ts_type) (row * 100 + i) / 16.0f;
+    if (pca_project_batch(&index, batch_input, BATCH_ROWS, batch_output) != SUCCESS) {
+        fprintf(stderr, "PCA batch projection failed\n");
+        pca_free(&index);
+        for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
+        free(index.bins);
+        return 1;
+    }
+    for (int row = 0; row < BATCH_ROWS; ++row) {
+        if (pca_from_ts(&index, batch_input + row * DIMENSIONS, scalar_output) != SUCCESS) {
+            fprintf(stderr, "PCA scalar projection failed\n");
+            pca_free(&index);
+            for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
+            free(index.bins);
+            return 1;
+        }
+        for (int i = 0; i < DIMENSIONS; ++i) {
+            if (fabsf(batch_output[row * DIMENSIONS + i] - scalar_output[i]) > 1e-5f) {
+                fprintf(stderr, "PCA batch mismatch: row=%d dimension=%d batch=%g scalar=%g\n",
+                        row, i, batch_output[row * DIMENSIONS + i], scalar_output[i]);
+                pca_free(&index);
+                for (int j = 0; j < DIMENSIONS; ++j) free(index.bins[j]);
+                free(index.bins);
+                return 1;
+            }
+        }
+    }
+    pca_free(&index);
     for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
     free(index.bins);
     return 0;

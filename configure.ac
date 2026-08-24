@@ -122,6 +122,59 @@ LIBS="$save_LIBS"
 AC_SUBST([FFTW_CFLAGS])
 AC_SUBST([FFTW_LIBS])
 
+AC_ARG_VAR([LAPACK_LIBS], [libraries providing LAPACK routines such as dsyev_])
+AC_ARG_VAR([CBLAS_LIBS], [libraries providing cblas_sgemm (defaults to LAPACK_LIBS)])
+if test "x$CBLAS_LIBS" = "x"; then
+    CBLAS_LIBS="$LAPACK_LIBS"
+fi
+CBLAS_LINK_LIBS=""
+
+AC_MSG_CHECKING([for CBLAS SGEMM])
+cblas_save_LIBS="$LIBS"
+LIBS="$CBLAS_LIBS $LIBS"
+cblas_header=""
+AC_CHECK_HEADER([cblas.h], [cblas_header="cblas.h"])
+if test "x$cblas_header" = "x"; then
+    AC_CHECK_HEADER([openblas/cblas.h], [cblas_header="openblas/cblas.h"])
+fi
+if test "x$cblas_header" = "x"; then
+    AC_CHECK_HEADER([lapack/cblas.h], [cblas_header="lapack/cblas.h"])
+fi
+if test "x$cblas_header" = "xcblas.h"; then
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <cblas.h>]], [[float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);]])],
+        [cblas_found=yes], [cblas_found=no])
+elif test "x$cblas_header" = "xopenblas/cblas.h"; then
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <openblas/cblas.h>]], [[float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);]])],
+        [cblas_found=yes], [cblas_found=no])
+elif test "x$cblas_header" = "xlapack/cblas.h"; then
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <lapack/cblas.h>]], [[float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);]])],
+        [cblas_found=yes], [cblas_found=no])
+else
+    cblas_found=no
+fi
+if test "x$cblas_found" = "xyes"; then
+    AC_MSG_RESULT([yes ($cblas_header)])
+    dnl LAPACK_LIBS commonly is OpenBLAS and already exports CBLAS.  Avoid
+    dnl adding the same library twice to every executable link line.
+    if test "x$CBLAS_LIBS" != "x$LAPACK_LIBS"; then
+        CBLAS_LINK_LIBS="$CBLAS_LIBS"
+    fi
+    AC_DEFINE([HAVE_CBLAS], [1], [Define if CBLAS SGEMM is available])
+    AC_DEFINE_UNQUOTED([CBLAS_HEADER], [<$cblas_header>], [Header providing CBLAS])
+else
+    AC_MSG_RESULT([no])
+    AC_DEFINE([HAVE_CBLAS], [0], [Define if CBLAS SGEMM is available])
+fi
+LIBS="$cblas_save_LIBS"
+AC_SUBST([LAPACK_LIBS])
+AC_SUBST([CBLAS_LINK_LIBS])
+
 AC_MSG_CHECKING([for pthread_barrier_t])
 barrier_save_LIBS="$LIBS"
 LIBS="$LIBS -lpthread"

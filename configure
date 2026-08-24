@@ -628,6 +628,9 @@ ac_subst_vars='am__EXEEXT_FALSE
 am__EXEEXT_TRUE
 LTLIBOBJS
 LIBOBJS
+CBLAS_LINK_LIBS
+CBLAS_LIBS
+LAPACK_LIBS
 FFTW_LIBS
 FFTW_CFLAGS
 PKG_CONFIG_LIBDIR
@@ -756,7 +759,9 @@ CXXFLAGS
 CCC
 PKG_CONFIG
 PKG_CONFIG_PATH
-PKG_CONFIG_LIBDIR'
+PKG_CONFIG_LIBDIR
+LAPACK_LIBS
+CBLAS_LIBS'
 
 
 # Initialize some variables set by options.
@@ -1413,6 +1418,8 @@ Some influential environment variables:
               directories to add to pkg-config's search path
   PKG_CONFIG_LIBDIR
               path overriding pkg-config's built-in search path
+  LAPACK_LIBS libraries providing LAPACK routines such as dsyev_
+  CBLAS_LIBS  libraries providing cblas_sgemm (defaults to LAPACK_LIBS)
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -7072,6 +7079,135 @@ CPPFLAGS="$save_CPPFLAGS"
 LDFLAGS="$save_LDFLAGS"
 LIBS="$save_LIBS"
 
+
+
+
+
+
+if test "x$CBLAS_LIBS" = "x"; then
+    CBLAS_LIBS="$LAPACK_LIBS"
+fi
+CBLAS_LINK_LIBS=""
+
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking for CBLAS SGEMM" >&5
+printf %s "checking for CBLAS SGEMM... " >&6; }
+cblas_save_LIBS="$LIBS"
+LIBS="$CBLAS_LIBS $LIBS"
+cblas_header=""
+ac_fn_c_check_header_compile "$LINENO" "cblas.h" "ac_cv_header_cblas_h" "$ac_includes_default"
+if test "x$ac_cv_header_cblas_h" = xyes
+then :
+  cblas_header="cblas.h"
+fi
+
+if test "x$cblas_header" = "x"; then
+    ac_fn_c_check_header_compile "$LINENO" "openblas/cblas.h" "ac_cv_header_openblas_cblas_h" "$ac_includes_default"
+if test "x$ac_cv_header_openblas_cblas_h" = xyes
+then :
+  cblas_header="openblas/cblas.h"
+fi
+
+fi
+if test "x$cblas_header" = "x"; then
+    ac_fn_c_check_header_compile "$LINENO" "lapack/cblas.h" "ac_cv_header_lapack_cblas_h" "$ac_includes_default"
+if test "x$ac_cv_header_lapack_cblas_h" = xyes
+then :
+  cblas_header="lapack/cblas.h"
+fi
+
+fi
+if test "x$cblas_header" = "xcblas.h"; then
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <cblas.h>
+int
+main (void)
+{
+float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  cblas_found=yes
+else case e in #(
+  e) cblas_found=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+elif test "x$cblas_header" = "xopenblas/cblas.h"; then
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <openblas/cblas.h>
+int
+main (void)
+{
+float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  cblas_found=yes
+else case e in #(
+  e) cblas_found=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+elif test "x$cblas_header" = "xlapack/cblas.h"; then
+    cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <lapack/cblas.h>
+int
+main (void)
+{
+float value = 1.0f;
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasNoTrans, 1, 1, 1,
+                    1.0f, &value, 1, &value, 1, 0.0f, &value, 1);
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+  cblas_found=yes
+else case e in #(
+  e) cblas_found=no ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+else
+    cblas_found=no
+fi
+if test "x$cblas_found" = "xyes"; then
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: yes ($cblas_header)" >&5
+printf '%s\n' "yes ($cblas_header)" >&6; }
+            if test "x$CBLAS_LIBS" != "x$LAPACK_LIBS"; then
+        CBLAS_LINK_LIBS="$CBLAS_LIBS"
+    fi
+
+printf '%s\n' "#define HAVE_CBLAS 1" >>confdefs.h
+
+
+printf '%s\n' "#define CBLAS_HEADER <$cblas_header>" >>confdefs.h
+
+else
+    { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf '%s\n' "no" >&6; }
+
+printf '%s\n' "#define HAVE_CBLAS 0" >>confdefs.h
+
+fi
+LIBS="$cblas_save_LIBS"
 
 
 
