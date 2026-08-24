@@ -39,11 +39,15 @@ args=(
   --function-type 5
   --histogram-type 2
   --sfa-n-coefficients "$COEFF_NUMBER"
-  --leaf-size 1000
+  --leaf-size 100
 )
 
 if [[ $INDEX_TYPE == isax ]]; then
   args+=(--dynamic-root-split-variance)
+else
+  # Exercise the combined per-record bound: the 16 symbolic dimensions plus
+  # the disjoint leaf-MBR suffix over the remaining trie dimensions.
+  args+=(--trie-record-mbr-suffix-bound)
 fi
 
 "${MESSI_BIN:-./bin/MESSI}" "${args[@]}"
