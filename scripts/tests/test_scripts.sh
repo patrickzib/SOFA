@@ -83,6 +83,15 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
 fi
 pass 'trie leaf k-means is forwarded and scoped to trie'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-kmeans 16 --trie-leaf-centroid-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-centroid-bound'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-centroid-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie leaf centroid bound for iSAX'
+fi
+pass 'trie leaf centroid bound is forwarded and scoped to trie'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-interval -1 --dry-run >/dev/null 2>&1; then
@@ -233,6 +242,11 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --ind
     --trie-leaf-kmeans 16 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-kmeans 16'
 pass 'suite forwards trie leaf k-means'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-kmeans 16 --trie-leaf-centroid-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-centroid-bound'
+pass 'suite forwards trie leaf centroid bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

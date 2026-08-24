@@ -73,6 +73,11 @@ directory inside terminal leaves with at least 4 K records. It is disabled by
 default and is intended for direct A/B benchmarking with the MBR suffix bound.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
+`--trie-leaf-centroid-bound` is an opt-in refinement for those groups: it
+stores each group's raw-series centroid and conservative maximum ED radius,
+then uses the triangle inequality to prune groups before their record bounds
+are evaluated. It requires `--trie-leaf-kmeans` and is deliberately disabled
+by default for A/B benchmarking.
 
 `--trie-mbr-dims` controls the full node-MBR width, while
 `--trie-split-dims` limits only split-dimension selection. The latter defaults

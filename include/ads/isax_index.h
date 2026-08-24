@@ -94,6 +94,8 @@ typedef struct {
     char trie_record_mbr_suffix_bound;
     /* Optional flat k-means/MRB directory inside large terminal trie leaves. */
     int trie_leaf_kmeans;
+    /* Optional raw-ED centroid/radius triangle bound for leaf k-means groups. */
+    char trie_leaf_centroid_bound;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

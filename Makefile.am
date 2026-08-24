@@ -17,13 +17,15 @@ bin_MESSI_CFLAGS = -I/opt/local/include -I/usr/include/ -I/usr/local/include/ $(
 bin_MESSI_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) -lreadline -lm -lpthread
 bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ $(SIMD_CFLAGS) -fopenmp
 
-check_PROGRAMS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds
-TESTS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds
+check_PROGRAMS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_trie_centroid_bound
+TESTS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_trie_centroid_bound
 scripts_tests_test_ed_simd_SOURCES = scripts/tests/test_ed_simd.c
 scripts_tests_test_ed_simd_LDADD = lib/libads.a -lm
 scripts_tests_test_trie_partitioned_bounds_SOURCES = scripts/tests/test_trie_partitioned_bounds.c
 scripts_tests_test_trie_partitioned_bounds_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) -lm
 scripts_tests_test_trie_partitioned_bounds_LDFLAGS = -fopenmp
+scripts_tests_test_trie_centroid_bound_SOURCES = scripts/tests/test_trie_centroid_bound.c
+scripts_tests_test_trie_centroid_bound_LDADD = lib/libads.a -lm
 
 EXTRA_PROGRAMS = bench_ed_simd
 bench_ed_simd_SOURCES = scripts/bench_ed_simd.c

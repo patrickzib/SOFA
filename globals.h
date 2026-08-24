@@ -192,6 +192,12 @@ extern int query_report_interval;
         unsigned long int trie_cluster_bounds_all;
         unsigned long int trie_cluster_pruned_all;
         unsigned long int trie_cluster_records_pruned_all;
+        unsigned long int trie_centroid_bounds;
+        unsigned long int trie_centroid_pruned;
+        unsigned long int trie_centroid_records_pruned;
+        unsigned long int trie_centroid_bounds_all;
+        unsigned long int trie_centroid_pruned_all;
+        unsigned long int trie_centroid_records_pruned_all;
 
         #define INIT_STATS() total_input_time = 0;\
                             total_output_time = 0;\
@@ -219,6 +225,12 @@ extern int query_report_interval;
                             trie_cluster_bounds_all=0;\
                             trie_cluster_pruned_all=0;\
                             trie_cluster_records_pruned_all=0;\
+                            trie_centroid_bounds=0;\
+                            trie_centroid_pruned=0;\
+                            trie_centroid_records_pruned=0;\
+                            trie_centroid_bounds_all=0;\
+                            trie_centroid_pruned_all=0;\
+                            trie_centroid_records_pruned_all=0;\
                             total_querying_time_all=0.0;\
                             bytes_accessed_all=0;\
                             approximate_all = 0.0;\
@@ -300,6 +312,12 @@ extern int query_report_interval;
         trie_cluster_pruned = 0;\
         trie_cluster_records_pruned_all += trie_cluster_records_pruned;\
         trie_cluster_records_pruned = 0;\
+        trie_centroid_bounds_all += trie_centroid_bounds;\
+        trie_centroid_bounds = 0;\
+        trie_centroid_pruned_all += trie_centroid_pruned;\
+        trie_centroid_pruned = 0;\
+        trie_centroid_records_pruned_all += trie_centroid_records_pruned;\
+        trie_centroid_records_pruned = 0;\
         checked_nodes_all += checked_nodes;\
         checked_nodes = 0;\
         loaded_nodes_all += loaded_nodes;\
