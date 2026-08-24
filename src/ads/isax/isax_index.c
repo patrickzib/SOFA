@@ -77,7 +77,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                                 int max_total_buffer_size, int initial_fbl_buffer_size,
                                                 int total_loaded_leaves, int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag, int sample_size,
-                                                char is_norm, int histogram_type, int sample_type, int n_coefficients)
+                                                char is_norm, int histogram_type, int sample_type, int n_coefficients,
+                                                messi_index_type index_type)
 {
     int i;
     if (function_type == 4 || function_type == 6) {
@@ -87,11 +88,11 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
         }
         if (n_coefficients != 0 &&
             (n_coefficients % 2 != 0 || n_coefficients < n_segments ||
-             n_coefficients > timeseries_size / 2)) {
+             n_coefficients > timeseries_size)) {
             fprintf(stderr,
                     "error: SFA/PISA coefficient count must be even and between n-segments (%d) "
-                    "and timeseries-size/2 (%d).\n",
-                    n_segments, timeseries_size / 2);
+                    "and timeseries-size (%d).\n",
+                    n_segments, timeseries_size);
             return NULL;
         }
     }
@@ -131,7 +132,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                 8 * sizeof(sax_type));
         return NULL;
     }
-    if(n_segments > (int)(8 * (int)sizeof(root_mask_type))){
+    if(index_type == MESSI_INDEX_ISAX &&
+       n_segments > (int)(8 * (int)sizeof(root_mask_type))){
         fprintf(stderr,"error: Too many paa segments. The maximum value is %zu.\n", 
                 8 * sizeof(root_mask_type));
         return NULL;
@@ -184,7 +186,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     //                               (float) settings->n_segments);
     settings->mindist_sqrt = ((float) settings->timeseries_size /
                                    (float) settings->n_segments);
-    settings->root_nodes_size = pow(2, settings->n_segments);
+    settings->root_nodes_size = index_type == MESSI_INDEX_ISAX
+                                    ? pow(2, settings->n_segments) : 0;
     
     // SEGMENTS * (CARDINALITY)
     float c_size = ceil(log10(settings->sax_alphabet_cardinality + 1));
@@ -193,7 +196,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                   + 5 + strlen(root_directory);
     
     
-    if(n_segments > sax_bit_cardinality)
+    if(index_type == MESSI_INDEX_ISAX && n_segments > sax_bit_cardinality)
     {
         settings->bit_masks = malloc(sizeof(root_mask_type) * (n_segments+1));
         if(settings->bit_masks == NULL) {
@@ -240,8 +243,9 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->n_coefficients = n_coefficients;
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
-    settings->index_type = MESSI_INDEX_ISAX;
+    settings->index_type = index_type;
     settings->trie_bound_dimensions = 0;
+    settings->trie_record_mbr_suffix_bound = 0;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2554,7 +2558,8 @@ isax_index * index_read(const char* root_directory) {
 																total_loaded_leaves,
 																tight_bound,
 																aggressive_check,
-																0,0,false,false,1,false,1,1,0);
+																0,0,false,false,1,false,1,1,0,
+                                                        MESSI_INDEX_ISAX);
 	idx_settings->raw_filename = malloc(sizeof(char) * 256);
 	strcpy(idx_settings->raw_filename, raw_filename);
 	free(raw_filename);
@@ -2934,7 +2939,8 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds\n");
+        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s\n",
+                settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "");
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

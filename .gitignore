@@ -79,6 +79,7 @@ fabric.properties
 # General
 .DS_Store
 notebooks/**/.DS_Store
+/scripts/output*.txt
 .AppleDouble
 .LSOverride
 
@@ -122,6 +123,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!/scripts/lib/
+!/scripts/lib/datasets.sh
 lib64/
 parts/
 sdist/
@@ -348,6 +351,7 @@ cython_debug/
 
 # Autotools artifacts
 ar-lib
+config.h
 config.log
 config.status
 configure~

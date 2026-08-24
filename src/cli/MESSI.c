@@ -329,6 +329,7 @@ int main(int argc, char **argv) {
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
+    static int trie_record_mbr_suffix_bound = 0;
     static int trie_fanout = 8;
     static int trie_fanout_specified = 0;
     static int trie_dynamic_alphabet = 0;
@@ -402,6 +403,7 @@ int main(int argc, char **argv) {
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
+                {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -458,6 +460,9 @@ int main(int argc, char **argv) {
                 break;
             case 1008:
                 SIMD_flag = 0;
+                break;
+            case 1013:
+                trie_record_mbr_suffix_bound = 1;
                 break;
             case 'j':
                 serial_scan = 1;
@@ -675,7 +680,8 @@ int main(int argc, char **argv) {
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
-                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--64; default: maximum available)\n\
+                \t--trie-mbr-dimensions XX\tTrie MBR/split dimensions (16--128; default: maximum available)\n\
+                \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
                 \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
                 \t--trie-min-fanout 2|4|...\tMinimum dynamic trie fanout (default: 2)\n\
@@ -714,7 +720,7 @@ int main(int argc, char **argv) {
                 \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
                 \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
                 \t--is-norm\t\t\tSet for search with normalized input time series\n\
-                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n_segments/2 and timeseries-size/2)\n\
+                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n-segments and timeseries-size)\n\
                 \t--histogram-type\t\t\tSet for binning strategy\n\
                 \t\t\tequi-depth splitting (default): 1\n\
                 \t\t\tequi-width splitting: 2\n\
@@ -761,10 +767,10 @@ int main(int argc, char **argv) {
         }
         if (trie_mbr_dimensions != 0 &&
             (trie_mbr_dimensions < n_segments || trie_mbr_dimensions < 16 ||
-             trie_mbr_dimensions > 64 || trie_mbr_dimensions > time_series_size / 2)) {
+             trie_mbr_dimensions > 128 || trie_mbr_dimensions > time_series_size)) {
             fprintf(stderr,
-                    "error: trie MBR dimensions must be between n-segments (%d) and min(64, timeseries-size/2) (%d).\n",
-                    n_segments, time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+                    "error: trie MBR dimensions must be between n-segments (%d) and min(128, timeseries-size) (%d).\n",
+                    n_segments, time_series_size < 128 ? time_series_size : 128);
             return EXIT_FAILURE;
         }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
@@ -789,6 +795,10 @@ int main(int argc, char **argv) {
         }
     } else if (trie_fanout != 8 || trie_dynamic_alphabet) {
         fprintf(stderr, "error: --trie-fanout requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_record_mbr_suffix_bound && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
@@ -942,7 +952,7 @@ int main(int argc, char **argv) {
             trie_bound_dimensions = index_segments;
             index_segments = trie_mbr_dimensions > 0
                                  ? trie_mbr_dimensions
-                                 : (time_series_size / 2 < 64 ? time_series_size / 2 : 64);
+                                 : (time_series_size < 128 ? time_series_size : 128);
             if (function_type == 4 || function_type == 6) {
                 if (n_coefficients == 0 || n_coefficients < index_segments) {
                     n_coefficients = index_segments;
@@ -973,17 +983,17 @@ int main(int argc, char **argv) {
             }
             if (n_coefficients != 0 &&
                 (n_coefficients % 2 != 0 || n_coefficients < index_segments ||
-                 n_coefficients > time_series_size / 2)) {
+                 n_coefficients > time_series_size)) {
                 fprintf(stderr,
                         "ERROR: SFA/PISA coeff number must be even and between %d and %d!\n",
-                        index_segments, time_series_size / 2);
+                        index_segments, time_series_size);
                 return -1;
             }
             if (index_type == MESSI_INDEX_TRIE &&
                 (n_coefficients == 0 || n_coefficients < index_segments ||
-                 index_segments > time_series_size / 2)) {
+                 index_segments > time_series_size)) {
                 fprintf(stderr,
-                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size/2.\n",
+                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size.\n",
                         index_segments);
                 return -1;
             }
@@ -1003,9 +1013,18 @@ int main(int argc, char **argv) {
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
 
+        char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
-        if (log_root == NULL || log_root[0] == '\0') log_root = getenv("HOME");
-        if (log_root == NULL || log_root[0] == '\0') log_root = ".";
+        if (log_root == NULL || log_root[0] == '\0') {
+            const char *home = getenv("HOME");
+            if (home != NULL && home[0] != '\0' &&
+                snprintf(default_log_root, sizeof(default_log_root), "%s/MESSI_logs", home) <
+                    (int) sizeof(default_log_root)) {
+                log_root = default_log_root;
+            } else {
+                log_root = "MESSI_logs";
+            }
+        }
 
         snprintf(log_file_directory, sizeof(log_file_directory), "%s", log_root);
         snprintf(log_filename, sizeof(log_filename), "%s/settings", log_root);
@@ -1089,7 +1108,8 @@ int main(int argc, char **argv) {
                                                                        is_norm,            //input normalized for fft
                                                                        histogram_type,     //histogram type for binning
                                                                        sample_type,        //sampling type
-                                                                       n_coefficients       //coeff number
+                                                                       n_coefficients,      //coeff number
+                                                                       index_type           //index layout
         );
 
         if (index_settings == NULL) {
@@ -1100,6 +1120,7 @@ int main(int argc, char **argv) {
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
+        index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
@@ -1391,6 +1412,29 @@ int main(int argc, char **argv) {
             const double exact_distance_percent = dataset_size > 0
                                                   ? 100.0 * avg_exact_distances / dataset_size
                                                   : 0.0;
+            /* In a trie every series reaching a leaf receives exactly one
+             * record lower-bound evaluation.  This lets the summary separate
+             * pruning before leaf scans (node MBRs) from pruning by the
+             * record bound itself, without adding counters to hot loops. */
+            const double node_mbr_skipped = avg_lower_bounds < dataset_size
+                                                ? (double) dataset_size - avg_lower_bounds
+                                                : 0.0;
+            const double record_bound_pruned = avg_exact_distances < avg_lower_bounds
+                                                   ? avg_lower_bounds - avg_exact_distances
+                                                   : 0.0;
+            const double node_mbr_percent = dataset_size > 0
+                                                ? 100.0 * node_mbr_skipped / dataset_size
+                                                : 0.0;
+            const double record_bound_candidate_percent = avg_lower_bounds > 0.0
+                                                              ? 100.0 * record_bound_pruned / avg_lower_bounds
+                                                              : 0.0;
+            const double record_bound_index_percent = dataset_size > 0
+                                                          ? 100.0 * record_bound_pruned / dataset_size
+                                                          : 0.0;
+            const double total_pruned_percent = dataset_size > 0
+                                                   ? 100.0 * ((double) dataset_size - avg_exact_distances) /
+                                                         dataset_size
+                                                   : 0.0;
             char nodes[32], lower_bounds[32], exact_distances[32], index_nodes[32], indexed_series[32];
             char wall_time[32];
             format_compact_count(avg_checked_nodes, nodes, sizeof(nodes));
@@ -1412,6 +1456,18 @@ int main(int argc, char **argv) {
                    nodes, checked_node_percent, index_nodes,
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
+            if (index_type == MESSI_INDEX_TRIE) {
+                const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
+                    ? "prefix + MBR suffix" : "symbolic record bound";
+                fprintf(stderr, "  pruning breakdown:\n"
+                       "    %-20s : %.2f%% indexed series skipped before record bounds\n"
+                       "    %-20s : %.2f%% of reached records pruned (%.2f%% of indexed series)\n"
+                       "    %-20s : %.2f%% indexed series pruned before exact distance\n",
+                       "node MBRs", node_mbr_percent,
+                       record_bound_name, record_bound_candidate_percent,
+                       record_bound_index_percent,
+                       "total", total_pruned_percent);
+            }
             if (profile_query_phases) {
                 fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"
                        "    node MBR bounds  : %.3f\n"

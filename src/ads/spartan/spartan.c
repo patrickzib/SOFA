@@ -40,6 +40,12 @@ static long spartan_random_at_most(uint64_t *state, long max) {
     return (long) (value % range);
 }
 
+static int spartan_compare_positions(const void *left, const void *right) {
+    const long int a = *(const long int *) left;
+    const long int b = *(const long int *) right;
+    return (a > b) - (a < b);
+}
+
 enum response spartan_bins_init(isax_index *index) {
     int num_symbols = index->settings->sax_alphabet_cardinality;
     int n_segments = index->settings->n_segments;
@@ -99,20 +105,6 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
         records = (unsigned int) ts_num;
     }
 
-    unsigned long start_number = 0;
-    unsigned long stop_number = ts_num;
-    if (index->settings->sample_type == 1) {
-        stop_number = records;
-    }
-
-    unsigned long skip_elements = 0;
-    if (index->settings->sample_type == 2 && records > 0) {
-        skip_elements = ((stop_number - start_number) / records);
-        if (skip_elements > 0) {
-            skip_elements -= 1;
-        }
-    }
-
     long int *positions = NULL;
     if (index->settings->sample_type == 3) {
         uint64_t rng_state = (uint64_t) index->settings->sampling_seed;
@@ -126,26 +118,71 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                 positions[j] = i;
             }
         }
+        /* Sample order does not affect PCA or binning.  Sorting lets the
+         * collection pass use sequential I/O instead of one seek per record. */
+        qsort(positions, records, sizeof(*positions), spartan_compare_positions);
     }
 
-    for (unsigned int i = 0; i < records; ++i) {
-        ts_type *ts = samples + (i * ts_length);
-        if (index->settings->sample_type == 3) {
-            long int position = positions[i];
-            fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
+    if (index->settings->sample_type == 2 || index->settings->sample_type == 3) {
+        /* A seek after every selected record turns a one-million-record sample
+         * into one million tiny I/O requests.  Read contiguous blocks instead
+         * and copy the uniform or reservoir-selected records within each one. */
+        const unsigned long block_records = 8192;
+        const size_t block_values = (size_t) block_records * ts_length;
+        ts_type *float_block = filetype_int ? NULL : malloc(block_values * sizeof(*float_block));
+        file_type *int_block = filetype_int ? malloc(block_values * sizeof(*int_block)) : NULL;
+        if ((!filetype_int && float_block == NULL) || (filetype_int && int_block == NULL)) {
+            free(float_block); free(int_block); free(ts_orig1); free(positions); fclose(ifile);
+            return FAILURE;
         }
 
-        if (filetype_int) {
-            fread(ts_orig1, sizeof(file_type), ts_length, ifile);
-            for (unsigned long j = 0; j < ts_length; ++j) {
-                ts[j] = (ts_type) ts_orig1[j];
+        unsigned int sample = 0;
+        for (unsigned long first = 0; first < (unsigned long) ts_num; first += block_records) {
+            const unsigned long count = ((unsigned long) ts_num - first) < block_records
+                                            ? ((unsigned long) ts_num - first) : block_records;
+            const size_t values = (size_t) count * ts_length;
+            const size_t got = filetype_int
+                                   ? fread(int_block, sizeof(*int_block), values, ifile)
+                                   : fread(float_block, sizeof(*float_block), values, ifile);
+            if (got != values) {
+                free(float_block); free(int_block); free(ts_orig1); free(positions); fclose(ifile);
+                return FAILURE;
             }
-        } else {
-            fread(ts, sizeof(ts_type), ts_length, ifile);
+            while (sample < records) {
+                const unsigned long position = index->settings->sample_type == 2
+                    ? (unsigned long) (((unsigned long long) sample *
+                                        (unsigned long long) ts_num) / records)
+                    : (unsigned long) positions[sample];
+                if (position < first) { ++sample; continue; }
+                if (position >= first + count) break;
+                ts_type *destination = samples + (size_t) sample * ts_length;
+                const size_t offset = (size_t) (position - first) * ts_length;
+                if (filetype_int) {
+                    for (unsigned long j = 0; j < ts_length; ++j)
+                        destination[j] = (ts_type) int_block[offset + j];
+                } else {
+                    memcpy(destination, float_block + offset, ts_length * sizeof(*destination));
+                }
+                ++sample;
+            }
         }
-
-        if (index->settings->sample_type == 2 && skip_elements > 0) {
-            fseek(ifile, skip_elements * ts_length * sizeof(ts_type), SEEK_CUR);
+        free(float_block);
+        free(int_block);
+        if (sample != records) {
+            free(ts_orig1); free(positions); fclose(ifile);
+            return FAILURE;
+        }
+    } else {
+        for (unsigned int i = 0; i < records; ++i) {
+            ts_type *ts = samples + (i * ts_length);
+            if (filetype_int) {
+                if (fread(ts_orig1, sizeof(file_type), ts_length, ifile) != ts_length) {
+                    free(ts_orig1); free(positions); fclose(ifile); return FAILURE;
+                }
+                for (unsigned long j = 0; j < ts_length; ++j) ts[j] = (ts_type) ts_orig1[j];
+            } else if (fread(ts, sizeof(ts_type), ts_length, ifile) != ts_length) {
+                free(ts_orig1); free(positions); fclose(ifile); return FAILURE;
+            }
         }
     }
 
@@ -380,17 +417,25 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
     return SUCCESS;
 }
 
-void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out) {
-    int n_segments = index->settings->n_segments;
-    for (int k = 0; k < n_segments; ++k) {
-        unsigned int c;
-        for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {
-            if (coeffs[k] < index->bins[k][c]) {
-                break;
-            }
-        }
-        sax_out[k] = (sax_type) c;
+/* Return the first boundary strictly above value.  This is equivalent to the
+ * former linear scan, including its treatment of values equal to a boundary,
+ * but reduces 256-symbol quantization from up to 255 comparisons to eight. */
+static unsigned int spartan_symbol_from_value(const ts_type *boundaries, int count,
+                                              ts_type value) {
+    int low = 0, high = count;
+    while (low < high) {
+        const int middle = low + (high - low) / 2;
+        if (value < boundaries[middle]) high = middle;
+        else low = middle + 1;
     }
+    return (unsigned int) low;
+}
+
+void spartan_from_pca(isax_index *index, const ts_type *coeffs, sax_type *sax_out) {
+    const int n_segments = index->settings->n_segments;
+    const int boundary_count = index->settings->sax_alphabet_cardinality - 1;
+    for (int k = 0; k < n_segments; ++k)
+        sax_out[k] = (sax_type) spartan_symbol_from_value(index->bins[k], boundary_count, coeffs[k]);
 }
 
 enum response spartan_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,

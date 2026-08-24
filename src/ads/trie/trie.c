@@ -4,6 +4,7 @@
 
 #define TRIE_MAX_FANOUT 256
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 #include "ads/sax/sax.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
@@ -36,6 +37,11 @@ static const char *trie_format_compact_count(unsigned long long value,
     return buffer;
 }
 
+typedef struct {
+    uint64_t low;
+    uint64_t high;
+} trie_dimension_mask;
+
 typedef struct symbolic_trie_node {
     struct symbolic_trie_node *children[TRIE_MAX_FANOUT];
     struct symbolic_trie_node *parent;
@@ -47,7 +53,8 @@ typedef struct symbolic_trie_node {
     int capacity;
     int split_dimension;
     uint16_t split_fanout;
-    uint64_t used_dimensions;
+    /* The trie may split on up to 128 transform dimensions. */
+    trie_dimension_mask used_dimensions;
     unsigned char leaf;
     unsigned char mbb_valid;
     unsigned char split_exhausted;
@@ -65,6 +72,19 @@ struct symbolic_trie_index {
     unsigned long split_exhausted_leaves;
     unsigned long node_count;
 };
+
+static int trie_dimension_is_used(const symbolic_trie_node *node, int dimension) {
+    return dimension < 64
+               ? (node->used_dimensions.low & (UINT64_C(1) << dimension)) != 0
+               : (node->used_dimensions.high & (UINT64_C(1) << (dimension - 64))) != 0;
+}
+
+static trie_dimension_mask trie_dimension_mark_used(trie_dimension_mask used,
+                                                    int dimension) {
+    if (dimension < 64) used.low |= UINT64_C(1) << dimension;
+    else used.high |= UINT64_C(1) << (dimension - 64);
+    return used;
+}
 
 static int trie_bucket(const sax_type *word, int dimension, int fanout) {
     int bits = 0;
@@ -133,24 +153,22 @@ typedef struct {
 typedef struct {
     trie_leaf_candidate *candidates;
     int capacity;
-    float record_lb_table[16][256];
+    float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
     int record_lb_table_ready;
 } trie_query_scratch;
 
-/* Leaf records have one concrete word, unlike an MBR range.  The common
- * 16-dimensional, full-cardinality case uses a query-local symbol table;
- * other layouts retain the existing generic dispatcher. */
+/* Leaf records have one concrete word, unlike an MBR range.  The query-local
+ * symbol table covers every supported record-bound prefix (16--64 dims). */
 static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
                                      isax_index *index, const ts_type *transform,
-                                     sax_type *word, float bsf,
+                                     sax_type *word, float bsf, float mbr_suffix,
                                      const trie_query_scratch *scratch) {
     if (scratch != NULL && scratch->record_lb_table_ready) {
-        float distance = 0.0f;
-        for (int dimension = 0; dimension < trie->bound_dimensions; ++dimension) {
-            distance += scratch->record_lb_table[dimension][word[dimension]];
-            if (distance > bsf) return distance;
-        }
-        return distance;
+        const float record_limit = bsf - mbr_suffix;
+        if (record_limit <= 0.0f) return mbr_suffix;
+        const float distance = messi_record_lb_table_sum(scratch->record_lb_table, word,
+            trie->bound_dimensions, record_limit, index->settings->SIMD_flag != 0);
+        return mbr_suffix + distance;
     }
     isax_index shadow_index = *index;
     isax_index_settings shadow_settings = *index->settings;
@@ -158,6 +176,25 @@ static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
     shadow_index.settings = &shadow_settings;
     return messi_minidist_raw(&shadow_index, (float *) transform, word,
                                shadow_settings.max_sax_cardinalities, bsf);
+}
+
+static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
+                                    isax_index *index, const ts_type *transform,
+                                    const symbolic_trie_node *node,
+                                    const trie_query_scratch *scratch) {
+    if (!index->settings->trie_record_mbr_suffix_bound || scratch == NULL ||
+        !scratch->record_lb_table_ready ||
+        trie->dimensions <= trie->bound_dimensions) return 0.0f;
+    isax_index shadow_index = *index;
+    isax_index_settings shadow_settings = *index->settings;
+    shadow_settings.n_segments = trie->dimensions;
+    shadow_index.settings = &shadow_settings;
+    float suffix = 0.0f;
+    (void) messi_minidist_range_raw_partitioned(&shadow_index, (float *) transform,
+                                                node->min_word, node->max_word,
+                                                shadow_settings.max_sax_cardinalities,
+                                                FLT_MAX, trie->bound_dimensions, &suffix);
+    return suffix;
 }
 
 static void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
@@ -174,7 +211,7 @@ static void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
 static pthread_mutex_t trie_fftw_plan_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *parent,
-                                            uint64_t used_dimensions) {
+                                            trie_dimension_mask used_dimensions) {
     symbolic_trie_node *node = calloc(1, sizeof(*node));
     if (node == NULL) return NULL;
     node->min_word = malloc((size_t) dimensions);
@@ -289,6 +326,28 @@ static void trie_node_update_mbb(symbolic_trie_node *node, const sax_type *word,
     }
 }
 
+/* Root partitioning already computes exact MBRs for all populated children.
+ * Merge them instead of making a second full scan over the root's records. */
+static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
+                                       symbolic_trie_node *const *children,
+                                       int fanout, int dimensions) {
+    node->mbb_valid = 0;
+    for (int bucket = 0; bucket < fanout; ++bucket) {
+        const symbolic_trie_node *child = children[bucket];
+        if (child == NULL || !child->mbb_valid) continue;
+        if (!node->mbb_valid) {
+            memcpy(node->min_word, child->min_word, (size_t) dimensions);
+            memcpy(node->max_word, child->max_word, (size_t) dimensions);
+            node->mbb_valid = 1;
+            continue;
+        }
+        for (int d = 0; d < dimensions; ++d) {
+            if (child->min_word[d] < node->min_word[d]) node->min_word[d] = child->min_word[d];
+            if (child->max_word[d] > node->max_word[d]) node->max_word[d] = child->max_word[d];
+        }
+    }
+}
+
 static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
     if (scratch == NULL) return 0;
     if (capacity <= scratch->capacity) return 1;
@@ -359,7 +418,7 @@ static int trie_choose_split(const symbolic_trie_node *node, int dimensions,
     int best = -1;
     double best_score = -1.0;
     for (int d = 0; d < dimensions; ++d) {
-        if (node->used_dimensions & (UINT64_C(1) << d)) continue;
+        if (trie_dimension_is_used(node, d)) continue;
         const int fanout = trie_dimension_fanout(trie, index, d);
         if (fanout <= 1) continue;
         int counts[TRIE_MAX_FANOUT] = {0};
@@ -382,7 +441,7 @@ static int trie_split_leaf(struct symbolic_trie_index *trie, isax_index *index, 
     int dimension = trie_choose_split(node, trie->dimensions, trie, index,
                                       index->settings->symbolic_variances);
     if (dimension < 0) { node->split_exhausted = 1; ++trie->split_exhausted_leaves; return 0; }
-    uint64_t used = node->used_dimensions | (UINT64_C(1) << dimension);
+    trie_dimension_mask used = trie_dimension_mark_used(node->used_dimensions, dimension);
     const int fanout = trie_dimension_fanout(trie, index, dimension);
     symbolic_trie_node *children[TRIE_MAX_FANOUT] = {0};
     for (int i = 0; i < node->size; ++i) {
@@ -439,7 +498,7 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
     int dimension = -1;
     double best_score = -1.0;
     for (int d = 0; d < dimensions; ++d) {
-        if (node->used_dimensions & (UINT64_C(1) << d)) continue;
+        if (trie_dimension_is_used(node, d)) continue;
         const int fanout = trie_dimension_fanout(trie, index, d);
         if (fanout <= 1) continue;
         unsigned long counts[TRIE_MAX_FANOUT] = {0};
@@ -505,7 +564,7 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
     }
 
     symbolic_trie_node *children[TRIE_MAX_FANOUT] = {0};
-    const uint64_t used = node->used_dimensions | (UINT64_C(1) << dimension);
+    const trie_dimension_mask used = trie_dimension_mark_used(node->used_dimensions, dimension);
     for (int bucket = 0; bucket < fanout; ++bucket) if (bucket_sizes[bucket] != 0) {
         children[bucket] = trie_node_create(dimensions, node, used);
         if (children[bucket] == NULL ||
@@ -564,6 +623,7 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         }
         children[bucket]->mbb_valid = 1;
     }
+    trie_node_merge_child_mbbs(node, children, fanout, dimensions);
     free(counts); free(offsets); free(local_min); free(local_max);
     free(node->words); free(node->positions);
     node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
@@ -664,7 +724,9 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     fclose(file);
     double read_end = messi_monotonic_seconds();
     struct symbolic_trie_index *trie = calloc(1, sizeof(*trie));
-    if (trie == NULL || (trie->root = trie_node_create(index->settings->n_segments, NULL, 0)) == NULL) {
+    if (trie == NULL ||
+        (trie->root = trie_node_create(index->settings->n_segments, NULL,
+                                       (trie_dimension_mask) { 0, 0 })) == NULL) {
         free(trie); free(rawfile); rawfile = NULL; return FAILURE;
     }
     trie->dimensions = index->settings->n_segments;
@@ -720,8 +782,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     }
     if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
     double transform_end = messi_monotonic_seconds();
-    for (long i = 0; i < ts_num; ++i) trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
-    double root_mbb_end = messi_monotonic_seconds();
+    double root_mbb_end = transform_end;
+    int root_mbb_merged_during_split = 0;
 
     /* Split the initially enormous root before entering the task region.  The
      * sampled splitter uses OpenMP worksharing itself; nested worksharing from
@@ -732,6 +794,17 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
             return FAILURE;
         }
+        if (root_split > 0) {
+            root_mbb_merged_during_split = 1;
+        } else {
+            for (long i = 0; i < ts_num; ++i)
+                trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
+            root_mbb_end = messi_monotonic_seconds();
+        }
+    } else {
+        for (long i = 0; i < ts_num; ++i)
+            trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
+        root_mbb_end = messi_monotonic_seconds();
     }
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
@@ -763,7 +836,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     fprintf(stderr, ">>> trie build timing\n");
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
     fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);
-    fprintf(stderr, "    root MBR   : %.3f s\n", root_mbb_end - transform_end);
+    fprintf(stderr, "    root MBR   : %.3f s%s\n", root_mbb_end - transform_end,
+            root_mbb_merged_during_split ? " (merged during root partition)" : "");
     fprintf(stderr, "    split      : %.3f s\n", split_end - root_mbb_end);
     fprintf(stderr, "    total      : %.3f s\n", split_end - build_start);
     if (internal_nodes != 0) {
@@ -787,6 +861,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_node *node,
                                        const ts_type *query, const ts_type *transform, float bsf,
                                        trie_query_stats *stats, trie_query_scratch *scratch) {
+    const float mbr_suffix = trie_record_mbr_suffix(index->trie, index, transform, node, scratch);
     if (!trie_scratch_reserve(scratch, node->size)) {
         /* Allocation failure is not a correctness failure: retain the former
          * streaming order rather than dropping candidates. */
@@ -795,7 +870,8 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
             else __sync_fetch_and_add(&LBDcalculationnumber, 1);
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
-            if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf, scratch) < bsf) {
+            if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
+                                        mbr_suffix, scratch) < bsf) {
                 if (bound_start != 0)
                     stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
                 if (stats != NULL) ++stats->exact_distances;
@@ -817,7 +893,7 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
         if (stats != NULL) ++stats->lower_bounds;
         else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
-                                                     node->words[i], bsf, scratch);
+                                                     node->words[i], bsf, mbr_suffix, scratch);
         if (lower_bound < bsf) {
             scratch->candidates[candidate_count].lower_bound = lower_bound;
             scratch->candidates[candidate_count++].record_index = i;
@@ -923,7 +999,8 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
     for (int i = 0; i < node->size; ++i) {
         pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
         __sync_fetch_and_add(&LBDcalculationnumber, 1);
-        if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf, NULL) < bsf) {
+        if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
+                                    0.0f, NULL) < bsf) {
             __sync_fetch_and_add(&RDcalculationnumber, 1);
             float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
             if (d < bsf) { pthread_mutex_lock(bsf_lock); if (d < *shared_bsf) *shared_bsf = d; pthread_mutex_unlock(bsf_lock); }

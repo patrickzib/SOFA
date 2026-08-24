@@ -181,7 +181,6 @@ extern int query_report_interval;
         file_position_type loaded_records;
         unsigned long int LBDcalculationnumber;
         unsigned long int RDcalculationnumber;
-
         unsigned long int LBDcalculationnumber_all;
         unsigned long int RDcalculationnumber_all;
 

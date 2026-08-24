@@ -59,6 +59,7 @@ Command-line path options take precedence over these environment variables:
 | `MESSI_SEISBENCH_ROOT` | `/vol/tmp/schaefpa/seismic` | SeisBench datasets and queries |
 | `MESSI_SEISBENCH_QUERY_ROOT` | SeisBench root | optional separate SeisBench query root |
 | `MESSI_LOG_ROOT` | `$HOME/MESSI_logs` | logs produced by MESSI |
+| `MESSI_SHELL_LOG_DIR` | `MESSI_LOG_ROOT` | combined runner transcript for each dataset/profile run |
 | `MESSI_RESULTS_ROOT` | `$HOME/MESSI_SFA_logs` | archived benchmark results |
 | `MESSI_INDEX_ROOT` | `$HOME/index` | index directory cleared by `run_cleanup.sh` |
 | `MESSI_DRY_RUN` | `false` | enable dry-run mode through compatibility wrappers |

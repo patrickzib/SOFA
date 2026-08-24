@@ -165,6 +165,17 @@ if(BUILD_TESTING)
     target_link_libraries(test_ed_simd PRIVATE ${MATH_LIBRARY})
   endif()
   add_test(NAME ed_simd_scalar_reference COMMAND test_ed_simd)
+
+  add_executable(test_trie_partitioned_bounds scripts/tests/test_trie_partitioned_bounds.c)
+  target_include_directories(test_trie_partitioned_bounds PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_trie_partitioned_bounds PRIVATE ads)
+  if(MATH_LIBRARY)
+    target_link_libraries(test_trie_partitioned_bounds PRIVATE ${MATH_LIBRARY})
+  endif()
+  add_test(NAME trie_partitioned_bound_reference COMMAND test_trie_partitioned_bounds)
 endif()
 
 add_executable(bench_ed_simd EXCLUDE_FROM_ALL scripts/bench_ed_simd.c)

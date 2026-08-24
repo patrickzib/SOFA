@@ -48,6 +48,34 @@ int main(void) {
             }
         }
     }
+
+    /* Query-local record tables must agree for every supported trie prefix,
+     * both with the scalar path and with target-specific gather SIMD. */
+    float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
+    sax_type word[MESSI_RECORD_LB_MAX_DIMENSIONS];
+    const int widths[] = {16, 17, 31, 32, 48, 64};
+    for (int trial = 0; trial < 1000; ++trial) {
+        for (int dimension = 0; dimension < MESSI_RECORD_LB_MAX_DIMENSIONS; ++dimension) {
+            word[dimension] = (sax_type) (next_random() >> 24);
+            for (int symbol = 0; symbol < 256; ++symbol)
+                table[dimension][symbol] = (float) (next_random() & 0xffU) / 4096.0f;
+        }
+        for (size_t width = 0; width < sizeof(widths) / sizeof(widths[0]); ++width) {
+            const float limit = trial % 2 == 0 ? FLT_MAX : 0.75f;
+            const float reference = messi_record_lb_table_scalar(table, word, widths[width], limit);
+            const float actual = messi_record_lb_table_sum(table, word, widths[width], limit, 1);
+            /* SIMD checks a whole vector before testing the BSF, so it may
+             * overshoot a bounded scalar sum. Both must agree on pruning; if
+             * neither crosses the limit, their complete sums must agree. */
+            if ((reference > limit) != (actual > limit) ||
+                (reference <= limit && fabsf(reference - actual) > 1e-5f * fmaxf(1.0f, reference))) {
+                fprintf(stderr, "record-table mismatch: dims=%d reference=%g actual=%g\n",
+                        widths[width], reference, actual);
+                free(index.binsv);
+                return 1;
+            }
+        }
+    }
     free(index.binsv);
     return 0;
 }

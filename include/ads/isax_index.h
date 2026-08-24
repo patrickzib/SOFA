@@ -88,6 +88,7 @@ typedef struct {
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
+    char trie_record_mbr_suffix_bound;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;
@@ -161,7 +162,8 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
 												int tight_bound, int aggressive_check, int new_index,
                                                 int function_type, char inmemory_flag, char SIMD_flag,
                                                 int sample_size, char is_norm, int histogram_type,
-                                                int sample_type, int n_coefficients);
+                                                int sample_type, int n_coefficients,
+                                                messi_index_type index_type);
 void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node,

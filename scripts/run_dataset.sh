@@ -21,11 +21,13 @@ Options:
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes
-  --sampling-seed N         Seed random binning sampling (default: 1)
+  --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
-  --trie-mbr-dims N         Trie MBR/split dimensions (default: dataset COEFF_NUMBER)
+  --trie-mbr-dims N         Trie MBR/split dimensions (16--128; capped by series length)
+  --trie-record-mbr-suffix-bound
+                            Add leaf-MBR contributions outside the 16 record-bound dimensions
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -165,6 +167,7 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -177,7 +180,9 @@ DYNAMIC_ROOT_SPLIT_VARIANCE=
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
-MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-$SCRIPT_DIR}
+# Keep the shell transcript with MESSI's CSV logs by default.  An explicit
+# MESSI_SHELL_LOG_DIR remains useful for CI or a separate transcript archive.
+MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-${MESSI_LOG_ROOT:-"$HOME/MESSI_logs"}}
 DATA_ROOT=${MESSI_DATA_ROOT:-/vol/tmp/schaefpa/messi_datasets}
 SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/vol/tmp/schaefpa/seismic}
 QUERY_ROOT=${MESSI_QUERY_ROOT:-}
@@ -206,6 +211,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -249,6 +255,7 @@ fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -264,9 +271,13 @@ MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must b
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-$COEFF_NUMBER}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
-    (( TRIE_MBR_DIMS <= 64 )) || TRIE_MBR_DIMS=64
-    (( TRIE_MBR_DIMS <= TS_SIZE / 2 )) || TRIE_MBR_DIMS=$((TS_SIZE / 2))
+    (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
+    (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
+    # SFA/PISA need a training pool at least as wide as the trie word.  Keep
+    # the historical iSAX coefficient defaults untouched; widen only a trie
+    # that explicitly requests more MBR dimensions.
+    (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
     [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'
 else
@@ -346,6 +357,7 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet
@@ -470,7 +482,9 @@ run_method() {
         args+=(--dynamic-root-split-variance)
     fi
     if [[ -n $histogram_type ]]; then
-        args+=(--sample-size "$SAMPLE_SIZE" --sample-type 3 --is-norm --histogram-type "$histogram_type")
+        # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
+        # previously issued one scattered seek/read for each sampled record.
+        args+=(--sample-size "$SAMPLE_SIZE" --sample-type 2 --is-norm --histogram-type "$histogram_type")
         [[ $function_type == 4 || $function_type == 6 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
         if [[ $PROFILE == standard && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
         if [[ $DATASET_ID == sift1b && $histogram_type == 1 && ( $PROFILE == knn || $PROFILE == sampling ) ]]; then
