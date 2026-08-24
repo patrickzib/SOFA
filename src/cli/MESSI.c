@@ -1446,13 +1446,16 @@ int main(int argc, char **argv) {
             const double exact_distance_percent = dataset_size > 0
                                                   ? 100.0 * avg_exact_distances / dataset_size
                                                   : 0.0;
-            /* In a trie every series reaching a leaf receives exactly one
-             * record lower-bound evaluation.  This lets the summary separate
-             * pruning before leaf scans (node MBRs) from pruning by the
-             * record bound itself, without adding counters to hot loops. */
-            const double node_mbr_skipped = avg_lower_bounds < dataset_size
-                                                ? (double) dataset_size - avg_lower_bounds
-                                                : 0.0;
+            /* In a trie, every record that survives node and optional leaf
+             * cluster MBRs receives exactly one record lower-bound evaluation.
+             * Keep those stages separate: a cluster-pruned record deliberately
+             * has no per-record lower-bound call. */
+            const double avg_cluster_records_pruned = queries_size > 0
+                ? (double) trie_cluster_records_pruned_all / queries_size : 0.0;
+            const double node_mbr_skipped =
+                (double) dataset_size > avg_lower_bounds + avg_cluster_records_pruned
+                    ? (double) dataset_size - avg_lower_bounds - avg_cluster_records_pruned
+                    : 0.0;
             const double record_bound_pruned = avg_exact_distances < avg_lower_bounds
                                                    ? avg_lower_bounds - avg_exact_distances
                                                    : 0.0;
@@ -1490,24 +1493,25 @@ int main(int argc, char **argv) {
                    nodes, checked_node_percent, index_nodes,
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
-            if (index_type == MESSI_INDEX_TRIE && trie_cluster_bounds_all != 0) {
-                const double cluster_prune_percent =
-                    100.0 * (double) trie_cluster_pruned_all / trie_cluster_bounds_all;
-                const double cluster_record_skip_percent = dataset_size > 0
-                    ? 100.0 * (double) trie_cluster_records_pruned_all /
-                      ((double) dataset_size * queries_size)
-                    : 0.0;
-                fprintf(stderr, "  leaf clusters    : %.2f%% pruned; %.2f%% records skipped\n",
-                        cluster_prune_percent, cluster_record_skip_percent);
-            }
             if (index_type == MESSI_INDEX_TRIE) {
                 const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
                     ? "prefix + MBR suffix" : "symbolic record bound";
                 fprintf(stderr, "  pruning breakdown:\n"
-                       "    %-20s : %.2f%% indexed series skipped before record bounds\n"
-                       "    %-20s : %.2f%% of reached records pruned (%.2f%% of indexed series)\n"
+                       "    %-20s : %.2f%% indexed series skipped before leaf scanning\n",
+                       "node MBRs", node_mbr_percent);
+                if (trie_cluster_bounds_all != 0) {
+                    const double cluster_prune_percent =
+                        100.0 * (double) trie_cluster_pruned_all / trie_cluster_bounds_all;
+                    const double cluster_record_skip_percent = dataset_size > 0
+                        ? 100.0 * avg_cluster_records_pruned / dataset_size : 0.0;
+                    fprintf(stderr,
+                            "    %-20s : %.2f%% cluster MBRs pruned (%.2f%% of indexed series)\n",
+                            "leaf cluster MBRs", cluster_prune_percent,
+                            cluster_record_skip_percent);
+                }
+                fprintf(stderr,
+                       "    %-20s : %.2f%% of records reaching record bounds pruned (%.2f%% of indexed series)\n"
                        "    %-20s : %.2f%% indexed series pruned before exact distance\n",
-                       "node MBRs", node_mbr_percent,
                        record_bound_name, record_bound_candidate_percent,
                        record_bound_index_percent,
                        "total", total_pruned_percent);
