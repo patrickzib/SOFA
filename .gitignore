@@ -369,6 +369,7 @@ stamp-h1
 bin/MESSI
 lib/libads.a
 src/**/.deps/
+scripts/**/.deps/
 src/**/.dirstamp
 
 # Kernel Module Compile Results

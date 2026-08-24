@@ -28,6 +28,9 @@ mkdir -p build
 cd build
 
 # Configure
+CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" LIBS="$LIBS" \
+LAPACK_LIBS="$LAPACK_LIBS" CBLAS_LIBS="$CBLAS_LIBS" \
+CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" \
 ../configure --with-fftw="$FFTW_PREFIX"
 
 # Build

@@ -22,6 +22,9 @@ export CFLAGS="-O3 -DNDEBUG -march=native ${CFLAGS:-}"
 export CXXFLAGS="-O3 -DNDEBUG -march=native ${CXXFLAGS:-}"
 
 make clean || true
+CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" LIBS="$LIBS" \
+LAPACK_LIBS="$LAPACK_LIBS" CBLAS_LIBS="$CBLAS_LIBS" \
+CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" \
 ./configure --with-fftw="$FFTW_PREFIX"
 make -j
 
