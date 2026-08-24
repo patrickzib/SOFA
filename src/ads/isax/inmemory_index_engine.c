@@ -901,8 +901,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     COUNT_INDEXING_TIME_END
 
-    fprintf(stderr, ">>> dynamic_index=%d root_nodes=%lu\n",
-            kn, index->root_nodes);
     fprintf(stderr,
             ">>> iSAX build timing: load%s=%.3fs transform+insert+flush=%.3fs total=%.3fs\n",
             apply_znorm ? "+znorm" : "", load_end - build_start,

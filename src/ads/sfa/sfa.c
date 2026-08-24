@@ -597,10 +597,6 @@ void *set_bins_worker_dft(void *transferdata) {
         if (index->settings->sample_type == 2) {
             fseek(ifile, skip_elements * ts_length * sizeof(ts_type), SEEK_CUR);
             position_count += (1 + skip_elements);
-            if (position_count >= stop_number) {
-                fprintf(stderr, "pos %lu; stop_number %lu\n", position_count,
-                        stop_number);
-            }
         }
 
         /*
