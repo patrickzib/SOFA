@@ -8,18 +8,24 @@ Symbolic trie
   fanout, leaf capacity, sampled root splitting, and entropy × variance-based
   splits.
 - Stores MBRs and selects split dimensions across the full transform word
-  (up to 128 dimensions, capped by the series length); record lower bounds
-  use the leading 16 dimensions.
+  (up to 128 dimensions, capped by the series length); split selection uses
+  the leading 64 dimensions by default and can be overridden independently.
+  Record lower bounds use the leading 16 dimensions.
 - Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
   optional z-normalization, and query-specific symbolic lower-bound tables.
 - Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
   bounds, with exact-distance early abandonment.  An optional disjoint
   leaf-MBR suffix contribution strengthens record bounds beyond the first
   16 dimensions (`--trie-record-mbr-suffix-bound`).
+- Avoids a redundant full root-MBR scan for split tries by merging the MBRs
+  already produced during root partitioning.
 - Added an optional post-build, flat k-means directory inside large SFA, PISA,
   and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
   groups before their records are scanned, without changing the main trie;
   eligible leaves are clustered in parallel during construction.
+- Optional `--trie-leaf-centroid-bound` adds a conservative raw-series
+  centroid/radius triangle bound to those k-means groups. It is opt-in and
+  reports its aggregate pruning contribution in the query summary.
 - Provides batch and single-query parallel modes with configurable worker and
   queue counts, plus construction, coverage, and per-phase query timings.
 - Reports split occupancy, non-empty-child, and largest-child diagnostics to
@@ -42,6 +48,8 @@ Sampling
 - Reworked SPARTAN uniform and random binning samples to read contiguous
   blocks instead of seeking separately for every sampled record.  This avoids
   the severe random-I/O slowdown on large datasets.
+- Replaced SPARTAN, SFA, and PISA linear bin-boundary scans during
+  symbolization with equivalent binary searches.
 
 iSAX
 ----
@@ -65,7 +73,9 @@ Benchmark runners
 - iSAX runner methods use variance-driven root cardinalities by default;
   trie MBR/split dimensions follow each dataset's coefficient setting and can
   be overridden with `--trie-mbr-dims` (16--128, capped by series length);
-  trie fanout is configurable with `--trie-fanout 2|4|8`.
+  split-choice width is independently configurable with `--trie-split-dims`
+  and defaults to 32 dimensions in benchmark runners. Trie fanout is configurable with
+  `--trie-fanout 2|4|8`.
 - Trie suite and dataset runners forward the record-MBR suffix and leaf
   k-means options.  Runner and MESSI logs again default to
   `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
