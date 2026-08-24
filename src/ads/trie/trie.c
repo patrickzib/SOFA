@@ -476,7 +476,6 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
                                        sizeof(*histograms));
     if (histograms == NULL) return -1;
 
-    const double selection_start = messi_monotonic_seconds();
 #ifdef _OPENMP
 #pragma omp parallel num_threads(workers)
 #endif
@@ -523,7 +522,6 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
         if (score > best_score) { best_score = score; dimension = d; }
     }
     free(histograms);
-    const double selection_end = messi_monotonic_seconds();
     if (dimension < 0) {
         node->split_exhausted = 1;
         ++trie->split_exhausted_leaves;
@@ -633,14 +631,6 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
     node->words = NULL; node->positions = NULL; node->size = node->capacity = 0;
     node->leaf = 0; node->split_dimension = dimension; node->split_fanout = fanout;
     memcpy(node->children, children, sizeof(children));
-    const double partition_end = messi_monotonic_seconds();
-    char sample_count[32];
-    fprintf(stderr, ">>> trie root split timing\n");
-    fprintf(stderr, "    sample records : %s\n",
-            trie_format_compact_count((unsigned long long) sample_size, sample_count));
-    fprintf(stderr, "    selection      : %.3f s\n", selection_end - selection_start);
-    fprintf(stderr, "    partition      : %.3f s\n", partition_end - selection_end);
-    fprintf(stderr, "    dimension      : %d\n", dimension);
     return 1;
 }
 
@@ -898,8 +888,6 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     }
     if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
     double transform_end = messi_monotonic_seconds();
-    double root_mbb_end = transform_end;
-    int root_mbb_merged_during_split = 0;
 
     /* Split the initially enormous root before entering the task region.  The
      * sampled splitter uses OpenMP worksharing itself; nested worksharing from
@@ -910,17 +898,13 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
             return FAILURE;
         }
-        if (root_split > 0) {
-            root_mbb_merged_during_split = 1;
-        } else {
+        if (root_split == 0) {
             for (long i = 0; i < ts_num; ++i)
                 trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
-            root_mbb_end = messi_monotonic_seconds();
         }
     } else {
         for (long i = 0; i < ts_num; ++i)
             trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
-        root_mbb_end = messi_monotonic_seconds();
     }
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
@@ -952,9 +936,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     fprintf(stderr, ">>> trie build timing\n");
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
     fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);
-    fprintf(stderr, "    root MBR   : %.3f s%s\n", root_mbb_end - transform_end,
-            root_mbb_merged_during_split ? " (merged during root partition)" : "");
-    fprintf(stderr, "    split      : %.3f s\n", split_end - root_mbb_end);
+    fprintf(stderr, "    split      : %.3f s\n", split_end - transform_end);
     fprintf(stderr, "    total      : %.3f s\n", split_end - build_start);
     if (internal_nodes != 0) {
         char internal_count[32];

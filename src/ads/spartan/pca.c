@@ -244,8 +244,10 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
     int parallel_sgemm = 0;
 #if HAVE_OPENBLAS_CONFIG
     const char *openblas_config = openblas_get_config();
+#ifdef _OPENMP
     parallel_sgemm = openblas_config != NULL &&
         strstr(openblas_config, "SINGLE_THREADED") != NULL && workers > 1 && rows > 1;
+#endif
 #endif
     if (parallel_sgemm) {
         const int worker_count = workers < (int) rows ? workers : (int) rows;
@@ -269,20 +271,34 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
                     input, input_dim, index->pca_components, input_dim,
                     0.0f, output, output_dim);
     }
+    static int reported_projection_mode = 0;
+    if (!reported_projection_mode) {
 #if HAVE_OPENBLAS_CONFIG
-    static int reported_parallel_mode = 0;
-    if (!reported_parallel_mode && parallel_sgemm) {
-        fprintf(stderr, ">>> PCA projection: OpenBLAS is single-threaded; using %d OpenMP SGEMM workers\n",
-                workers < (int) rows ? workers : (int) rows);
-        reported_parallel_mode = 1;
-    }
+        if (parallel_sgemm) {
+            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS is single-threaded, using %d OpenMP workers\n",
+                    workers < (int) rows ? workers : (int) rows);
+        } else if (openblas_config != NULL) {
+            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS threaded (%s)\n",
+                    openblas_config);
+        } else {
+            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
+        }
+#else
+        fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
 #endif
+        reported_projection_mode = 1;
+    }
     for (unsigned int row = 0; row < rows; ++row) {
         ts_type *projected = output + (size_t) row * output_dim;
         for (int k = 0; k < components; ++k) projected[k] += (ts_type) index->pca_bias[k];
     }
     return SUCCESS;
 #else
+    static int reported_scalar_mode = 0;
+    if (!reported_scalar_mode) {
+        fprintf(stderr, ">>> PCA projection: scalar fallback (CBLAS not compiled)\n");
+        reported_scalar_mode = 1;
+    }
     for (unsigned int row = 0; row < rows; ++row) {
         if (pca_from_ts(index, input + (size_t) row * input_dim,
                         output + (size_t) row * output_dim) != SUCCESS)
