@@ -5,6 +5,9 @@
 #include "../../globals.h"
 #include "isax_index.h"
 
+/* Trie record bounds may use a prefix of up to 64 transform dimensions. */
+#define MESSI_RECORD_LB_MAX_DIMENSIONS 64
+
 /* Monotonic wall-clock time for concise construction/query phase reporting. */
 double messi_monotonic_seconds(void);
 
@@ -47,7 +50,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
 int messi_build_record_lb_table(const isax_index *index,
                                 const float *paa_or_fft,
                                 int dimensions,
-                                float table[16][256]);
+                                float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256]);
 
 // Shared minidist dispatch. Representation-specific dependencies stay private
 // to calc_utils.c so users of this header do not import SFA or SPARTAN.

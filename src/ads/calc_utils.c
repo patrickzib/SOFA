@@ -381,9 +381,10 @@ static ts_type get_lb_distance(const ts_type *bins, float value, sax_type v, sax
 int messi_build_record_lb_table(const isax_index *index,
                                 const float *paa_or_fft,
                                 int dimensions,
-                                float table[16][256]) {
+                                float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256]) {
     if (index == NULL || index->settings == NULL || paa_or_fft == NULL || table == NULL ||
-        dimensions != 16 || index->settings->sax_bit_cardinality != 8 ||
+        dimensions < 16 || dimensions > MESSI_RECORD_LB_MAX_DIMENSIONS ||
+        index->settings->sax_bit_cardinality != 8 ||
         index->settings->sax_alphabet_cardinality != 256) return 0;
 
     const isax_index_settings *settings = index->settings;

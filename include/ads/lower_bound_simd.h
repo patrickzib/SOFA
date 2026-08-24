@@ -6,11 +6,109 @@
 #include "ads/isax_index.h"
 #include <stdint.h>
 
+#ifndef MESSI_RECORD_LB_MAX_DIMENSIONS
+#define MESSI_RECORD_LB_MAX_DIMENSIONS 64
+#endif
+
 #if defined(__AVX512F__) || ADS_HAVE_AVX2
 #include <immintrin.h>
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__)
 #include <arm_neon.h>
 #endif
+
+/* The values in this table are already squared lower-bound contributions.
+ * Gather them by the record's 8-bit symbols; this avoids reconstructing bin
+ * intervals for every record in a leaf. */
+static inline float messi_record_lb_table_scalar(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *word,
+        int dimensions, float limit) {
+    float distance = 0.0f;
+    for (int dimension = 0; dimension < dimensions && distance <= limit; ++dimension)
+        distance += table[dimension][word[dimension]];
+    return distance;
+}
+
+#if ADS_HAVE_AVX2
+static inline float messi_record_lb_table_avx2(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *word,
+        int dimensions, float limit) {
+    const float *base = &table[0][0];
+    const __m256i offsets = _mm256_setr_epi32(0, 256, 512, 768, 1024, 1280, 1536, 1792);
+    float distance = 0.0f;
+    int dimension = 0;
+    for (; dimension + 8 <= dimensions && distance <= limit; dimension += 8) {
+        const __m128i symbols8 = _mm_loadl_epi64((const __m128i *) (word + dimension));
+        const __m256i symbols = _mm256_cvtepu8_epi32(symbols8);
+        const __m256i indices = _mm256_add_epi32(offsets, symbols);
+        const __m256 values = _mm256_i32gather_ps(base + (size_t) dimension * 256, indices, 4);
+        __m128 sum = _mm_add_ps(_mm256_castps256_ps128(values), _mm256_extractf128_ps(values, 1));
+        sum = _mm_hadd_ps(sum, sum);
+        sum = _mm_hadd_ps(sum, sum);
+        distance += _mm_cvtss_f32(sum);
+    }
+    for (; dimension < dimensions && distance <= limit; ++dimension)
+        distance += table[dimension][word[dimension]];
+    return distance;
+}
+#endif
+
+#if defined(__AVX512F__)
+static inline float messi_record_lb_table_avx512(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *word,
+        int dimensions, float limit) {
+    const float *base = &table[0][0];
+    const __m512i offsets = _mm512_setr_epi32(
+        0, 256, 512, 768, 1024, 1280, 1536, 1792,
+        2048, 2304, 2560, 2816, 3072, 3328, 3584, 3840);
+    float distance = 0.0f;
+    int dimension = 0;
+    for (; dimension + 16 <= dimensions && distance <= limit; dimension += 16) {
+        const __m128i symbols16 = _mm_loadu_si128((const __m128i *) (word + dimension));
+        const __m512i symbols = _mm512_cvtepu8_epi32(symbols16);
+        const __m512i indices = _mm512_add_epi32(offsets, symbols);
+        const __m512 values = _mm512_i32gather_ps(indices, base + (size_t) dimension * 256, 4);
+        distance += _mm512_reduce_add_ps(values);
+    }
+    for (; dimension < dimensions && distance <= limit; ++dimension)
+        distance += table[dimension][word[dimension]];
+    return distance;
+}
+#endif
+
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+static inline float messi_record_lb_table_neon(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *word,
+        int dimensions, float limit) {
+    float distance = 0.0f;
+    int dimension = 0;
+    for (; dimension + 4 <= dimensions && distance <= limit; dimension += 4) {
+        const float values[4] = {
+            table[dimension][word[dimension]], table[dimension + 1][word[dimension + 1]],
+            table[dimension + 2][word[dimension + 2]], table[dimension + 3][word[dimension + 3]]
+        };
+        distance += vaddvq_f32(vld1q_f32(values));
+    }
+    for (; dimension < dimensions && distance <= limit; ++dimension)
+        distance += table[dimension][word[dimension]];
+    return distance;
+}
+#endif
+
+static inline float messi_record_lb_table_sum(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *word,
+        int dimensions, float limit, int simd_enabled) {
+    if (!simd_enabled)
+        return messi_record_lb_table_scalar(table, word, dimensions, limit);
+#if defined(__AVX512F__)
+    return messi_record_lb_table_avx512(table, word, dimensions, limit);
+#elif ADS_HAVE_AVX2
+    return messi_record_lb_table_avx2(table, word, dimensions, limit);
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    return messi_record_lb_table_neon(table, word, dimensions, limit);
+#else
+    return messi_record_lb_table_scalar(table, word, dimensions, limit);
+#endif
+}
 
 static inline float messi_lower_bound_16_scalar(const isax_index *index,
                                                  const float values[16],

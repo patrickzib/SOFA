@@ -4,6 +4,7 @@
 
 #define TRIE_MAX_FANOUT 256
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 #include "ads/sax/sax.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
@@ -152,25 +153,21 @@ typedef struct {
 typedef struct {
     trie_leaf_candidate *candidates;
     int capacity;
-    float record_lb_table[16][256];
+    float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
     int record_lb_table_ready;
 } trie_query_scratch;
 
-/* Leaf records have one concrete word, unlike an MBR range.  The common
- * 16-dimensional, full-cardinality case uses a query-local symbol table;
- * other layouts retain the existing generic dispatcher. */
+/* Leaf records have one concrete word, unlike an MBR range.  The query-local
+ * symbol table covers every supported record-bound prefix (16--64 dims). */
 static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
                                      isax_index *index, const ts_type *transform,
                                      sax_type *word, float bsf, float mbr_suffix,
                                      const trie_query_scratch *scratch) {
     if (scratch != NULL && scratch->record_lb_table_ready) {
-        float distance = 0.0f;
         const float record_limit = bsf - mbr_suffix;
         if (record_limit <= 0.0f) return mbr_suffix;
-        for (int dimension = 0; dimension < trie->bound_dimensions; ++dimension) {
-            distance += scratch->record_lb_table[dimension][word[dimension]];
-            if (distance > record_limit) return mbr_suffix + distance;
-        }
+        const float distance = messi_record_lb_table_sum(scratch->record_lb_table, word,
+            trie->bound_dimensions, record_limit, index->settings->SIMD_flag != 0);
         return mbr_suffix + distance;
     }
     isax_index shadow_index = *index;
@@ -186,7 +183,7 @@ static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
                                     const symbolic_trie_node *node,
                                     const trie_query_scratch *scratch) {
     if (!index->settings->trie_record_mbr_suffix_bound || scratch == NULL ||
-        !scratch->record_lb_table_ready || trie->bound_dimensions != 16 ||
+        !scratch->record_lb_table_ready ||
         trie->dimensions <= trie->bound_dimensions) return 0.0f;
     isax_index shadow_index = *index;
     isax_index_settings shadow_settings = *index->settings;
