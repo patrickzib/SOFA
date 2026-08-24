@@ -1412,6 +1412,29 @@ int main(int argc, char **argv) {
             const double exact_distance_percent = dataset_size > 0
                                                   ? 100.0 * avg_exact_distances / dataset_size
                                                   : 0.0;
+            /* In a trie every series reaching a leaf receives exactly one
+             * record lower-bound evaluation.  This lets the summary separate
+             * pruning before leaf scans (node MBRs) from pruning by the
+             * record bound itself, without adding counters to hot loops. */
+            const double node_mbr_skipped = avg_lower_bounds < dataset_size
+                                                ? (double) dataset_size - avg_lower_bounds
+                                                : 0.0;
+            const double record_bound_pruned = avg_exact_distances < avg_lower_bounds
+                                                   ? avg_lower_bounds - avg_exact_distances
+                                                   : 0.0;
+            const double node_mbr_percent = dataset_size > 0
+                                                ? 100.0 * node_mbr_skipped / dataset_size
+                                                : 0.0;
+            const double record_bound_candidate_percent = avg_lower_bounds > 0.0
+                                                              ? 100.0 * record_bound_pruned / avg_lower_bounds
+                                                              : 0.0;
+            const double record_bound_index_percent = dataset_size > 0
+                                                          ? 100.0 * record_bound_pruned / dataset_size
+                                                          : 0.0;
+            const double total_pruned_percent = dataset_size > 0
+                                                   ? 100.0 * ((double) dataset_size - avg_exact_distances) /
+                                                         dataset_size
+                                                   : 0.0;
             char nodes[32], lower_bounds[32], exact_distances[32], index_nodes[32], indexed_series[32];
             char wall_time[32];
             format_compact_count(avg_checked_nodes, nodes, sizeof(nodes));
@@ -1433,6 +1456,18 @@ int main(int argc, char **argv) {
                    nodes, checked_node_percent, index_nodes,
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
+            if (index_type == MESSI_INDEX_TRIE) {
+                const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
+                    ? "prefix + MBR suffix" : "symbolic record bound";
+                fprintf(stderr, "  pruning breakdown:\n"
+                       "    %-20s : %.2f%% indexed series skipped before record bounds\n"
+                       "    %-20s : %.2f%% of reached records pruned (%.2f%% of indexed series)\n"
+                       "    %-20s : %.2f%% indexed series pruned before exact distance\n",
+                       "node MBRs", node_mbr_percent,
+                       record_bound_name, record_bound_candidate_percent,
+                       record_bound_index_percent,
+                       "total", total_pruned_percent);
+            }
             if (profile_query_phases) {
                 fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"
                        "    node MBR bounds  : %.3f\n"
