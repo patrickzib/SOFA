@@ -1490,6 +1490,16 @@ int main(int argc, char **argv) {
                    nodes, checked_node_percent, index_nodes,
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
+            if (index_type == MESSI_INDEX_TRIE && trie_cluster_bounds_all != 0) {
+                const double cluster_prune_percent =
+                    100.0 * (double) trie_cluster_pruned_all / trie_cluster_bounds_all;
+                const double cluster_record_skip_percent = dataset_size > 0
+                    ? 100.0 * (double) trie_cluster_records_pruned_all /
+                      ((double) dataset_size * queries_size)
+                    : 0.0;
+                fprintf(stderr, "  leaf clusters    : %.2f%% pruned; %.2f%% records skipped\n",
+                        cluster_prune_percent, cluster_record_skip_percent);
+            }
             if (index_type == MESSI_INDEX_TRIE) {
                 const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
                     ? "prefix + MBR suffix" : "symbolic record bound";
