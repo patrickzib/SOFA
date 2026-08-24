@@ -21,6 +21,7 @@ Options:
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
+  --n-segments N          Trie record-prefix lower-bound dimensions (default: 16; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                           Add leaf-MBR contributions outside the 16 record-bound dimensions
@@ -68,6 +69,7 @@ METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
+TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_DYNAMIC_ALPHABET=false
@@ -88,6 +90,7 @@ while [[ $# -gt 0 ]]; do
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
@@ -116,6 +119,8 @@ esac
     die '--trie-fanout requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || \
     die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || \
+    die '--n-segments requires --index-type trie'
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
@@ -155,6 +160,7 @@ run_one() {
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
     if [[ $INDEX_TYPE == trie ]]; then
         [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
+        command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
         [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
@@ -258,6 +264,7 @@ run_query_suite() {
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
             if [[ $INDEX_TYPE == trie ]]; then
                 [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
+                command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
                 [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
                 $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then

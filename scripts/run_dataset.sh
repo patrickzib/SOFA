@@ -26,6 +26,8 @@ Options:
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
   --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
+  --n-segments N            Trie record-prefix lower-bound dimensions (default: 16; range: 16--64;
+                            alias: --trie-record-lb-dims)
   --trie-split-dims N       Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                             Add leaf-MBR contributions outside the 16 record-bound dimensions
@@ -168,6 +170,7 @@ INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
+TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=false
 TRIE_FANOUT=8
@@ -213,6 +216,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
+        --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
@@ -258,6 +262,7 @@ fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
+[[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
@@ -272,15 +277,20 @@ MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
 MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
+    is_positive_integer "$TRIE_RECORD_LB_DIMS" || die '--n-segments must be a positive integer'
+    (( TRIE_RECORD_LB_DIMS >= 16 && TRIE_RECORD_LB_DIMS <= 64 )) || \
+        die '--n-segments must be between 16 and 64 for trie runs'
     TRIE_MBR_DIMS=${TRIE_MBR_DIMS:-128}
     is_positive_integer "$TRIE_MBR_DIMS" || die '--trie-mbr-dims must be a positive integer'
     (( TRIE_MBR_DIMS <= 128 )) || TRIE_MBR_DIMS=128
     (( TRIE_MBR_DIMS <= TS_SIZE )) || TRIE_MBR_DIMS=$TS_SIZE
     (( TRIE_MBR_DIMS >= 16 )) || die '--trie-mbr-dims must be at least 16'
-    TRIE_SPLIT_DIMS=${TRIE_SPLIT_DIMS:-$(( TRIE_MBR_DIMS < 32 ? TRIE_MBR_DIMS : 32 ))}
+    (( TRIE_RECORD_LB_DIMS <= TRIE_MBR_DIMS )) || \
+        die '--n-segments cannot exceed --trie-mbr-dims'
+    TRIE_SPLIT_DIMS=${TRIE_SPLIT_DIMS:-$(( TRIE_RECORD_LB_DIMS > 32 ? TRIE_RECORD_LB_DIMS : (TRIE_MBR_DIMS < 32 ? TRIE_MBR_DIMS : 32) ))}
     is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
-    (( TRIE_SPLIT_DIMS >= 16 && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
-        die '--trie-split-dims must be between 16 and --trie-mbr-dims'
+    (( TRIE_SPLIT_DIMS >= TRIE_RECORD_LB_DIMS && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
+        die '--trie-split-dims must be between --n-segments and --trie-mbr-dims'
     # SFA/PISA need a training pool at least as wide as the trie word.  Keep
     # the historical iSAX coefficient defaults untouched; widen only a trie
     # that explicitly requests more MBR dimensions.
@@ -364,6 +374,7 @@ COMMON_ARGS+=(
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
+[[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--n-segments "$TRIE_RECORD_LB_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
 if [[ $INDEX_TYPE == trie ]]; then
