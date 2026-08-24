@@ -167,9 +167,22 @@ if test "x$cblas_found" = "xyes"; then
     fi
     AC_DEFINE([HAVE_CBLAS], [1], [Define if CBLAS SGEMM is available])
     AC_DEFINE_UNQUOTED([CBLAS_HEADER], [<$cblas_header>], [Header providing CBLAS])
+    if test "x$cblas_header" = "xopenblas/cblas.h"; then
+        AC_LINK_IFELSE([AC_LANG_PROGRAM([[#include <openblas/cblas.h>]],
+            [[return openblas_get_config() == NULL;]])],
+            [AC_DEFINE([HAVE_OPENBLAS_CONFIG], [1],
+                       [Define if OpenBLAS runtime configuration is available])],
+            [AC_DEFINE([HAVE_OPENBLAS_CONFIG], [0],
+                       [Define if OpenBLAS runtime configuration is available])])
+    else
+        AC_DEFINE([HAVE_OPENBLAS_CONFIG], [0],
+                  [Define if OpenBLAS runtime configuration is available])
+    fi
 else
     AC_MSG_RESULT([no])
     AC_DEFINE([HAVE_CBLAS], [0], [Define if CBLAS SGEMM is available])
+    AC_DEFINE([HAVE_OPENBLAS_CONFIG], [0],
+              [Define if OpenBLAS runtime configuration is available])
 fi
 LIBS="$cblas_save_LIBS"
 AC_SUBST([LAPACK_LIBS])

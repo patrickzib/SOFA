@@ -7200,11 +7200,44 @@ printf '%s\n' "#define HAVE_CBLAS 1" >>confdefs.h
 
 printf '%s\n' "#define CBLAS_HEADER <$cblas_header>" >>confdefs.h
 
+    if test "x$cblas_header" = "xopenblas/cblas.h"; then
+        cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <openblas/cblas.h>
+int
+main (void)
+{
+return openblas_get_config() == NULL;
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"
+then :
+
+printf '%s\n' "#define HAVE_OPENBLAS_CONFIG 1" >>confdefs.h
+
+else case e in #(
+  e)
+printf '%s\n' "#define HAVE_OPENBLAS_CONFIG 0" >>confdefs.h
+ ;;
+esac
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.beam \
+    conftest$ac_exeext conftest.$ac_ext
+    else
+
+printf '%s\n' "#define HAVE_OPENBLAS_CONFIG 0" >>confdefs.h
+
+    fi
 else
     { printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: no" >&5
 printf '%s\n' "no" >&6; }
 
 printf '%s\n' "#define HAVE_CBLAS 0" >>confdefs.h
+
+
+printf '%s\n' "#define HAVE_OPENBLAS_CONFIG 0" >>confdefs.h
 
 fi
 LIBS="$cblas_save_LIBS"

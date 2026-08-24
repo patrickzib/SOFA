@@ -10,6 +10,9 @@
 #if HAVE_CBLAS
 #include CBLAS_HEADER
 #endif
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 extern void dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda,
                    double *w, double *work, int *lwork, int *info);
@@ -224,7 +227,7 @@ enum response pca_fit(
 }
 
 enum response pca_project_batch(const isax_index *index, const ts_type *input,
-                                unsigned int rows, ts_type *output) {
+                                unsigned int rows, ts_type *output, int workers) {
     if (index == NULL || input == NULL || output == NULL || rows == 0 ||
         index->settings == NULL || index->pca_components == NULL || index->pca_bias == NULL ||
         index->pca_dim <= 0 || index->pca_components_count <= 0) {
@@ -238,10 +241,42 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
 
 #if HAVE_CBLAS
     memset(output, 0, sizeof(*output) * (size_t) rows * output_dim);
-    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
-                (int) rows, components, input_dim, 1.0f,
-                input, input_dim, index->pca_components, input_dim,
-                0.0f, output, output_dim);
+    int parallel_sgemm = 0;
+#if HAVE_OPENBLAS_CONFIG
+    const char *openblas_config = openblas_get_config();
+    parallel_sgemm = openblas_config != NULL &&
+        strstr(openblas_config, "SINGLE_THREADED") != NULL && workers > 1 && rows > 1;
+#endif
+    if (parallel_sgemm) {
+        const int worker_count = workers < (int) rows ? workers : (int) rows;
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(worker_count)
+#endif
+        for (int worker = 0; worker < worker_count; ++worker) {
+            const unsigned int first = (unsigned int) (((unsigned long long) rows * worker) / worker_count);
+            const unsigned int last = (unsigned int) (((unsigned long long) rows * (worker + 1)) / worker_count);
+            const unsigned int count = last - first;
+            if (count == 0) continue;
+            cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                        (int) count, components, input_dim, 1.0f,
+                        input + (size_t) first * input_dim, input_dim,
+                        index->pca_components, input_dim, 0.0f,
+                        output + (size_t) first * output_dim, output_dim);
+        }
+    } else {
+        cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                    (int) rows, components, input_dim, 1.0f,
+                    input, input_dim, index->pca_components, input_dim,
+                    0.0f, output, output_dim);
+    }
+#if HAVE_OPENBLAS_CONFIG
+    static int reported_parallel_mode = 0;
+    if (!reported_parallel_mode && parallel_sgemm) {
+        fprintf(stderr, ">>> PCA projection: OpenBLAS is single-threaded; using %d OpenMP SGEMM workers\n",
+                workers < (int) rows ? workers : (int) rows);
+        reported_parallel_mode = 1;
+    }
+#endif
     for (unsigned int row = 0; row < rows; ++row) {
         ts_type *projected = output + (size_t) row * output_dim;
         for (int k = 0; k < components; ++k) projected[k] += (ts_type) index->pca_bias[k];

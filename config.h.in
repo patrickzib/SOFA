@@ -24,6 +24,9 @@
 /* Define to 1 if you have the <minix/config.h> header file. */
 #undef HAVE_MINIX_CONFIG_H
 
+/* Define if OpenBLAS runtime configuration is available */
+#undef HAVE_OPENBLAS_CONFIG
+
 /* Define if pthread_barrier_t is available */
 #undef HAVE_PTHREAD_BARRIER
 

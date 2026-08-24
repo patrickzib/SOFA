@@ -737,7 +737,8 @@ static enum response trie_build_pca_block(isax_index *index,
         input = fft_input;
     }
 
-    if (!failed && pca_project_batch(index, input, records, projection) != SUCCESS) failed = 1;
+    if (!failed && pca_project_batch(index, input, records, projection,
+                                     maxquerythread > 0 ? maxquerythread : 1) != SUCCESS) failed = 1;
     if (!failed) {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)

@@ -202,7 +202,7 @@ int main(void) {
     for (int row = 0; row < BATCH_ROWS; ++row)
         for (int i = 0; i < DIMENSIONS; ++i)
             batch_input[row * DIMENSIONS + i] = (ts_type) (row * 100 + i) / 16.0f;
-    if (pca_project_batch(&index, batch_input, BATCH_ROWS, batch_output) != SUCCESS) {
+    if (pca_project_batch(&index, batch_input, BATCH_ROWS, batch_output, BATCH_ROWS) != SUCCESS) {
         fprintf(stderr, "PCA batch projection failed\n");
         pca_free(&index);
         for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);

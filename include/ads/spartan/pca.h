@@ -11,6 +11,6 @@ enum response pca_from_ts(const isax_index *index, const ts_type *ts, ts_type *o
 /* Project contiguous input rows into contiguous output rows.  Uses CBLAS
  * SGEMM when configured, otherwise the scalar projection path. */
 enum response pca_project_batch(const isax_index *index, const ts_type *input,
-                                unsigned int rows, ts_type *output);
+                                unsigned int rows, ts_type *output, int workers);
 
 #endif /* MESSI_PCA_H */
