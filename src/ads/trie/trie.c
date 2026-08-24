@@ -7,6 +7,7 @@
 #include "ads/lower_bound_simd.h"
 #include "ads/sax/sax.h"
 #include "ads/sfa/dft.h"
+#include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
 #include "ads/inmemory_index_engine.h"
@@ -106,6 +107,7 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
  * information needed for split selection while keeping the expensive full
  * pass to the one partition pass that cannot be avoided. */
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
+#define TRIE_PCA_PROJECTION_BLOCK_RECORDS 4096U
 
 typedef struct trie_query_stats {
     unsigned long checked_nodes;
@@ -663,6 +665,100 @@ static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax
     return SUCCESS;
 }
 
+#if HAVE_CBLAS
+/* Project one bounded bulk-build block.  The BLAS implementation owns the
+ * matrix-multiply threads; OpenMP is used only for independent work around
+ * that call. */
+static enum response trie_build_pca_block(isax_index *index,
+                                          struct symbolic_trie_index *trie,
+                                          long first_record, unsigned int records,
+                                          int apply_znorm) {
+    const int dimensions = trie->dimensions;
+    const int ts_length = index->settings->timeseries_size;
+    const int function_type = index->settings->function_type;
+    if (records == 0 || (function_type != 5 && function_type != 6) ||
+        dimensions <= 0 || ts_length <= 0 || index->pca_dim <= 0 ||
+        (size_t) records > SIZE_MAX / (size_t) dimensions) return FAILURE;
+
+    ts_type *projection = malloc(sizeof(*projection) * (size_t) records * dimensions);
+    if (projection == NULL) return FAILURE;
+    const ts_type *input = rawfile + (size_t) first_record * ts_length;
+    ts_type *fft_input = NULL;
+    int failed = 0;
+
+    if (function_type == 5) {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+#endif
+        for (unsigned int row = 0; row < records; ++row) {
+            if (apply_znorm)
+                znorm(rawfile + (size_t) (first_record + row) * ts_length, ts_length);
+        }
+    } else {
+        if ((size_t) records > SIZE_MAX / (size_t) index->pca_dim) {
+            free(projection);
+            return FAILURE;
+        }
+        fft_input = malloc(sizeof(*fft_input) * (size_t) records * index->pca_dim);
+        if (fft_input == NULL) {
+            free(projection);
+            return FAILURE;
+        }
+#ifdef _OPENMP
+#pragma omp parallel num_threads(maxquerythread)
+#endif
+        {
+            fftw_workspace fftw = {0};
+            pthread_mutex_lock(&trie_fftw_plan_lock);
+            fftw_workspace_init(&fftw, ts_length);
+            pthread_mutex_unlock(&trie_fftw_plan_lock);
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+            for (unsigned int row = 0; row < records; ++row) {
+                if (failed) continue;
+                ts_type *ts = rawfile + (size_t) (first_record + row) * ts_length;
+                if (apply_znorm) znorm(ts, ts_length);
+                memcpy(fftw.ts, ts, sizeof(*ts) * ts_length);
+                if (fft_full_real_from_ts(index, &fftw) != SUCCESS) {
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif
+                    failed = 1;
+                } else {
+                    memcpy(fft_input + (size_t) row * index->pca_dim, fftw.transform,
+                           sizeof(*fft_input) * index->pca_dim);
+                }
+            }
+            pthread_mutex_lock(&trie_fftw_plan_lock);
+            fftw_workspace_destroy(&fftw);
+            pthread_mutex_unlock(&trie_fftw_plan_lock);
+        }
+        input = fft_input;
+    }
+
+    if (!failed && pca_project_batch(index, input, records, projection) != SUCCESS) failed = 1;
+    if (!failed) {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+#endif
+        for (unsigned int row = 0; row < records; ++row) {
+            const long record = first_record + row;
+            sax_type *word = trie->word_arena + (size_t) record * trie->dimensions;
+            const ts_type *values = projection + (size_t) row * dimensions;
+            if (function_type == 5) spartan_from_pca(index, values, word);
+            else sfa_from_fft(index, values, word);
+            trie->root->words[record] = word;
+            trie->root->positions[record] = (file_position_type) ((size_t) record * ts_length);
+        }
+    }
+
+    free(fft_input);
+    free(projection);
+    return failed ? FAILURE : SUCCESS;
+}
+#endif
+
 static int trie_insert(struct symbolic_trie_index *trie, isax_index *index, sax_type *word,
                        file_position_type position) {
     symbolic_trie_node *node = trie->root;
@@ -753,6 +849,19 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     trie->word_arena = malloc((size_t) ts_num * (size_t) trie->dimensions * sizeof(*trie->word_arena));
     trie->root->capacity = trie->root->size = (int) ts_num;
     int failed = trie->root->words == NULL || trie->root->positions == NULL || trie->word_arena == NULL;
+#if HAVE_CBLAS
+    if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
+        for (long first = 0; first < ts_num && !failed;
+             first += TRIE_PCA_PROJECTION_BLOCK_RECORDS) {
+            const unsigned int records = (unsigned int) ((ts_num - first) <
+                (long) TRIE_PCA_PROJECTION_BLOCK_RECORDS
+                    ? (ts_num - first) : TRIE_PCA_PROJECTION_BLOCK_RECORDS);
+            if (trie_build_pca_block(index, trie, first, records, apply_znorm) != SUCCESS)
+                failed = 1;
+        }
+    } else
+#endif
+    {
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
 #endif
@@ -784,6 +893,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_destroy(&fftw);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
+    }
     }
     if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
     double transform_end = messi_monotonic_seconds();

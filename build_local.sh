@@ -14,8 +14,9 @@ export CPPFLAGS="-I$FFTW_PREFIX/include ${CPPFLAGS:-}"
 export LDFLAGS="-L$FFTW_LIBDIR ${LDFLAGS:-}"
 export LIBS="-lfftw3f ${LIBS:-}"
 
-# OpenBLAS from /opt/local/lib
+# OpenBLAS provides both LAPACK and the optional CBLAS projection fast path.
 export LAPACK_LIBS="-L$FFTW_PREFIX/lib -lopenblas"
+export CBLAS_LIBS="$LAPACK_LIBS"
 
 # Optimization flags
 export CFLAGS="-O3 -DNDEBUG -march=native ${CFLAGS:-}"
@@ -31,7 +32,7 @@ cd build
 
 # Build
 mkdir -p bin
-make -j LAPACK_LIBS="$LAPACK_LIBS"
+make -j
 
 # Copy MESSI executable to top-level bin/
 mkdir -p ../bin

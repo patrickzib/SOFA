@@ -139,6 +139,7 @@ typedef struct {
     int * coefficients;
     ts_type *pca_mean;
     ts_type *pca_components;
+    double *pca_bias;
     double *pca_explained_variance;
     int pca_components_count;
     int pca_dim;

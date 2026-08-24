@@ -7,6 +7,10 @@
 #include "globals.h"
 #include "ads/spartan/pca.h"
 
+#if HAVE_CBLAS
+#include CBLAS_HEADER
+#endif
+
 extern void dsyev_(char *jobz, char *uplo, int *n, double *a, int *lda,
                    double *w, double *work, int *lwork, int *info);
 
@@ -19,6 +23,8 @@ static void pca_free_model(isax_index *index) {
         free(index->pca_components);
         index->pca_components = NULL;
     }
+    free(index->pca_bias);
+    index->pca_bias = NULL;
     index->pca_components_count = 0;
     index->pca_dim = 0;
     free(index->pca_explained_variance);
@@ -102,15 +108,17 @@ enum response pca_fit(
     double *eigvals = calloc((size_t) dim, sizeof(double));
     double *ranked = calloc((size_t) dim * 2, sizeof(double));
     ts_type *components_matrix = calloc((size_t) components * dim, sizeof(ts_type));
+    double *bias = calloc((size_t) components, sizeof(double));
 
     if (mean == NULL || cov == NULL || eigvecs == NULL || eigvals == NULL || ranked ==
-        NULL || components_matrix == NULL) {
+        NULL || components_matrix == NULL || bias == NULL) {
         free(mean);
         free(cov);
         free(eigvecs);
         free(eigvals);
         free(ranked);
         free(components_matrix);
+        free(bias);
         fprintf(stderr, "error: failed to allocate PCA buffers.\n");
         return FAILURE;
     }
@@ -156,6 +164,7 @@ enum response pca_fit(
         free(eigvals);
         free(ranked);
         free(components_matrix);
+        free(bias);
         return FAILURE;
     }
 
@@ -180,11 +189,13 @@ enum response pca_fit(
         int idx = (int) ranked[k * 2];
         for (int i = 0; i < dim; ++i) {
             components_matrix[k * dim + i] = (ts_type) eigvecs[i + idx * dim];
+            bias[k] -= (double) mean[i] * components_matrix[k * dim + i];
         }
     }
 
     index->pca_mean = mean;
     index->pca_components = components_matrix;
+    index->pca_bias = bias;
     index->pca_explained_variance = calloc((size_t) index->settings->n_segments,
                                            sizeof(*index->pca_explained_variance));
     if (index->pca_explained_variance == NULL) {
@@ -210,4 +221,38 @@ enum response pca_fit(
     free(ranked);
 
     return SUCCESS;
+}
+
+enum response pca_project_batch(const isax_index *index, const ts_type *input,
+                                unsigned int rows, ts_type *output) {
+    if (index == NULL || input == NULL || output == NULL || rows == 0 ||
+        index->settings == NULL || index->pca_components == NULL || index->pca_bias == NULL ||
+        index->pca_dim <= 0 || index->pca_components_count <= 0) {
+        return FAILURE;
+    }
+
+    const int input_dim = index->pca_dim;
+    const int output_dim = index->settings->n_segments;
+    const int components = index->pca_components_count;
+    if (components > output_dim) return FAILURE;
+
+#if HAVE_CBLAS
+    memset(output, 0, sizeof(*output) * (size_t) rows * output_dim);
+    cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans,
+                (int) rows, components, input_dim, 1.0f,
+                input, input_dim, index->pca_components, input_dim,
+                0.0f, output, output_dim);
+    for (unsigned int row = 0; row < rows; ++row) {
+        ts_type *projected = output + (size_t) row * output_dim;
+        for (int k = 0; k < components; ++k) projected[k] += (ts_type) index->pca_bias[k];
+    }
+    return SUCCESS;
+#else
+    for (unsigned int row = 0; row < rows; ++row) {
+        if (pca_from_ts(index, input + (size_t) row * input_dim,
+                        output + (size_t) row * output_dim) != SUCCESS)
+            return FAILURE;
+    }
+    return SUCCESS;
+#endif
 }
