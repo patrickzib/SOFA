@@ -1005,11 +1005,11 @@ int main(int argc, char **argv) {
                         index_segments, time_series_size);
                 return -1;
             }
-            if (index_type == MESSI_INDEX_TRIE &&
+            if (function_type == 4 && index_type == MESSI_INDEX_TRIE &&
                 (n_coefficients == 0 || n_coefficients < index_segments ||
                  index_segments > time_series_size)) {
                 fprintf(stderr,
-                        "ERROR: trie SFA/PISA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size.\n",
+                        "ERROR: trie SFA requires --sfa-n-coefficients (even, at least %d) and dimensions no greater than timeseries-size.\n",
                         index_segments);
                 return -1;
             }

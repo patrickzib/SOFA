@@ -63,6 +63,37 @@ enum response fft_from_ts(
     return SUCCESS;
 }
 
+enum response fft_full_real_from_ts(isax_index *index, fftw_workspace *fftw) {
+    if (index == NULL || index->settings == NULL || fftw == NULL ||
+        fftw->plan_forward == NULL || fftw->ts_out == NULL || fftw->transform == NULL) {
+        return FAILURE;
+    }
+
+    const int length = index->settings->timeseries_size;
+    if (length <= 0) {
+        return FAILURE;
+    }
+
+    fftwf_execute(fftw->plan_forward);
+
+    /* DC and (for an even length) Nyquist are real-valued.  Each remaining
+     * positive-frequency coefficient represents a conjugate pair, hence the
+     * sqrt(2) scaling required by Parseval's equality. */
+    const ts_type edge_scale = index->norm_factor;
+    const ts_type pair_scale = (ts_type) sqrt(2.0) * edge_scale;
+    int output = 0;
+    fftw->transform[output++] = fftw->ts_out[0][0] * edge_scale;
+    for (int frequency = 1; frequency <= (length - 1) / 2; ++frequency) {
+        fftw->transform[output++] = fftw->ts_out[frequency][0] * pair_scale;
+        fftw->transform[output++] = -fftw->ts_out[frequency][1] * pair_scale;
+    }
+    if ((length & 1) == 0) {
+        fftw->transform[output++] = fftw->ts_out[length / 2][0] * edge_scale;
+    }
+
+    return output == length ? SUCCESS : FAILURE;
+}
+
 /* Return the first bin boundary strictly above value, preserving the legacy
  * linear scan's behavior for values equal to a boundary. */
 static unsigned int sfa_symbol_from_value(const ts_type *boundaries, int count,

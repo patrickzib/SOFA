@@ -484,6 +484,9 @@ void *set_bins_worker_dft(void *transferdata) {
     else {
         n_coefficients = index->settings->n_segments;
     }
+    if (index->settings->function_type == 6) {
+        n_coefficients = (int) ts_length;
+    }
 
     unsigned long skip_elements = 0;
     if (index->settings->sample_type == 2) {
@@ -567,10 +570,16 @@ void *set_bins_worker_dft(void *transferdata) {
             znorm(ts, ts_length);
         }
 
-        int use_best = index->settings->n_coefficients != 0;
-        int transform_size = use_best ? index->settings->n_coefficients
-                                      : index->settings->n_segments;
-        if (fft_from_ts(index, transform_size, 0, fftw) != SUCCESS) {
+        enum response transform_status;
+        if (index->settings->function_type == 6) {
+            transform_status = fft_full_real_from_ts(index, fftw);
+        } else {
+            int transform_size = index->settings->n_coefficients != 0
+                                     ? index->settings->n_coefficients
+                                     : index->settings->n_segments;
+            transform_status = fft_from_ts(index, transform_size, 0, fftw);
+        }
+        if (transform_status != SUCCESS) {
             bins_data->status = FAILURE;
             free(ts_orig1);
             free(ts_orig2);

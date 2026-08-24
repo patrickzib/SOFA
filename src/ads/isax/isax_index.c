@@ -2942,9 +2942,8 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sax_bit_cardinality);
     }
     else if (settings->function_type == 6) {
-        int fft_coefficients = settings->n_coefficients > 0 ? settings->n_coefficients : settings->n_segments;
-        fprintf(stderr, "  transform     : PISA (FFT -> PCA), %d FFT coefficients, %d dimensions, alphabet %d (%d bits)\n",
-                fft_coefficients, settings->n_segments, settings->sax_alphabet_cardinality,
+        fprintf(stderr, "  transform     : PISA (full real FFT: %d independent coordinates -> PCA), %d dimensions, alphabet %d (%d bits)\n",
+                settings->timeseries_size, settings->n_segments, settings->sax_alphabet_cardinality,
                 settings->sax_bit_cardinality);
     }
 

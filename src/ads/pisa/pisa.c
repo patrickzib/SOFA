@@ -27,10 +27,7 @@ static int pisa_fft_dim(const isax_index *index) {
     if (index == NULL || index->settings == NULL) {
         return 0;
     }
-    if (index->settings->n_coefficients > 0) {
-        return index->settings->n_coefficients;
-    }
-    return index->settings->n_segments;
+    return index->settings->timeseries_size;
 }
 
 enum response pisa_pca_from_ts(isax_index *index, const ts_type *ts, ts_type *out, fftw_workspace *fftw) {
@@ -42,7 +39,7 @@ enum response pisa_pca_from_ts(isax_index *index, const ts_type *ts, ts_type *ou
         return FAILURE;
     }
     memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
-    if (fft_from_ts(index, fft_dim, 0, fftw) != SUCCESS) {
+    if (fft_full_real_from_ts(index, fftw) != SUCCESS) {
         return FAILURE;
     }
     return pca_from_ts(index, fftw->transform, out);

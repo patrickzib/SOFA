@@ -48,6 +48,9 @@ static inline void fftw_workspace_destroy(fftw_workspace *ws) {
 
 enum response fft_from_ts(isax_index *index, int n_coefficients, int best_only,
                           fftw_workspace *fftw);
+/* Complete independent real-FFT coordinates: no conjugate duplicates and
+ * sqrt(2)-scaled interior pairs, preserving the time-domain Euclidean norm. */
+enum response fft_full_real_from_ts(isax_index *index, fftw_workspace *fftw);
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
 
 enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out, fftw_workspace *fftw);

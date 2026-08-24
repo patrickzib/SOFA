@@ -291,9 +291,9 @@ if [[ $INDEX_TYPE == trie ]]; then
     is_positive_integer "$TRIE_SPLIT_DIMS" || die '--trie-split-dims must be a positive integer'
     (( TRIE_SPLIT_DIMS >= TRIE_RECORD_LB_DIMS && TRIE_SPLIT_DIMS <= TRIE_MBR_DIMS )) || \
         die '--trie-split-dims must be between --n-segments and --trie-mbr-dims'
-    # SFA/PISA need a training pool at least as wide as the trie word.  Keep
-    # the historical iSAX coefficient defaults untouched; widen only a trie
-    # that explicitly requests more MBR dimensions.
+    # SFA needs a training pool at least as wide as the trie word.  Keep the
+    # historical iSAX coefficient defaults untouched; widen only a trie that
+    # explicitly requests more MBR dimensions.  PISA uses the full real FFT.
     (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
     [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'
@@ -504,7 +504,7 @@ run_method() {
         # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
         # previously issued one scattered seek/read for each sampled record.
         args+=(--sample-size "$SAMPLE_SIZE" --sample-type 2 --is-norm --histogram-type "$histogram_type")
-        [[ $function_type == 4 || $function_type == 6 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
+        [[ $function_type == 4 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
         if [[ $PROFILE == standard && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
         if [[ $DATASET_ID == sift1b && $histogram_type == 1 && ( $PROFILE == knn || $PROFILE == sampling ) ]]; then
             args+=(--tight-bound)
