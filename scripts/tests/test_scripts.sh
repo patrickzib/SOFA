@@ -40,14 +40,21 @@ assert_contains "$OUTPUT" '--trie-fanout 8'
 pass 'trie standard profile excludes SAX from its method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
-    --trie-mbr-dims 128 --trie-split-dims 32 --dry-run 2>/dev/null)
+    --trie-mbr-dims 128 --n-segments 32 --trie-split-dims 32 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--n-segments 32'
 assert_contains "$OUTPUT" '--trie-split-dimensions 32'
 if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 64 --trie-split-dims 65 --dry-run >/dev/null 2>&1; then
     fail 'trie benchmark accepted split dimensions wider than its MBR dimensions'
 fi
 pass 'trie split candidates are independent from MBR dimensions'
+
+if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
+    --trie-mbr-dims 32 --n-segments 48 --dry-run >/dev/null 2>&1; then
+    fail 'trie benchmark accepted a record prefix wider than its MBR dimensions'
+fi
+pass 'trie record-prefix dimensions are forwarded and validated'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie --trie-fanout 4 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-fanout 4'
