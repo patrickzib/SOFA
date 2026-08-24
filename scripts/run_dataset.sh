@@ -17,7 +17,7 @@ Options:
   --dataset-size N          Override dataset records; accepts 100m, 1mio, 20k
   --query-size N            Queries; accepts count suffixes (default: 100; high-frequency: 1)
   --leaf-size N             Maximum records per leaf; accepts count suffixes (default: 20000)
-  --min-leaf-size N         Minimum records per leaf; accepts count suffixes (default: leaf size)
+  --min-leaf-size N         iSAX query-leaf threshold; trie does not enforce it
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes

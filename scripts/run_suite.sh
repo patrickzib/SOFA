@@ -20,6 +20,17 @@ Options:
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
+  --queue-number N        Fixed queue count (default: same as each --threads value)
+  --numa MODE             auto (default), none, or number of NUMA nodes
+  --dataset-file PATH     Override the dataset path for every selected run
+  --query-file PATH       Override the query path for regular-suite runs
+  --dataset-size N        Override dataset records; accepts count suffixes
+  --query-size N          Override queries per run; accepts count suffixes
+  --leaf-size N           Maximum records per leaf; accepts count suffixes
+  --min-leaf-size N       iSAX query-leaf threshold; trie does not enforce it
+  --sample-size N         Override binning sample size; accepts count suffixes
+  --sampling-seed N       Sampling seed (default: 1)
+  --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
   --n-segments N          Trie record-prefix lower-bound dimensions (default: 16; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
@@ -31,8 +42,22 @@ Options:
   --trie-max-fanout N     Maximum dynamic trie fanout (default: 16)
   --trie-alphabet-budget-bits N
                           Average dynamic alphabet budget in bits (default: 3)
+  --trie-query-parallel   Parallelize each trie query
+  --trie-query-batch      Batch independent trie queries
+  --query-report-interval N
+                          Print query progress every N queries (0 disables it)
+  --profile-query-phases  Measure traversal, lower-bound, and exact work
+  --dynamic-root-split-variance
+                          Enable variance-assigned iSAX root bits
   --no-dynamic-root-split-variance
                           Disable variance-assigned root bits for learned iSAX methods
+  --no-tight-bound        Disable the standard profile's tight-bound option
+  --binary PATH           MESSI executable
+  --data-root PATH        Main dataset root
+  --query-root PATH       Main query root
+  --seisbench-root PATH   SeisBench dataset root
+  --seisbench-query-root PATH
+                          SeisBench query root
   --rerun-existing        Run workloads even when an archive directory exists
   --dry-run               Print commands without running or archiving
   -h, --help              Show this help
@@ -67,6 +92,17 @@ SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 METHODS_OVERRIDE=
 INDEX_TYPE=isax
+QUEUE_NUMBER=
+NUMA_MODE=auto
+DATASET_FILE=
+QUERY_FILE=
+DATASET_SIZE=
+QUERY_SIZE=
+LEAF_SIZE=
+MIN_LEAF_SIZE=
+SAMPLE_SIZE=
+SAMPLING_SEED=
+NO_SIMD=false
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
@@ -76,7 +112,17 @@ TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
-NO_DYNAMIC_ROOT_SPLIT_VARIANCE=false
+TRIE_QUERY_PARALLEL=false
+TRIE_QUERY_BATCH=false
+QUERY_REPORT_INTERVAL=
+PROFILE_QUERY_PHASES=false
+DYNAMIC_ROOT_SPLIT_VARIANCE=
+TIGHT_BOUND=true
+MESSI_EXECUTABLE=
+DATA_ROOT=
+QUERY_ROOT=
+SEISBENCH_ROOT=
+SEISBENCH_QUERY_ROOT=
 RERUN_EXISTING=false
 DRY_RUN=false
 RESULTS_ROOT=${MESSI_RESULTS_ROOT:-"$HOME/MESSI_SFA_logs"}
@@ -89,6 +135,17 @@ while [[ $# -gt 0 ]]; do
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --queue-number) [[ $# -ge 2 ]] || die "$1 requires a value"; QUEUE_NUMBER=$2; shift 2 ;;
+        --numa) [[ $# -ge 2 ]] || die "$1 requires a value"; NUMA_MODE=$2; shift 2 ;;
+        --dataset-file) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_FILE=$2; shift 2 ;;
+        --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_FILE=$2; shift 2 ;;
+        --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE=$2; shift 2 ;;
+        --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE=$2; shift 2 ;;
+        --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
+        --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
+        --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
+        --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --no-simd) NO_SIMD=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
@@ -98,7 +155,18 @@ while [[ $# -gt 0 ]]; do
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
         --trie-max-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MAX_FANOUT=$2; shift 2 ;;
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
-        --no-dynamic-root-split-variance) NO_DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
+        --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
+        --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
+        --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
+        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
+        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
+        --no-tight-bound) TIGHT_BOUND=false; shift ;;
+        --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
+        --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
+        --query-root) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_ROOT=$2; shift 2 ;;
+        --seisbench-root) [[ $# -ge 2 ]] || die "$1 requires a value"; SEISBENCH_ROOT=$2; shift 2 ;;
+        --seisbench-query-root) [[ $# -ge 2 ]] || die "$1 requires a value"; SEISBENCH_QUERY_ROOT=$2; shift 2 ;;
         --rerun-existing) RERUN_EXISTING=true; shift ;;
         --dry-run) DRY_RUN=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -123,6 +191,14 @@ esac
     die '--n-segments requires --index-type trie'
 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
+[[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-query-parallel requires --index-type trie'
+[[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-query-batch requires --index-type trie'
+[[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || \
+    die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
+    die '--dynamic-root-split-variance requires --index-type isax'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
@@ -157,7 +233,21 @@ run_one() {
             "$(dataset_label "$dataset")" >&2
         return 0
     fi
-    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" --queue-number "$threads" --index-type "$INDEX_TYPE")
+    local queue_number=${QUEUE_NUMBER:-$threads}
+    local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" \
+        --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+    [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
+    [[ -n $QUERY_FILE ]] && command+=(--query-file "$QUERY_FILE")
+    [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
+    [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+    [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
+    [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
+    [[ -n $MESSI_EXECUTABLE ]] && command+=(--binary "$MESSI_EXECUTABLE")
+    [[ -n $DATA_ROOT ]] && command+=(--data-root "$DATA_ROOT")
+    [[ -n $QUERY_ROOT ]] && command+=(--query-root "$QUERY_ROOT")
+    [[ -n $SEISBENCH_ROOT ]] && command+=(--seisbench-root "$SEISBENCH_ROOT")
+    [[ -n $SEISBENCH_QUERY_ROOT ]] && command+=(--seisbench-query-root "$SEISBENCH_QUERY_ROOT")
+    $NO_SIMD && command+=(--no-simd)
     if [[ $INDEX_TYPE == trie ]]; then
         [[ -n $TRIE_MBR_DIMS ]] && command+=(--trie-mbr-dims "$TRIE_MBR_DIMS")
         command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
@@ -171,7 +261,15 @@ run_one() {
             command+=(--trie-fanout "$TRIE_FANOUT")
         fi
     fi
-    $NO_DYNAMIC_ROOT_SPLIT_VARIANCE && command+=(--no-dynamic-root-split-variance)
+    [[ -n $LEAF_SIZE ]] && command+=(--leaf-size "$LEAF_SIZE")
+    [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
+    $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
+    $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+    [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
+    $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
+    [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
+    [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
+    $TIGHT_BOUND || command+=(--no-tight-bound)
     [[ -n $METHODS_OVERRIDE ]] && command+=(--methods "$METHODS_OVERRIDE")
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)

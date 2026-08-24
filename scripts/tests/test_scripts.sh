@@ -215,6 +215,12 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --ind
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
 pass 'suite forwards trie MBR dimensions to dataset runs'
 
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
+    --leaf-size 10k --min-leaf-size 5k --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--leaf-size 10000'
+assert_contains "$OUTPUT" '--min-leaf-size 5000'
+pass 'suite forwards leaf capacity and minimum occupancy'
+
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
