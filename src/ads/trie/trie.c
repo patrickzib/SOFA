@@ -1,8 +1,6 @@
 #include "config.h"
 #include "globals.h"
-#include "ads/trie/trie.h"
-
-#define TRIE_MAX_FANOUT 256
+#include "trie_internal.h"
 #include "ads/calc_utils.h"
 #include "ads/lower_bound_simd.h"
 #include "ads/sax/sax.h"
@@ -38,54 +36,6 @@ static const char *trie_format_compact_count(unsigned long long value,
     return buffer;
 }
 
-typedef struct {
-    uint64_t low;
-    uint64_t high;
-} trie_dimension_mask;
-
-typedef struct {
-    int offset;
-    int size;
-} trie_leaf_cluster;
-
-typedef struct symbolic_trie_node {
-    struct symbolic_trie_node *children[TRIE_MAX_FANOUT];
-    struct symbolic_trie_node *parent;
-    sax_type *min_word;
-    sax_type *max_word;
-    sax_type **words;
-    file_position_type *positions;
-    int size;
-    int capacity;
-    int split_dimension;
-    uint16_t split_fanout;
-    /* The trie may split on up to 128 transform dimensions. */
-    trie_dimension_mask used_dimensions;
-    unsigned char leaf;
-    unsigned char mbb_valid;
-    unsigned char split_exhausted;
-    trie_leaf_cluster *clusters;
-    sax_type *cluster_min_words;
-    sax_type *cluster_max_words;
-    int cluster_count;
-} symbolic_trie_node;
-
-struct symbolic_trie_index {
-    symbolic_trie_node *root;
-    /* All record words are slices of this one allocation.  Leaf splits move
-     * pointers into it, so teardown has one free rather than one per series. */
-    sax_type *word_arena;
-    int dimensions;
-    int bound_dimensions;
-    int split_dimensions;
-    int fanout;
-    int dynamic_alphabet;
-    unsigned long split_exhausted_leaves;
-    unsigned long node_count;
-    unsigned long clustered_leaves;
-    unsigned long long cluster_count;
-};
-
 static int trie_dimension_is_used(const symbolic_trie_node *node, int dimension) {
     return dimension < 64
                ? (node->used_dimensions.low & (UINT64_C(1) << dimension)) != 0
@@ -120,34 +70,16 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
 #define TRIE_PCA_PROJECTION_BLOCK_RECORDS 4096U
 
-typedef struct trie_query_stats {
-    unsigned long checked_nodes;
-    unsigned long lower_bounds;
-    unsigned long exact_distances;
-    unsigned long long total_microseconds;
-    unsigned long long mbr_bound_microseconds;
-    unsigned long long record_bound_microseconds;
-    unsigned long long exact_distance_microseconds;
-    unsigned long long traversal_microseconds;
-    unsigned long long frontier_microseconds;
-    unsigned long long queue_microseconds;
-    unsigned long long candidate_heap_microseconds;
-    unsigned long long synchronization_microseconds;
-    unsigned long cluster_bounds;
-    unsigned long cluster_pruned;
-    unsigned long cluster_records_pruned;
-    float approximate_distance;
-} trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
 
 /* The index settings describe the full split word (normally 64 dimensions).
  * Lower bounds intentionally see only the configured bound prefix.  A local
  * shallow copy is safe for concurrent queries and reuses the representation-
  * specific SFA/SPARTAN/PISA/SAX bound implementations unchanged. */
-static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index *index,
-                              const ts_type *transform, sax_type *sax_min,
-                              sax_type *sax_max, int dimensions, float bsf,
-                              trie_query_stats *stats) {
+float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index *index,
+                       const ts_type *transform, sax_type *sax_min,
+                       sax_type *sax_max, int dimensions, float bsf,
+                       trie_query_stats *stats) {
     unsigned long long start = 0;
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
     isax_index shadow_index = *index;
@@ -160,26 +92,12 @@ static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index
     return result;
 }
 
-typedef struct {
-    float lower_bound;
-    int record_index;
-} trie_leaf_candidate;
-
-/* One scratch heap per batch-query worker.  It is retained across leaves and
- * avoids per-record allocation in best-first leaf refinement. */
-typedef struct {
-    trie_leaf_candidate *candidates;
-    int capacity;
-    float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
-    int record_lb_table_ready;
-} trie_query_scratch;
-
 /* Leaf records have one concrete word, unlike an MBR range.  The query-local
  * symbol table covers every supported record-bound prefix (16--64 dims). */
-static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
-                                     isax_index *index, const ts_type *transform,
-                                     sax_type *word, float bsf, float mbr_suffix,
-                                     const trie_query_scratch *scratch) {
+float trie_record_lower_bound(const struct symbolic_trie_index *trie,
+                              isax_index *index, const ts_type *transform,
+                              sax_type *word, float bsf, float mbr_suffix,
+                              const trie_query_scratch *scratch) {
     if (scratch != NULL && scratch->record_lb_table_ready) {
         const float record_limit = bsf - mbr_suffix;
         if (record_limit <= 0.0f) return mbr_suffix;
@@ -195,10 +113,10 @@ static float trie_record_lower_bound(const struct symbolic_trie_index *trie,
                                shadow_settings.max_sax_cardinalities, bsf);
 }
 
-static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
-                                    isax_index *index, const ts_type *transform,
-                                    const sax_type *min_word, const sax_type *max_word,
-                                    const trie_query_scratch *scratch) {
+float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
+                             isax_index *index, const ts_type *transform,
+                             const sax_type *min_word, const sax_type *max_word,
+                             const trie_query_scratch *scratch) {
     if (!index->settings->trie_record_mbr_suffix_bound || scratch == NULL ||
         !scratch->record_lb_table_ready ||
         trie->dimensions <= trie->bound_dimensions) return 0.0f;
@@ -214,10 +132,10 @@ static float trie_record_mbr_suffix(const struct symbolic_trie_index *trie,
     return suffix;
 }
 
-static void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
-                                         const isax_index *index,
-                                         const ts_type *transform,
-                                         trie_query_scratch *scratch) {
+void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
+                                  const isax_index *index,
+                                  const ts_type *transform,
+                                  trie_query_scratch *scratch) {
     if (scratch == NULL) return;
     scratch->record_lb_table_ready =
         messi_build_record_lb_table(index, transform, trie->bound_dimensions,
@@ -613,7 +531,7 @@ static float *trie_build_bin_centers(const isax_index *index, int dimensions) {
     return centers;
 }
 
-static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
+int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
     if (scratch == NULL) return 0;
     if (capacity <= scratch->capacity) return 1;
     trie_leaf_candidate *candidates = realloc(scratch->candidates,
@@ -624,8 +542,8 @@ static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
     return 1;
 }
 
-static float trie_exact_distance(const ts_type *query, const ts_type *record,
-                                 int length, float bsf, trie_query_stats *stats) {
+float trie_exact_distance(const ts_type *query, const ts_type *record,
+                          int length, float bsf, trie_query_stats *stats) {
     unsigned long long start = 0;
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
     float result = ts_ed((ts_type *) query, (ts_type *) record, length, bsf);
@@ -646,11 +564,11 @@ static void trie_heap_sift_down(trie_leaf_candidate *heap, int size, int root) {
     }
 }
 
-static void trie_heap_build(trie_leaf_candidate *heap, int size) {
+void trie_heap_build(trie_leaf_candidate *heap, int size) {
     for (int i = size / 2 - 1; i >= 0; --i) trie_heap_sift_down(heap, size, i);
 }
 
-static trie_leaf_candidate trie_heap_pop(trie_leaf_candidate *heap, int *size) {
+trie_leaf_candidate trie_heap_pop(trie_leaf_candidate *heap, int *size) {
     trie_leaf_candidate result = heap[0];
     --*size;
     if (*size > 0) {
@@ -914,6 +832,21 @@ static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax
         if (pisa_pca_from_ts(index, ts, transform, fftw) != SUCCESS) return FAILURE;
         sfa_from_fft(index, transform, word);
     } else return FAILURE;
+    return SUCCESS;
+}
+
+/* Top-k receives an already computed transform from native callers.  Rebuild
+ * only its symbolic word so it can seed the same query-directed leaf as the
+ * existing 1-NN engine, without recomputing FFT/PCA work. */
+enum response trie_word_from_transform(isax_index *index, const ts_type *transform,
+                                       sax_type *word) {
+    if (index->settings->function_type == 3)
+        sax_from_paa((ts_type *) transform, word, index->settings);
+    else if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        sfa_from_fft(index, transform, word);
+    else if (index->settings->function_type == 5)
+        spartan_from_pca(index, transform, word);
+    else return FAILURE;
     return SUCCESS;
 }
 
@@ -1373,8 +1306,8 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     return trie_scan_leaf_best_first(index, node, query, transform, bsf, stats, scratch);
 }
 
-static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_type *query_word,
-                                                 const ts_type *transform, trie_query_stats *stats) {
+const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_type *query_word,
+                                         const ts_type *transform, trie_query_stats *stats) {
     const symbolic_trie_node *node = index->trie->root;
     while (!node->leaf) {
         int bucket = trie_bucket(query_word, node->split_dimension, node->split_fanout);
@@ -1434,18 +1367,6 @@ static void trie_search_task(isax_index *index, const symbolic_trie_node *node, 
  * several locked priority queues.  A trie has one physical root, so it first
  * expands that root into a small frontier; thereafter its workers have the
  * same work-unit granularity as iSAX's many first-buffer-layer roots. */
-typedef struct {
-    const symbolic_trie_node *node;
-    float lower_bound;
-} trie_leaf_work;
-
-typedef struct {
-    trie_leaf_work *items;
-    int size;
-    int capacity;
-    pthread_mutex_t lock;
-} trie_leaf_queue;
-
 static void trie_leaf_queue_sift_down(trie_leaf_work *items, int size, int position) {
     while (1) {
         int left = 2 * position + 1, right = left + 1, smallest = position;
@@ -1484,8 +1405,8 @@ static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item,
     return ok;
 }
 
-static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item,
-                               trie_query_stats *stats) {
+int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item,
+                        trie_query_stats *stats) {
     unsigned long long start = profile_query_phases && stats != NULL
                                    ? trie_monotonic_microseconds() : 0;
     pthread_mutex_lock(&queue->lock);
@@ -1502,7 +1423,7 @@ static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item,
     return 1;
 }
 
-static symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int target, int *count) {
+symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int target, int *count) {
     int capacity = target > 8 ? target * 2 : 16;
     symbolic_trie_node **frontier = malloc((size_t) capacity * sizeof(*frontier));
     if (frontier == NULL) return NULL;
@@ -1527,11 +1448,11 @@ static symbolic_trie_node **trie_parallel_frontier(symbolic_trie_node *root, int
     return frontier;
 }
 
-static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_node *node,
-                                         const ts_type *transform, float bsf,
-                                         const symbolic_trie_node *skip_leaf,
-                                         trie_leaf_queue *queues, int queue_count,
-                                         int *next_queue, trie_query_stats *stats, int *failed) {
+void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_node *node,
+                                  const ts_type *transform, float bsf,
+                                  const symbolic_trie_node *skip_leaf,
+                                  trie_leaf_queue *queues, int queue_count,
+                                  int *next_queue, trie_query_stats *stats, int *failed) {
     if (node == skip_leaf || __atomic_load_n(failed, __ATOMIC_RELAXED)) return;
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
@@ -1772,6 +1693,7 @@ enum response symbolic_trie_topk_query_file(isax_index *index, const char *path,
         fftw_workspace_destroy(&fftw); return FAILURE;
     }
     fprintf(stderr, ">>> trie exact top-k: k=%zu\n", k);
+    unsigned long long cumulative_microseconds = 0;
     for (int query_index = 0; query_index < query_count; ++query_index) {
         int ok;
         if (filetype_int) {
@@ -1783,7 +1705,10 @@ enum response symbolic_trie_topk_query_file(isax_index *index, const char *path,
         if (trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
             fclose(file); free(query); free(input); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
         }
-        symbolic_trie_topk_result result = symbolic_trie_exact_topk_search(index, query, transform, k, FLT_MAX);
+        const unsigned long long query_start = trie_monotonic_microseconds();
+        trie_query_stats stats = {0};
+        symbolic_trie_topk_result result = trie_topk_exact_search_with_stats(
+            index, query, transform, k, FLT_MAX, &stats);
         if (result.count != k) {
             symbolic_trie_topk_result_destroy(&result);
             fclose(file); free(query); free(input); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
@@ -1791,6 +1716,16 @@ enum response symbolic_trie_topk_query_file(isax_index *index, const char *path,
         for (size_t rank = 0; rank < result.count; ++rank)
             printf(" the [%d] query [%zu] NN is %f at %llu\n", query_index, rank,
                    result.distances[rank], (unsigned long long) result.positions[rank]);
+        stats.approximate_distance = result.distances[result.count - 1];
+        stats.total_microseconds = trie_monotonic_microseconds() - query_start;
+        cumulative_microseconds += stats.total_microseconds;
+        trie_save_query_stats(index->trie, &stats, result.distances[result.count - 1],
+                              cumulative_microseconds);
+        if (SHOULD_REPORT_QUERY(query_index, query_count)) {
+            PRINT_STATS_HEADER();
+            trie_print_query_stats(query_index, index->trie, &stats,
+                                   result.distances[result.count - 1], cumulative_microseconds);
+        }
         symbolic_trie_topk_result_destroy(&result);
     }
     fclose(file); free(query); free(input); free(transform); free(word); fftw_workspace_destroy(&fftw);
@@ -1907,376 +1842,6 @@ query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
     }
     else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL, NULL);
     return result;
-}
-
-/* The 1-NN engine above deliberately keeps its scalar BSF hot path.  Top-k
- * has a separate bounded max-heap: its root is the current kth distance and
- * therefore the safe pruning threshold once the heap is full. */
-typedef struct {
-    float distance;
-    file_position_type position; /* raw float offset while searching */
-} trie_topk_entry;
-
-typedef struct {
-    trie_topk_entry *entries;
-    size_t size;
-    size_t capacity;
-} trie_topk_heap;
-
-static int trie_topk_entry_worse(const trie_topk_entry *left,
-                                 const trie_topk_entry *right) {
-    return left->distance > right->distance ||
-           (left->distance == right->distance && left->position > right->position);
-}
-
-static void trie_topk_sift_down(trie_topk_heap *heap, size_t root) {
-    while (1) {
-        size_t child = root * 2 + 1;
-        if (child >= heap->size) return;
-        if (child + 1 < heap->size &&
-            trie_topk_entry_worse(&heap->entries[child + 1], &heap->entries[child]))
-            ++child;
-        if (!trie_topk_entry_worse(&heap->entries[child], &heap->entries[root])) return;
-        trie_topk_entry temporary = heap->entries[root];
-        heap->entries[root] = heap->entries[child];
-        heap->entries[child] = temporary;
-        root = child;
-    }
-}
-
-static void trie_topk_sift_up(trie_topk_heap *heap, size_t child) {
-    while (child != 0) {
-        size_t parent = (child - 1) / 2;
-        if (!trie_topk_entry_worse(&heap->entries[child], &heap->entries[parent])) return;
-        trie_topk_entry temporary = heap->entries[parent];
-        heap->entries[parent] = heap->entries[child];
-        heap->entries[child] = temporary;
-        child = parent;
-    }
-}
-
-static float trie_topk_threshold(const trie_topk_heap *heap) {
-    return heap->size < heap->capacity ? FLT_MAX : heap->entries[0].distance;
-}
-
-static int trie_topk_insert(trie_topk_heap *heap, float distance,
-                            file_position_type position) {
-    trie_topk_entry entry = { distance, position };
-    /* Local heaps see each record once, but a worker publishes its retained
-     * heap more than once.  Do not let those snapshots occupy several ranks
-     * in the shared result heap. */
-    for (size_t i = 0; i < heap->size; ++i) {
-        if (heap->entries[i].position != position) continue;
-        if (!trie_topk_entry_worse(&heap->entries[i], &entry)) return 0;
-        heap->entries[i] = entry;
-        for (size_t root = heap->size / 2; root-- > 0; ) trie_topk_sift_down(heap, root);
-        return 1;
-    }
-    if (heap->size < heap->capacity) {
-        heap->entries[heap->size] = entry;
-        trie_topk_sift_up(heap, heap->size++);
-        return 1;
-    }
-    if (!trie_topk_entry_worse(&heap->entries[0], &entry)) return 0;
-    heap->entries[0] = entry;
-    trie_topk_sift_down(heap, 0);
-    return 1;
-}
-
-static int trie_topk_compare_ascending(const void *left, const void *right) {
-    const trie_topk_entry *a = left, *b = right;
-    if (a->distance < b->distance) return -1;
-    if (a->distance > b->distance) return 1;
-    return a->position < b->position ? -1 : a->position > b->position;
-}
-
-static float trie_topk_shared_threshold(const trie_topk_heap *local,
-                                        trie_topk_heap *shared,
-                                        pthread_mutex_t *shared_lock) {
-    float threshold = trie_topk_threshold(local);
-    if (shared != NULL && shared_lock != NULL) {
-        pthread_mutex_lock(shared_lock);
-        float global_threshold = trie_topk_threshold(shared);
-        pthread_mutex_unlock(shared_lock);
-        if (global_threshold < threshold) threshold = global_threshold;
-    }
-    return threshold;
-}
-
-static void trie_topk_publish(const trie_topk_heap *local, trie_topk_heap *shared,
-                              pthread_mutex_t *shared_lock) {
-    if (shared == NULL || shared_lock == NULL || local->size == 0) return;
-    pthread_mutex_lock(shared_lock);
-    for (size_t i = 0; i < local->size; ++i)
-        trie_topk_insert(shared, local->entries[i].distance, local->entries[i].position);
-    pthread_mutex_unlock(shared_lock);
-}
-
-static int trie_topk_scan_leaf_range(isax_index *index, const symbolic_trie_node *node,
-                                     int offset, int count, float mbr_suffix,
-                                     const ts_type *query, const ts_type *transform,
-                                     trie_topk_heap *results, trie_topk_heap *shared,
-                                     pthread_mutex_t *shared_lock, trie_query_stats *stats,
-                                     trie_query_scratch *scratch) {
-    const int end = offset + count;
-    int changed = 0;
-    if (!trie_scratch_reserve(scratch, count)) {
-        for (int i = offset; i < end; ++i) {
-            if (stats != NULL) ++stats->lower_bounds;
-            float threshold = trie_topk_shared_threshold(results, shared, shared_lock);
-            float lower = trie_record_lower_bound(index->trie, index, transform, node->words[i],
-                                                  threshold, mbr_suffix, scratch);
-            if (lower > threshold) continue;
-            if (stats != NULL) ++stats->exact_distances;
-            float d = trie_exact_distance(query, rawfile + node->positions[i],
-                                          index->settings->timeseries_size,
-                                          nextafterf(threshold, FLT_MAX), stats);
-            if (d <= threshold && trie_topk_insert(results, d, node->positions[i])) changed = 1;
-        }
-        return changed;
-    }
-    int candidate_count = 0;
-    for (int i = offset; i < end; ++i) {
-        if (stats != NULL) ++stats->lower_bounds;
-        float threshold = trie_topk_shared_threshold(results, shared, shared_lock);
-        float lower = trie_record_lower_bound(index->trie, index, transform, node->words[i],
-                                              threshold, mbr_suffix, scratch);
-        if (lower <= threshold) {
-            scratch->candidates[candidate_count].lower_bound = lower;
-            scratch->candidates[candidate_count++].record_index = i;
-        }
-    }
-    trie_heap_build(scratch->candidates, candidate_count);
-    while (candidate_count > 0) {
-        float threshold = trie_topk_shared_threshold(results, shared, shared_lock);
-        if (scratch->candidates[0].lower_bound > threshold) break;
-        trie_leaf_candidate candidate = trie_heap_pop(scratch->candidates, &candidate_count);
-        if (stats != NULL) ++stats->exact_distances;
-        file_position_type position = node->positions[candidate.record_index];
-        float d = trie_exact_distance(query, rawfile + position,
-                                      index->settings->timeseries_size,
-                                      nextafterf(threshold, FLT_MAX), stats);
-        if (d <= threshold && trie_topk_insert(results, d, position)) changed = 1;
-    }
-    return changed;
-}
-
-static int trie_topk_scan_leaf(isax_index *index, const symbolic_trie_node *node,
-                               const ts_type *query, const ts_type *transform,
-                               trie_topk_heap *results, trie_topk_heap *shared,
-                               pthread_mutex_t *shared_lock, trie_query_stats *stats,
-                               trie_query_scratch *scratch) {
-    int changed = 0;
-    if (node->cluster_count == 0) {
-        float suffix = trie_record_mbr_suffix(index->trie, index, transform,
-                                              node->min_word, node->max_word, scratch);
-        return trie_topk_scan_leaf_range(index, node, 0, node->size, suffix, query, transform,
-                                         results, shared, shared_lock, stats, scratch);
-    }
-    typedef struct { int cluster; float bound; } trie_topk_cluster_bound;
-    trie_topk_cluster_bound ordered[64];
-    int count = 0;
-    for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
-        float threshold = trie_topk_shared_threshold(results, shared, shared_lock);
-        const trie_leaf_cluster *group = &node->clusters[cluster];
-        if (stats != NULL) ++stats->cluster_bounds;
-        float bound = trie_lower_bound(index->trie, index, transform,
-            node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
-            node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
-            index->trie->dimensions, threshold, stats);
-        if (bound > threshold) {
-            if (stats != NULL) { ++stats->cluster_pruned; stats->cluster_records_pruned += group->size; }
-        } else ordered[count++] = (trie_topk_cluster_bound) { cluster, bound };
-    }
-    for (int i = 1; i < count; ++i) {
-        trie_topk_cluster_bound value = ordered[i]; int j = i - 1;
-        while (j >= 0 && ordered[j].bound > value.bound) { ordered[j + 1] = ordered[j]; --j; }
-        ordered[j + 1] = value;
-    }
-    for (int i = 0; i < count; ++i) {
-        int cluster = ordered[i].cluster;
-        const trie_leaf_cluster *group = &node->clusters[cluster];
-        const sax_type *minimum = node->cluster_min_words + (size_t) cluster * index->trie->dimensions;
-        const sax_type *maximum = node->cluster_max_words + (size_t) cluster * index->trie->dimensions;
-        float suffix = trie_record_mbr_suffix(index->trie, index, transform, minimum, maximum, scratch);
-        changed |= trie_topk_scan_leaf_range(index, node, group->offset, group->size, suffix,
-                                             query, transform, results, shared, shared_lock,
-                                             stats, scratch);
-    }
-    return changed;
-}
-
-static void trie_topk_search_node(isax_index *index, const symbolic_trie_node *node,
-                                  const ts_type *query, const ts_type *transform,
-                                  trie_topk_heap *results, trie_query_stats *stats,
-                                  trie_query_scratch *scratch) {
-    if (stats != NULL) ++stats->checked_nodes;
-    float threshold = trie_topk_threshold(results);
-    float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                                   index->trie->dimensions, threshold, stats);
-    if (lower > threshold) return;
-    if (node->leaf) {
-        trie_topk_scan_leaf(index, node, query, transform, results, NULL, NULL, stats, scratch);
-        return;
-    }
-    typedef struct { const symbolic_trie_node *node; float bound; } trie_topk_child_bound;
-    trie_topk_child_bound ordered[TRIE_MAX_FANOUT];
-    int count = 0;
-    for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
-        threshold = trie_topk_threshold(results);
-        float bound = trie_lower_bound(index->trie, index, transform,
-            node->children[i]->min_word, node->children[i]->max_word,
-            index->trie->dimensions, threshold, stats);
-        if (bound <= threshold) ordered[count++] = (trie_topk_child_bound) { node->children[i], bound };
-    }
-    for (int i = 1; i < count; ++i) {
-        trie_topk_child_bound value = ordered[i]; int j = i - 1;
-        while (j >= 0 && ordered[j].bound > value.bound) { ordered[j + 1] = ordered[j]; --j; }
-        ordered[j + 1] = value;
-    }
-    for (int i = 0; i < count; ++i) {
-        if (ordered[i].bound <= trie_topk_threshold(results))
-            trie_topk_search_node(index, ordered[i].node, query, transform, results, stats, scratch);
-    }
-}
-
-static const symbolic_trie_node *trie_topk_first_leaf(const symbolic_trie_node *node) {
-    while (node != NULL && !node->leaf) {
-        const symbolic_trie_node *next = NULL;
-        for (int i = 0; i < node->split_fanout; ++i) {
-            if (node->children[i] != NULL) { next = node->children[i]; break; }
-        }
-        node = next;
-    }
-    return node;
-}
-
-static int trie_topk_parallel_search(isax_index *index, const ts_type *query,
-                                     const ts_type *transform, trie_topk_heap *results) {
-#ifndef _OPENMP
-    trie_query_scratch scratch = {0};
-    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
-    trie_topk_search_node(index, index->trie->root, query, transform, results, NULL, &scratch);
-    free(scratch.candidates);
-    return results->size == results->capacity;
-#else
-    const int workers = maxquerythread > 0 ? maxquerythread : 1;
-    if (workers <= 1) {
-        trie_query_scratch scratch = {0};
-        trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
-        trie_topk_search_node(index, index->trie->root, query, transform, results, NULL, &scratch);
-        free(scratch.candidates);
-        return results->size == results->capacity;
-    }
-    const int queue_count = N_PQUEUE > 0 ? N_PQUEUE : workers;
-    int frontier_count = 0;
-    symbolic_trie_node **frontier = trie_parallel_frontier(index->trie->root, workers * 4, &frontier_count);
-    trie_leaf_queue *queues = calloc((size_t) queue_count, sizeof(*queues));
-    trie_query_scratch *scratch = calloc((size_t) workers, sizeof(*scratch));
-    trie_topk_heap *local = calloc((size_t) workers, sizeof(*local));
-    if (frontier == NULL || queues == NULL || scratch == NULL || local == NULL) {
-        free(frontier); free(queues); free(scratch); free(local);
-        trie_query_scratch serial_scratch = {0};
-        trie_prepare_record_lb_table(index->trie, index, transform, &serial_scratch);
-        trie_topk_search_node(index, index->trie->root, query, transform, results, NULL, &serial_scratch);
-        free(serial_scratch.candidates);
-        return results->size == results->capacity;
-    }
-    const symbolic_trie_node *seed = trie_topk_first_leaf(index->trie->root);
-    trie_query_scratch seed_scratch = {0};
-    trie_prepare_record_lb_table(index->trie, index, transform, &seed_scratch);
-    if (seed != NULL) trie_topk_scan_leaf(index, seed, query, transform, results, NULL, NULL,
-                                          NULL, &seed_scratch);
-    free(seed_scratch.candidates);
-    pthread_mutex_t result_lock = PTHREAD_MUTEX_INITIALIZER;
-    for (int i = 0; i < queue_count; ++i) pthread_mutex_init(&queues[i].lock, NULL);
-    for (int i = 0; i < workers; ++i) {
-        local[i].entries = calloc(results->capacity, sizeof(*local[i].entries));
-        local[i].capacity = results->capacity;
-        if (local[i].entries == NULL) {
-            for (int j = 0; j < i; ++j) free(local[j].entries);
-            for (int j = 0; j < queue_count; ++j) pthread_mutex_destroy(&queues[j].lock);
-            pthread_mutex_destroy(&result_lock);
-            free(frontier); free(queues); free(scratch); free(local);
-            trie_query_scratch serial_scratch = {0};
-            trie_prepare_record_lb_table(index->trie, index, transform, &serial_scratch);
-            trie_topk_search_node(index, index->trie->root, query, transform, results, NULL, &serial_scratch);
-            free(serial_scratch.candidates);
-            return results->size == results->capacity;
-        }
-        trie_prepare_record_lb_table(index->trie, index, transform, &scratch[i]);
-    }
-    int next_queue = 0, failed = 0;
-    const float initial_threshold = trie_topk_threshold(results);
-#pragma omp parallel num_threads(workers)
-    {
-        int worker = omp_get_thread_num();
-#pragma omp for schedule(dynamic, 1) nowait
-        for (int i = 0; i < frontier_count; ++i)
-            trie_parallel_collect_leaves(index, frontier[i], transform, initial_threshold, seed,
-                                         queues, queue_count, &next_queue, NULL, &failed);
-#pragma omp barrier
-        for (int offset = 0; offset < queue_count && !__atomic_load_n(&failed, __ATOMIC_RELAXED); ++offset) {
-            trie_leaf_work work;
-            int queue = (worker + offset) % queue_count;
-            while (trie_leaf_queue_pop(&queues[queue], &work, NULL)) {
-                float threshold = trie_topk_shared_threshold(&local[worker], results, &result_lock);
-                if (work.lower_bound > threshold) continue;
-                if (trie_topk_scan_leaf(index, work.node, query, transform, &local[worker], results,
-                                       &result_lock, NULL, &scratch[worker]))
-                    trie_topk_publish(&local[worker], results, &result_lock);
-            }
-        }
-    }
-    for (int i = 0; i < workers; ++i) {
-        trie_topk_publish(&local[i], results, &result_lock);
-        free(local[i].entries); free(scratch[i].candidates);
-    }
-    for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
-    pthread_mutex_destroy(&result_lock);
-    free(frontier); free(queues); free(scratch); free(local);
-    if (!__atomic_load_n(&failed, __ATOMIC_RELAXED)) return results->size == results->capacity;
-    /* A failed work-queue allocation must never return a partial answer. */
-    results->size = 0;
-    trie_query_scratch serial_scratch = {0};
-    trie_prepare_record_lb_table(index->trie, index, transform, &serial_scratch);
-    trie_topk_search_node(index, index->trie->root, query, transform, results, NULL, &serial_scratch);
-    free(serial_scratch.candidates);
-    return results->size == results->capacity;
-#endif
-}
-
-symbolic_trie_topk_result symbolic_trie_exact_topk_search(
-    isax_index *index, const ts_type *query, const ts_type *transform,
-    size_t k, float minimum_distance) {
-    symbolic_trie_topk_result output = {0, NULL, NULL};
-    if (index == NULL || index->trie == NULL || query == NULL || transform == NULL ||
-        k == 0 || k > (size_t) index->total_records) return output;
-    trie_topk_heap heap = { calloc(k, sizeof(*heap.entries)), 0, k };
-    if (heap.entries == NULL) return output;
-    (void) minimum_distance; /* Unlike a 1-NN cutoff, top-k must return k records. */
-    if (!trie_topk_parallel_search(index, query, transform, &heap)) {
-        free(heap.entries); return output;
-    }
-    qsort(heap.entries, heap.size, sizeof(*heap.entries), trie_topk_compare_ascending);
-    output.distances = malloc(heap.size * sizeof(*output.distances));
-    output.positions = malloc(heap.size * sizeof(*output.positions));
-    if (output.distances == NULL || output.positions == NULL) {
-        symbolic_trie_topk_result_destroy(&output); free(heap.entries); return output;
-    }
-    for (size_t i = 0; i < heap.size; ++i) {
-        output.distances[i] = heap.entries[i].distance;
-        output.positions[i] = heap.entries[i].position / index->settings->timeseries_size;
-    }
-    output.count = heap.size;
-    free(heap.entries);
-    return output;
-}
-
-void symbolic_trie_topk_result_destroy(symbolic_trie_topk_result *result) {
-    if (result == NULL) return;
-    free(result->distances); free(result->positions);
-    result->distances = NULL; result->positions = NULL; result->count = 0;
 }
 
 void symbolic_trie_destroy(isax_index *index) {
