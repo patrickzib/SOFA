@@ -44,6 +44,7 @@ sources = [
     "src/ads/pisa/pisa.c",
     "src/ads/calc_utils.c",
     "src/ads/trie/trie.c",
+    "src/ads/trie/trie_topk.c",
 ]
 sourcedirs = [str(ROOT / path) for path in sources]
 

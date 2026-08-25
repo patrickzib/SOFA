@@ -25,13 +25,13 @@ def main() -> None:
             distances, indices = index.search(query)
             assert distances.shape == (1, 1)
             assert distances[0, 0] == 0.0
-            assert indices is None
-            try:
-                index.search(query, k=2)
-            except NotImplementedError:
-                pass
-            else:
-                raise AssertionError("k > 1 must be rejected")
+            assert indices.shape == (1, 1)
+            assert indices[0, 0] == 0
+            distances, indices = index.search(query, k=2)
+            assert distances.shape == (1, 2)
+            assert indices.shape == (1, 2)
+            assert np.array_equal(distances, [[0.0, 0.0]])
+            assert np.array_equal(indices, [[0, 1]])
         assert not os.path.exists(raw_path)
 
 
