@@ -20,35 +20,35 @@ typedef struct query_result {
 } query_result;
 
 
-static int
+static inline int
 cmp_pri(double next, double curr)
 {
 	return (next > curr);
 }
 
 
-static double
+static inline double
 get_pri(void *a)
 {
 	return (double) ((query_result *) a)->distance;
 }
 
 
-static void
+static inline void
 set_pri(void *a, double pri)
 {
 	((query_result *) a)->distance = (float)pri;
 }
 
 
-static size_t
+static inline size_t
 get_pos(void *a)
 {
 	return ((query_result *) a)->pqueue_position;
 }
 
 
-static void
+static inline void
 set_pos(void *a, size_t pos)
 {
 	((query_result *) a)->pqueue_position = pos;
@@ -61,12 +61,9 @@ pqueue_bsf exact_topk_serial(ts_type *ts, ts_type *paa, isax_index *index, float
 
 query_result exact_search (ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves);
 pqueue_bsf exact_topk (ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves, int k);
-query_result sanity_check_query (ts_type *ts, ts_type *paa, isax_index *index, float minimum_distance, int min_checked_leaves);
 
 /// HELPE FUNCTIONS
-ts_type * get_ads_record(unsigned long tid, isax_index *index);
 query_result approximate_search (ts_type *ts, ts_type *paa, isax_index *index);
-query_result  approximate_search_manynode (ts_type *ts, ts_type *paa, isax_index *index);
 
 void  approximate_topk (ts_type *ts, ts_type *paa, isax_index *index, pqueue_bsf *pq_bsf);
 query_result approximate_search_SIMD (ts_type *ts, ts_type *paa, isax_index *index);

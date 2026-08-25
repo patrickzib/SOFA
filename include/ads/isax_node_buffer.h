@@ -62,7 +62,7 @@ enum response flush_node_buffer(isax_node_buffer *node_buffer,
                                 const char * filename);
 enum response flush_node_buffer_m(isax_node_buffer *node_buffer, 
                                 int sax_segments, int ts_segments, 
-                                const char * filename, pthread_mutex_t *lock_write);
+                                const char * filename);
 enum response clear_node_buffer(isax_node_buffer *node_buffer, 
                                 enum buffer_cleaning_mode clean_mode);
 #endif

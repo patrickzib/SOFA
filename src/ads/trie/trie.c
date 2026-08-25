@@ -945,23 +945,6 @@ static enum response trie_build_pca_block(isax_index *index,
 }
 #endif
 
-static int trie_insert(struct symbolic_trie_index *trie, isax_index *index, sax_type *word,
-                       file_position_type position) {
-    symbolic_trie_node *node = trie->root;
-    while (!node->leaf) {
-        trie_node_update_mbb(node, word, trie->dimensions);
-        int bucket = trie_bucket(word, node->split_dimension, node->split_fanout);
-        if (node->children[bucket] == NULL) {
-            node->children[bucket] = trie_node_create(trie->dimensions, node, node->used_dimensions);
-            if (node->children[bucket] == NULL) return 0;
-        }
-        node = node->children[bucket];
-    }
-    if (!trie_leaf_append(node, word, position, trie->dimensions)) return 0;
-    if (node->size > index->settings->max_leaf_size && !node->split_exhausted) trie_split_leaf(trie, index, node);
-    return 1;
-}
-
 /* Each invocation owns its node and may therefore split it without locking.
  * The only shared state is the OpenMP task scheduler. */
 static void trie_build_subtree(struct symbolic_trie_index *trie, isax_index *index,

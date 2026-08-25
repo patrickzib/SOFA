@@ -59,8 +59,6 @@ void approximate_topk_inmemory(ts_type *ts, ts_type *paa, isax_index *index, pqu
             // Adaptive splitting
         }
         calculate_node_topk_inmemory(index, node, ts, paa, pq_bsf);
-    } else {
-
     }
     for (int i = 0; i < pq_bsf->k - 1; ++i) {
         pq_bsf->knn[i] = pq_bsf->knn[pq_bsf->k - 1];
@@ -74,7 +72,6 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
     int tight_bound = index->settings->tight_bound;
     int aggressive_check = index->settings->aggressive_check;
 
-    int j = 0;
     pqueue_t *pq = pqueue_init(index->settings->root_nodes_size,
                                cmp_pri, get_pri, set_pri, get_pos, set_pos);
 
@@ -111,7 +108,6 @@ void refine_topk_answer_inmemory(ts_type *ts, ts_type *paa, isax_index *index, p
                 }
                 // *** EXTRA BOUNDING ***
                 if (tight_bound) {
-                    j++;
                     float mindistance = calculate_minimum_distance_inmemory(index, n->node, ts, paa);
 
                     if (mindistance >= pq_bsf->knn[pq_bsf->k - 1]) {
@@ -280,21 +276,15 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
 
     RESET_BYTES_ACCESSED
 
-    // FOR THREAD USE
     COUNT_INPUT_TIME_START
     MINDISTS = malloc(sizeof(float) * index->sax_cache_size);
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     unsigned long j;
     for (j = 0; j < index->sax_cache_size; j++)
         MINDISTS[j] = FLT_MAX;
-    // END
 
     approximate_topk_inmemory(ts, paa, index, pq_bsf);
 
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
-
-    // Early termination...
 
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
         refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
@@ -304,14 +294,10 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
 
 
     unsigned long i;
-    //FILE *raw_file = fopen(index->settings->raw_filename, "rb");
-    //fseek(raw_file, 0, SEEK_SET);
     ts_type *ts_buffer;
     COUNT_INPUT_TIME_END
 
-    //SET_APPROXIMATE(approximate_result.distance);
 
-    // THREADED
     COUNT_CAL_TIME_START
     pthread_t thread[NTHREADS];
     struct args_in arguments[NTHREADS];
@@ -326,17 +312,15 @@ pqueue_bsf exact_search_serial_topk_inmemory(ts_type *ts, ts_type *paa, isax_ind
         }
         arguments[i].paa = paa;
         arguments[i].index = index;
-        int ret = pthread_create(&thread[i], NULL, compute_mindists_in, &arguments[i]);
+        pthread_create(&thread[i], NULL, compute_mindists_in, &arguments[i]);
     }
 
     for (i = 0; i < NTHREADS; i++) {
         pthread_join(thread[i], NULL);
     }
     COUNT_CAL_TIME_END
-    // END
     COUNT_OUTPUT_TIME_START
     for (i = 0; i < index->sax_cache_size; i++) {
-        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
         if (MINDISTS[i] <= pq_bsf->knn[k - 1]) {
             ts_buffer = &rawfile[i * index->settings->timeseries_size];
             float dist = ts_euclidean_distance(ts, ts_buffer, index->settings->timeseries_size,
@@ -360,10 +344,7 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     pqueue_bsf *pq_bsf = pqueue_bsf_init(k);
     approximate_topk_inmemory(ts, paa, index, pq_bsf);
 
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
     int node_counter = 0;
-    // Early termination...
 
     if (pq_bsf->knn[k - 1] == FLT_MAX || min_checked_leaves > 1) {
         refine_topk_answer_inmemory(ts, paa, index, pq_bsf, minimum_distance, min_checked_leaves);
@@ -377,12 +358,8 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
         SET_APPROXIMATE(pq_bsf->knn[pq_bsf->k - 1]);
     }
 
-    // Insert all root nodes in heap.
-    isax_node *current_root_node = index->first_node;
-
     pthread_t threadid[maxquerythread];
     MESSI_workerdata workerdata[maxquerythread];
-    pthread_mutex_t lock_queue = PTHREAD_MUTEX_INITIALIZER, lock_current_root_node = PTHREAD_MUTEX_INITIALIZER;
     pthread_rwlock_t lock_bsf = PTHREAD_RWLOCK_INITIALIZER;
     pthread_barrier_t lock_barrier;
     pthread_barrier_init(&lock_barrier, NULL, maxquerythread);
@@ -397,8 +374,6 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
     for (int i = 0; i < maxquerythread; i++) {
         workerdata[i].paa = paa;
         workerdata[i].ts = ts;
-        workerdata[i].lock_queue = &lock_queue;
-        workerdata[i].lock_current_root_node = &lock_current_root_node;
         workerdata[i].lock_bsf = &lock_bsf;
         workerdata[i].nodelist = nodelist->nlist;
         workerdata[i].amountnode = nodelist->node_amount;
@@ -413,10 +388,6 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
         workerdata[i].startqueuenumber = i % N_PQUEUE;
         workerdata[i].pq_bsf = pq_bsf;
     }
-
-
-    query_result *n;
-
     for (int i = 0; i < maxquerythread; i++) {
         pthread_create(&(threadid[i]), NULL, exact_topk_worker_inmemory_hybridpqueue, (void *) &(workerdata[i]));
     }
@@ -424,20 +395,15 @@ pqueue_bsf exact_topk_MESSImq_inmemory(ts_type *ts, ts_type *paa, isax_index *in
         pthread_join(threadid[i], NULL);
     }
 
-    // Free the nodes that where not popped.
-    // Free the priority queue.
     pthread_barrier_destroy(&lock_barrier);
 
-    //pqueue_free(pq);
     for (int i = 0; i < N_PQUEUE; i++) {
         pqueue_free(allpq[i]);
     }
     free(allpq);
 
-    //free(rfdata);
     return *pq_bsf;
 
-    // Free the nodes that where not popped.
 
 }
 
@@ -448,30 +414,16 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
     ts_type *paa = ((MESSI_workerdata *) rfdata)->paa;
     ts_type *ts = ((MESSI_workerdata *) rfdata)->ts;
-    pqueue_t *pq = ((MESSI_workerdata *) rfdata)->pq;
-    query_result *do_not_remove = ((MESSI_workerdata *) rfdata)->bsf_result;
     float minimum_distance = ((MESSI_workerdata *) rfdata)->minimum_distance;
     pqueue_bsf *pq_bsf = ((MESSI_workerdata *) rfdata)->pq_bsf;
-    int limit = ((MESSI_workerdata *) rfdata)->limit;
     int checks = 0;
     bool finished = true;
     int current_root_node_number;
-    int tight_bound = index->settings->tight_bound;
-    int aggressive_check = index->settings->aggressive_check;
     float bsfdisntance = pq_bsf->knn[pq_bsf->k - 1];
-    int calculate_node = 0, calculate_node_quque = 0;
     int tnumber = rand() % N_PQUEUE;
     int startqueuenumber = ((MESSI_workerdata *) rfdata)->startqueuenumber;
-    //COUNT_QUEUE_TIME_START
-    //struct timeval workertimestart;
-    //struct timeval writetiemstart;
-    //struct timeval workercurenttime;
-    //struct timeval writecurenttime;
-    //double worker_total_time,write_total_time;
-    //gettimeofday(&workertimestart, NULL);
     while (1) {
         current_root_node_number = __sync_fetch_and_add(((MESSI_workerdata *) rfdata)->node_counter, 1);
-        //printf("the number is %d\n",current_root_node_number );
         if (current_root_node_number >= ((MESSI_workerdata *) rfdata)->amountnode)
             break;
         current_root_node = ((MESSI_workerdata *) rfdata)->nodelist[current_root_node_number];
@@ -479,25 +431,18 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
         insert_tree_node_m_hybridpqueue(paa, current_root_node, index, bsfdisntance,
                                         ((MESSI_workerdata *) rfdata)->allpq, ((MESSI_workerdata *) rfdata)->alllock,
                                         &tnumber);
-        //insert_tree_node_mW(paa,current_root_node,index,bsfdisntance,pq,((MESSI_workerdata*)rfdata)->lock_queue);
 
 
     }
 
-    //COUNT_QUEUE_TIME_END
-    //calculate_node_quque=pq->size;
-    //gettimeofday(&workercurenttime, NULL); 
     pthread_barrier_wait(((MESSI_workerdata *) rfdata)->lock_barrier);
-    //printf("the size of quque is %d \n",pq->size);
     while (1) {
         pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
         n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[startqueuenumber]);
         pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
         if (n == NULL)
             break;
-        //pthread_rwlock_rdlock(((MESSI_workerdata*)rfdata)->lock_bsf);
         bsfdisntance = pq_bsf->knn[pq_bsf->k - 1];
-        //pthread_rwlock_unlock(((MESSI_workerdata*)rfdata)->lock_bsf);
         // The best node has a worse mindist, so search is finished!
 
         if (n->distance > bsfdisntance || n->distance > minimum_distance) {
@@ -507,7 +452,6 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
             if (n->node->is_leaf) {
 
                 checks++;
-                //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
                 calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
                                               ((MESSI_workerdata *) rfdata)->lock_bsf);
 
@@ -521,14 +465,13 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
     if ((((MESSI_workerdata *) rfdata)->allqueuelabel[startqueuenumber]) == 1) {
         (((MESSI_workerdata *) rfdata)->allqueuelabel[startqueuenumber]) = 0;
         pthread_mutex_lock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
-        while (n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[startqueuenumber])) {
+        while ((n = pqueue_pop(((MESSI_workerdata *) rfdata)->allpq[startqueuenumber]))) {
             free(n);
         }
         pthread_mutex_unlock(&(((MESSI_workerdata *) rfdata)->alllock[startqueuenumber]));
     }
 
     while (1) {
-        int offset = rand() % N_PQUEUE;
         finished = true;
         for (int i = 0; i < N_PQUEUE; i++) {
             if ((((MESSI_workerdata *) rfdata)->allqueuelabel[i]) == 1) {
@@ -545,14 +488,12 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
                         // If it is a leaf, check its real distance.
                         if (n->node->is_leaf) {
                             checks++;
-                            //float distance = calculate_node_distance2_inmemory(index, n->node, ts,paa, bsfdisntance);
                             calculate_node2_topk_inmemory(index, n->node, ts, paa, pq_bsf,
                                                           ((MESSI_workerdata *) rfdata)->lock_bsf);
 
                         }
 
                     }
-                    //add
                     free(n);
                 }
 
@@ -564,14 +505,5 @@ void *exact_topk_worker_inmemory_hybridpqueue(void *rfdata) {
     }
 
 
-    //pthread_barrier_wait(((MESSI_workerdata*)rfdata)->lock_barrier);
-    //while(n=pqueue_pop(pq))
-    //{
-    //free(n);
-    //}
-    //pqueue_free(pq);
-    //worker_total_time += workercurenttime.tv_sec*1000000 + (workercurenttime.tv_usec)-workertimestart.tv_sec*1000000 - (workertimestart.tv_usec); 
-    //printf("create pq time is %f \n",worker_total_time );
-    //printf("the worker's write  time is %f \n",worker_total_time );
-    //printf("the check's node is\t %d\tthe local queue's node is\t%d\n",checks,calculate_node_quque);
+    return NULL;
 }

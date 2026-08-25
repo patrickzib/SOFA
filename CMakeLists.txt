@@ -21,7 +21,6 @@ set(ADS_SOURCES
   src/ads/isax/isax_index.c
   src/ads/isax/isax_node.c
   src/ads/isax/isax_node_buffer.c
-  src/ads/isax/isax_node_record.c
   src/ads/isax/isax_node_split.c
   src/ads/isax/isax_query_engine.c
   src/ads/isax/isax_visualize_index.c

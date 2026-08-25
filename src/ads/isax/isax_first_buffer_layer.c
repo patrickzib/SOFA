@@ -54,58 +54,9 @@ struct parallel_first_buffer_layer * initialize_pRecBuf(int initial_buffer_size,
 
     // Allocate a big chunk of memory to store sax data and positions
     long long hard_buffer_size = (long long)(index->settings->sax_byte_size + index->settings->position_byte_size) * (long long) max_total_buffers_size;
-    //fbl->hard_buffer = malloc(hard_buffer_size);
 
     // Allocate a set of soft buffers to hold pointers to the hard buffer
     fbl->soft_buffers = malloc(sizeof(parallel_fbl_soft_buffer) * number_of_buffers);
-    fbl->current_record_index = 0;
-    int i;
-    for (i=0; i<number_of_buffers; i++) {
-        fbl->soft_buffers[i].initialized = 0;
-        fbl->soft_buffers[i].finished = 0;
-    }
-    return fbl;
-}
-struct first_buffer_layer2 * initialize_simrec(int initial_buffer_size, int number_of_buffers,
-                                           int max_total_buffers_size, isax_index *index)
-{
-    struct first_buffer_layer2 *fbl = malloc(sizeof(first_buffer_layer2));
-
-    fbl->max_total_size = max_total_buffers_size;
-    fbl->initial_buffer_size = initial_buffer_size;
-    fbl->number_of_buffers = number_of_buffers;
-
-    // Allocate a big chunk of memory to store sax data and positions
-    long long hard_buffer_size = (long long)(index->settings->sax_byte_size + index->settings->position_byte_size) * (long long) max_total_buffers_size;
-    //fbl->hard_buffer = malloc(hard_buffer_size);
-
-    // Allocate a set of soft buffers to hold pointers to the hard buffer
-    fbl->soft_buffers = malloc(sizeof(fbl_soft_buffer2) * number_of_buffers);
-    fbl->current_record_index = 0;
-    int i;
-    for (i=0; i<number_of_buffers; i++) {
-        fbl->soft_buffers[i].initialized = 0;
-        fbl->soft_buffers[i].max_buffer_size=0;
-        fbl->soft_buffers[i].buffer_size = 0;
-        //fbl->soft_buffers[i].finished = 0;
-    }
-    return fbl;
-}
-struct parallel_dfirst_buffer_layer * initialize_2pRecBuf(int initial_buffer_size, int number_of_buffers,
-                                           int max_total_buffers_size, isax_index *index)
-{
-    struct parallel_dfirst_buffer_layer *fbl = malloc(sizeof(parallel_dfirst_buffer_layer));
-
-    fbl->max_total_size = max_total_buffers_size;
-    fbl->initial_buffer_size = initial_buffer_size;
-    fbl->number_of_buffers = number_of_buffers;
-
-    // Allocate a big chunk of memory to store sax data and positions
-    long long hard_buffer_size = (long long)(index->settings->sax_byte_size + index->settings->position_byte_size) * (long long) max_total_buffers_size;
-    fbl->hard_buffer = malloc(hard_buffer_size);
-
-    // Allocate a set of soft buffers to hold pointers to the hard buffer
-    fbl->soft_buffers = malloc(sizeof(parallel_dfbl_soft_buffer) * number_of_buffers);
     fbl->current_record_index = 0;
     int i;
     for (i=0; i<number_of_buffers; i++) {
@@ -154,7 +105,6 @@ isax_node * insert_to_fbl(first_buffer_layer *fbl, sax_type *sax,
         if(current_buffer->max_buffer_size == 0) {
             current_buffer->max_buffer_size = fbl->initial_buffer_size;
 
-            current_buffer->max_buffer_size = fbl->initial_buffer_size;
 
             current_buffer->sax_records = malloc(sizeof(sax_type *) *
                                                  current_buffer->max_buffer_size);
@@ -243,32 +193,25 @@ enum response flush_fbl(first_buffer_layer *fbl, isax_index *index)
         if (current_fbl_node->buffer_size > 0)
         {
             // For all records in this buffer
-            //COUNT_CAL_TIME_START
             for (i=0; i<current_fbl_node->buffer_size; i++) {
                 r->sax = (sax_type *) current_fbl_node->sax_records[i];
                 r->position = (file_position_type *) current_fbl_node->pos_records[i];
                 r->insertion_mode = NO_TMP | PARTIAL;
-                // Add record to index
 
                 add_record_to_node(index, current_fbl_node->node, r, 1, 1);
 
             }
 
             // flush index node
-            //COUNT_CAL_TIME_START
             flush_subtree_leaf_buffers(index, current_fbl_node->node);
-            //COUNT_CAL_TIME_END
-            // clear FBL records moved in LBL buffers
             free(current_fbl_node->sax_records);
             free(current_fbl_node->pos_records);
-            // clear records read from files (free only prev sax buffers)
 
             isax_index_clear_node_buffers(index, current_fbl_node->node,
                                           INCLUDE_CHILDREN,
                                           TMP_AND_TS_CLEAN);
 
             index->allocated_memory = 0;
-            // Set to 0 in order to re-allocate original space for buffers.
             current_fbl_node->buffer_size = 0;
             current_fbl_node->max_buffer_size = 0;
         }
@@ -296,7 +239,6 @@ void destroy_fbl(first_buffer_layer *fbl) {
 }
 void destroy_fbl2(first_buffer_layer2 *fbl) {
 
-    //free(fbl->hard_buffer);
     free(fbl->soft_buffers);
     free(fbl);
 }

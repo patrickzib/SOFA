@@ -178,11 +178,9 @@ isax_node * add_record_to_node(isax_index *index, isax_node *node,
 root_mask_type isax_fbl_index_insert(isax_index *index, 
                                     sax_type * sax,
                                     file_position_type * pos);
-enum response isax_index_insert(isax_index *index, sax_type *sax, 
-                                file_position_type *pos);
 enum response flush_subtree_leaf_buffers (isax_index *index, isax_node *node);
-enum response flush_subtree_leaf_buffers_m (isax_index *index, isax_node *node, pthread_mutex_t *lock_index, pthread_mutex_t *lock_write);
-enum response flush_subtree_leaf_buffers_m1(isax_index *index, isax_node *node, pthread_mutex_t *lock_index, pthread_mutex_t *lock_write);
+enum response flush_subtree_leaf_buffers_m (isax_index *index, isax_node *node,
+                                            pthread_mutex_t *lock_index);
 enum response flush_all_leaf_buffers(isax_index *index, enum buffer_cleaning_mode buffer_clean_mode);
 enum response create_node_filename(isax_index *index,
                                    isax_node *node,
@@ -196,7 +194,6 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node);
 
 void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokernumber);
 int comp(const void * a, const void * b);
-void load_random_leaf(isax_index *index);
 
 float calculate_node_distance (isax_index *index, isax_node *node, ts_type *query, float bsf);
 void calculate_node_topk (isax_index *index, isax_node *node, ts_type *query, pqueue_bsf *pq_bsf);
@@ -227,6 +224,4 @@ isax_node * node_read(isax_index *index, FILE *file);
 void create_wedges(isax_index *index, isax_node *node);
 void clear_wedges(isax_index *index, isax_node *node);
 int compare_file_positions (const void * a, const void * b);
-void print_mem_info(isax_index *index);
-meminfo get_memory_utilization_info(isax_index *index);
 #endif

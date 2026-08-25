@@ -810,7 +810,6 @@ query_result exact_DTW_serial_ParIS_inmemory(ts_type *ts,ts_type *paa, ts_type *
     readpointer.tsL=lowerLemire;
     readpointer.index=index;
     readpointer.counter=&readcounter;
-    readpointer.bsf=approximate_result.distance;
     readpointer.load_point=label_number;
     readpointer.lock_bsf=&lock_bsf;
     readpointer.bsf2=&bsfdistance;

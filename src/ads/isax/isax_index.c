@@ -123,8 +123,6 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     	}
         settings->max_total_full_buffer_size = max_total_buffer_size;
         settings->initial_fbl_buffer_size = initial_fbl_buffer_size;
-        //settings->max_total_full_buffer_size = 0;
-        //settings->initial_fbl_buffer_size = 0;
     }
 
     if (sax_bit_cardinality > (int)(8 * (int)sizeof(sax_type))) {
@@ -155,12 +153,10 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 
     settings->timeseries_size = timeseries_size;
     settings->n_segments = n_segments;
-    // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) n_segments);
     settings->ts_values_per_paa_segment =timeseries_size/ n_segments;
     settings->max_leaf_size = max_leaf_size;
     settings->min_leaf_size = min_leaf_size;
     settings->initial_leaf_buffer_size = initial_leaf_buffer_size;
-	// settings->filetype_int = filetype_int;
 
 	settings->tight_bound = tight_bound;
     settings->aggressive_check = aggressive_check;
@@ -182,8 +178,6 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 	for(i=0; i<settings->n_segments;i++)
 		settings->max_sax_cardinalities[i] = settings->sax_bit_cardinality;
 	
-    //settings->mindist_sqrt = sqrtf((float) settings->timeseries_size /
-    //                               (float) settings->n_segments);
     settings->mindist_sqrt = ((float) settings->timeseries_size /
                                    (float) settings->n_segments);
     settings->root_nodes_size = index_type == MESSI_INDEX_ISAX
@@ -303,7 +297,6 @@ isax_index * isax_index_init(isax_index_settings *settings)
     index->root_nodes = 0;
     index->allocated_memory = 0;
     index->has_wedges = 0;
-    //index->locations = malloc(sizeof(int) * settings->timeseries_size);
 
     index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
     index->pca_mean = NULL;
@@ -415,7 +408,6 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
     	free(index->settings);
 
 		// TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
-        //isax_node *subtree_root = index->first_node;
         
         for (int i=0;i<((first_buffer_layer2*)(index->fbl))->number_of_buffers;i++) 
         {
@@ -577,7 +569,6 @@ root_mask_type isax_fbl_index_insert(isax_index *index,
     // TODO: Create INSERTION SHORT AND BINARY SEARCH METHODS.
     root_mask_type first_bit_mask = 0x00;
     CREATE_MASK(first_bit_mask, index, sax);
-    //printf("sax is %d\n",first_bit_mask );
     insert_to_fbl(index->fbl, sax, pos,
                   first_bit_mask, index);
     index->total_records++;
@@ -597,78 +588,6 @@ root_mask_type isax_fbl_index_insert(isax_index *index,
  @param isax_index *index
  @param isax_node_record *record
  */
-enum response isax_index_insert(isax_index *index, sax_type *sax, file_position_type *pos)
-{
-    // Create mask for the first bit of the sax representation
-
-    // Step 1: Check if there is a root node that represents the 
-    //         current node's sax representation
-    
-    // TODO: Create INSERTION SHORT AND BINARY SEARCH METHODS.
-    root_mask_type first_bit_mask = 0x00;
-    CREATE_MASK(first_bit_mask, index, sax);
-
-    isax_node *curr_node = index->first_node;
-    isax_node *last_node = NULL;
-    while (curr_node != NULL) {
-        if(first_bit_mask == curr_node->mask) 
-        {
-           break;
-        }
-        last_node = curr_node;
-        curr_node = curr_node->next;
-    }
-   
-    
-    // No appropriate root node has been found for this record
-    if(curr_node == NULL) {
-#ifdef DEBUG
-        // Create node
-        printf("*** Creating new root node. ***\n\n");
-#endif
-        isax_node *new_node = isax_root_node_init(first_bit_mask, 
-                                                  index->settings->initial_leaf_buffer_size);
-        index->root_nodes++;
-
-        if(index->first_node == NULL)
-        {
-            index->first_node = new_node;
-        }
-        else
-        {
-            last_node->next = new_node;
-            new_node->previous = last_node;
-        }
-        
-        curr_node = new_node;
-    }
-    isax_node_record * record = isax_node_record_init(index->settings->n_segments, 
-                                                      index->settings->timeseries_size,
-                                                      NO_TMP | PARTIAL);
-    
-    memcpy((void *)record->sax, sax, index->settings->sax_byte_size);
-    memcpy((void *)record->position, pos, index->settings->position_byte_size);
-    
-    add_record_to_node(index, curr_node, record, 1, 1);
-    
-    free(record);
-    
-    index->total_records++;
-    
-    
-    // TODO: use total buffered records, also increased from LEAF LOADS and SPLITS
-    // and flush using this one as a flush limit counter. Reset to 0 when flushed. 
-    
-    // Check if flush to disk is needed
-    if((index->total_records % index->settings->max_total_buffer_size) == 0) {
-        FLUSHES++;
-        flush_all_leaf_buffers(index, 1);
-    }
-    
-    return SUCCESS;
-}
-
-
 enum response create_node_filename(isax_index *index,
                                    isax_node *node,
                                    isax_node_record *record,
@@ -793,7 +712,6 @@ isax_node * add_record_to_node(isax_index *index,
 enum response flush_all_leaf_buffers(isax_index *index, enum buffer_cleaning_mode buffer_clean_mode)
 {
 #ifndef DEBUG
-    //printf("\n");
     fflush(stdout);
 #else
     printf("*** FLUSHING ***\n\n");
@@ -894,7 +812,8 @@ enum response flush_subtree_leaf_buffers (isax_index *index, isax_node *node)
     
     return SUCCESS;
 }
-enum response flush_subtree_leaf_buffers_m1(isax_index *index, isax_node *node,pthread_mutex_t *lock_index,pthread_mutex_t *lock_write)
+enum response flush_subtree_leaf_buffers_m(isax_index *index, isax_node *node,
+                                           pthread_mutex_t *lock_index)
 {
     
     if (node->is_leaf && node->filename != NULL) {
@@ -915,9 +834,7 @@ enum response flush_subtree_leaf_buffers_m1(isax_index *index, isax_node *node,p
             int previous_page_size =  ceil((float) (prev_rec_count * index->settings->full_record_size) / (float) PAGE_SIZE);   
             int current_page_size =   ceil((float) (node->leaf_size * index->settings->full_record_size) / (float) PAGE_SIZE);
             pthread_mutex_lock(lock_index);
-            //COUNT_CAL_TIME_START
             index->memory_info.disk_data_full += (current_page_size - previous_page_size);
-            //COUNT_CAL_TIME_END
             pthread_mutex_unlock(lock_index);
         }
         if(node->has_partial_data_file) {
@@ -926,116 +843,29 @@ enum response flush_subtree_leaf_buffers_m1(isax_index *index, isax_node *node,p
             int previous_page_size =  ceil((float) (prev_rec_count * index->settings->partial_record_size) / (float) PAGE_SIZE);   
             int current_page_size =   ceil((float) (node->leaf_size * index->settings->partial_record_size) / (float) PAGE_SIZE);
             pthread_mutex_lock(lock_index);
-            //COUNT_CAL_TIME_START
             index->memory_info.disk_data_partial += (current_page_size - previous_page_size);
-            //COUNT_CAL_TIME_END
             pthread_mutex_unlock(lock_index);
         }
         if(node->has_full_data_file && node->has_partial_data_file) {
              printf("WARNING: (Mem size counting) this leaf has both partial and full data.\n");
         }
         pthread_mutex_lock(lock_index);
-        //COUNT_CAL_TIME_START
         index->memory_info.disk_data_full += (node->buffer->full_buffer_size + 
                                               node->buffer->tmp_full_buffer_size);
 
         index->memory_info.disk_data_partial += (node->buffer->partial_buffer_size + 
                                                  node->buffer->tmp_partial_buffer_size); 
-        //COUNT_CAL_TIME_END
         pthread_mutex_unlock(lock_index);
 
-        //flush_node_buffer(node->buffer, index->settings->n_segments, 
-        //                  index->settings->timeseries_size,
-         //                 node->filename);
         flush_node_buffer_m(node->buffer, index->settings->n_segments,
                           index->settings->timeseries_size,
-                          node->filename,lock_write);
-    }
-    else if (!node->is_leaf)
-    {
-        pid_t fpid;
-        fpid=fork();
-        if(fpid<0)
-        {
-            printf("error in fork! \n");
-        }
-        else if(fpid==0)
-        {
-            flush_subtree_leaf_buffers_m(index, node->left_child,lock_index,lock_write);
-
-        }
-        else
-        {
-            flush_subtree_leaf_buffers_m(index, node->right_child,lock_index,lock_write);
-
-        }
-    }
-    
-    return SUCCESS;
-}
-
-enum response flush_subtree_leaf_buffers_m(isax_index *index, isax_node *node,pthread_mutex_t *lock_index,pthread_mutex_t *lock_write)
-{
-    
-    if (node->is_leaf && node->filename != NULL) {
-        // Set that unloaded data exist in disk
-        if (node->buffer->partial_buffer_size > 0 
-            || node->buffer->tmp_partial_buffer_size > 0) {
-            node->has_partial_data_file = 1;
-        }
-        // Set that the node has flushed full data in the disk
-        if (node->buffer->full_buffer_size > 0 
-            || node->buffer->tmp_full_buffer_size > 0) {
-            node->has_full_data_file = 1;
-        }
-
-        if(node->has_full_data_file) {
-            int prev_rec_count = node->leaf_size - (node->buffer->full_buffer_size + node->buffer->tmp_full_buffer_size);
-            
-            int previous_page_size =  ceil((float) (prev_rec_count * index->settings->full_record_size) / (float) PAGE_SIZE);   
-            int current_page_size =   ceil((float) (node->leaf_size * index->settings->full_record_size) / (float) PAGE_SIZE);
-            pthread_mutex_lock(lock_index);
-            //COUNT_CAL_TIME_START
-            index->memory_info.disk_data_full += (current_page_size - previous_page_size);
-            //COUNT_CAL_TIME_END
-            pthread_mutex_unlock(lock_index);
-        }
-        if(node->has_partial_data_file) {
-            int prev_rec_count = node->leaf_size - (node->buffer->partial_buffer_size + node->buffer->tmp_partial_buffer_size);
-            
-            int previous_page_size =  ceil((float) (prev_rec_count * index->settings->partial_record_size) / (float) PAGE_SIZE);   
-            int current_page_size =   ceil((float) (node->leaf_size * index->settings->partial_record_size) / (float) PAGE_SIZE);
-            pthread_mutex_lock(lock_index);
-            //COUNT_CAL_TIME_START
-            index->memory_info.disk_data_partial += (current_page_size - previous_page_size);
-            //COUNT_CAL_TIME_END
-            pthread_mutex_unlock(lock_index);
-        }
-        if(node->has_full_data_file && node->has_partial_data_file) {
-             printf("WARNING: (Mem size counting) this leaf has both partial and full data.\n");
-        }
-        pthread_mutex_lock(lock_index);
-        //COUNT_CAL_TIME_START
-        index->memory_info.disk_data_full += (node->buffer->full_buffer_size + 
-                                              node->buffer->tmp_full_buffer_size);
-
-        index->memory_info.disk_data_partial += (node->buffer->partial_buffer_size + 
-                                                 node->buffer->tmp_partial_buffer_size); 
-        //COUNT_CAL_TIME_END
-        pthread_mutex_unlock(lock_index);
-
-        //flush_node_buffer(node->buffer, index->settings->n_segments, 
-        //                  index->settings->timeseries_size,
-         //                 node->filename);
-        flush_node_buffer_m(node->buffer, index->settings->n_segments,
-                          index->settings->timeseries_size,
-                          node->filename,lock_write);
+                          node->filename);
     }
     else if (!node->is_leaf)
     {
 
-            flush_subtree_leaf_buffers_m(index, node->left_child,lock_index,lock_write);
-            flush_subtree_leaf_buffers_m(index, node->right_child,lock_index,lock_write);
+            flush_subtree_leaf_buffers_m(index, node->left_child, lock_index);
+            flush_subtree_leaf_buffers_m(index, node->right_child, lock_index);
     }
     
     return SUCCESS;
@@ -1057,7 +887,6 @@ void isax_index_clear_node_buffers(isax_index *index, isax_node *node,
     }
     else {
         // Traverse tree
-                    //printf("this is the time 2\n");
 
         if(!node->is_leaf && node_cleaning_mode == INCLUDE_CHILDREN) {
             isax_index_clear_node_buffers(index, node->right_child, node_cleaning_mode, buffer_clean_mode);
@@ -1092,7 +921,6 @@ void find_empty_children(isax_node *start_node, isax_node **nodes_to_load,
     if (*number == 0 || start_node == NULL) {
         return;
     }
-    //printf("*** Loading all children of node: %p\n", start_node);
     
     
     if (start_node->is_leaf && (start_node->has_partial_data_file || 
@@ -1320,13 +1148,11 @@ float isax_index_load_node(isax_index *index, isax_node *c_node, ts_type * query
     
     
     // *** Step 4 *** Read node data from raw file and store in tree
-    //float bsf = FLT_MAX;
     int i;
     for (i=0; i<total_records; i++) {
         COUNT_LOADED_RECORD()
         index->loaded_records++;
         
-        //printf("LOADING POSITION: %d\n", *load_buffer[i].position);
         COUNT_INPUT_TIME_START
         fseek(raw_file, *load_buffer[i].position, SEEK_SET);
         fread(load_buffer[i].ts, sizeof(ts_type), index->settings->timeseries_size, raw_file);
@@ -1347,7 +1173,6 @@ float isax_index_load_node(isax_index *index, isax_node *c_node, ts_type * query
             }
         }
         
-        //printf("Distance: %lf\n", dist);
         
         add_to_node_buffer(((isax_node *)load_buffer[i].destination)->buffer, 
                            &load_buffer[i], 
@@ -1520,13 +1345,11 @@ void isax_index_load_node_topk(isax_index *index, isax_node *c_node, ts_type * q
     
     
     // *** Step 4 *** Read node data from raw file and store in tree
-    //float bsf = FLT_MAX;
     int i;
     for (i=0; i<total_records; i++) {
         COUNT_LOADED_RECORD()
         index->loaded_records++;
         
-        //printf("LOADING POSITION: %d\n", *load_buffer[i].position);
         COUNT_INPUT_TIME_START
         fseek(raw_file, *load_buffer[i].position, SEEK_SET);
         fread(load_buffer[i].ts, sizeof(ts_type), index->settings->timeseries_size, raw_file);
@@ -1548,7 +1371,6 @@ void isax_index_load_node_topk(isax_index *index, isax_node *c_node, ts_type * q
 
         }
         
-        //printf("Distance: %lf\n", dist);
         
         add_to_node_buffer(((isax_node *)load_buffer[i].destination)->buffer, 
                            &load_buffer[i], 
@@ -1575,16 +1397,12 @@ void isax_index_load_node_topk(isax_index *index, isax_node *c_node, ts_type * q
 }
 float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *raw_query, ts_type *query) 
 {
-	//printf("Calculating minimum distance...\n");
 	float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                               node->isax_cardinalities,
                                               index->settings, 0);
 	float bsfRecord = FLT_MAX;																 
-	//printf("---> Distance: %lf\n", bsfLeaf);
-    //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
 
 	if(!index->has_wedges) {
-    //		printf("--------------\n");
 		int i = 0;
 		if(node->has_partial_data_file) {
 			char * partial_fname = malloc(sizeof(char) * (strlen(node->filename) + 6));
@@ -1599,7 +1417,6 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 					if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
 						float mindist = minidist_paa_to_isax(query, sax, index->settings->max_sax_cardinalities,
 																 index->settings, 1);
-    //			printf("+[FILE] %lf\n", mindist);
 
 						if(mindist < bsfRecord) {
 							bsfRecord = mindist;
@@ -1618,7 +1435,6 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			for (i=0; i<node->buffer->partial_buffer_size; i++) {
 				float mindist = minidist_paa_to_isax(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
 														 index->settings, 1);
-    //				printf("+[PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
 				}
@@ -1627,7 +1443,6 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 			for (i=0; i<node->buffer->tmp_partial_buffer_size; i++) {
 				float mindist = minidist_paa_to_isax(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
 														 index->settings, 1);
-    //				printf("+[TMP_PARTIAL] %lf\n", mindist);
 				if(mindist < bsfRecord) {
 					bsfRecord = mindist;
 				}
@@ -1647,34 +1462,26 @@ float calculate_minimum_distance (isax_index *index, isax_node *node, ts_type *r
 				bsfRecord += (raw_query[i] - max_wedge[i]) * (raw_query[i] - max_wedge[i]);
 			}
 			else if(raw_query[i] < max_wedge[i] && raw_query[i] > min_wedge[i]) {
-				//bound += 0;
 			}
 			else {
 				bsfRecord += (min_wedge[i] - raw_query[i]) * (min_wedge[i] - raw_query[i]);
 			}
-			//bsfRecord = sqrtf(bsfRecord);
 		}
 
 	}
 	float bsf = (bsfRecord == FLT_MAX) ? bsfLeaf : bsfRecord;
-    //	printf("\t%.2lf - %d [%d] : %s.%s\n",bsfRecord, node->leaf_size, node->is_leaf, node->filename, node->has_full_data_file ? ".full" : ".part");
 
 		
-	//printf("---> Final: %lf\n", bsf);
 	return  bsf;
 }
 float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_type *raw_query, ts_type *query) 
 {
-    //printf("Calculating minimum distance...\n");
     float bsfLeaf =   minidist_paa_to_isax(query, node->isax_values,
                                           node->isax_cardinalities,
                                           index->settings, 0);
     float bsfRecord = FLT_MAX;                                                               
-    //printf("---> Distance: %lf\n", bsfLeaf);
-    //sax_print(node->isax_values, 1,  index->settings->sax_bit_cardinality);
 
     if(!index->has_wedges) {
-    //      printf("--------------\n");
         int i = 0;
         if(node->has_partial_data_file) {
             char * partial_fname = malloc(sizeof(char) * (strlen(node->filename) + 6));
@@ -1689,7 +1496,6 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
                     if(fread(sax, sizeof(sax_type), index->settings->n_segments, partial_file)) {
                         float mindist = minidist_paa_to_isax_raw_SIMD(query, sax, index->settings->max_sax_cardinalities,
                                                                       index->settings);
-    //          printf("+[FILE] %lf\n", mindist);
 
                         if(mindist < bsfRecord) {
                             bsfRecord = mindist;
@@ -1708,7 +1514,6 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
             for (i=0; i<node->buffer->partial_buffer_size; i++) {
                 float mindist = minidist_paa_to_isax_raw_SIMD(query, node->buffer->partial_sax_buffer[i], index->settings->max_sax_cardinalities,
                                                               index->settings);
-    //              printf("+[PARTIAL] %lf\n", mindist);
                 if(mindist < bsfRecord) {
                     bsfRecord = mindist;
                 }
@@ -1717,7 +1522,6 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
             for (i=0; i<node->buffer->tmp_partial_buffer_size; i++) {
                 float mindist = minidist_paa_to_isax_raw_SIMD(query, node->buffer->tmp_partial_sax_buffer[i], index->settings->max_sax_cardinalities,
                                                               index->settings);
-    //              printf("+[TMP_PARTIAL] %lf\n", mindist);
                 if(mindist < bsfRecord) {
                     bsfRecord = mindist;
                 }
@@ -1737,20 +1541,16 @@ float calculate_minimum_distance_SIMD (isax_index *index, isax_node *node, ts_ty
                 bsfRecord += (raw_query[i] - max_wedge[i]) * (raw_query[i] - max_wedge[i]);
             }
             else if(raw_query[i] < max_wedge[i] && raw_query[i] > min_wedge[i]) {
-                //bound += 0;
             }
             else {
                 bsfRecord += (min_wedge[i] - raw_query[i]) * (min_wedge[i] - raw_query[i]);
             }
-            //bsfRecord = sqrtf(bsfRecord);
         }
 
     }
     float bsf = (bsfRecord == FLT_MAX) ? bsfLeaf : bsfRecord;
-    //  printf("\t%.2lf - %d [%d] : %s.%s\n",bsfRecord, node->leaf_size, node->is_leaf, node->filename, node->has_full_data_file ? ".full" : ".part");
 
         
-    //printf("---> Final: %lf\n", bsf);
     return  bsf;
 }
 float calculate_node_distance (isax_index *index, isax_node *node, ts_type *query, float bsf) 
@@ -1814,10 +1614,6 @@ float calculate_node_distance (isax_index *index, isax_node *node, ts_type *quer
 
                 float dist = ts_euclidean_distance(query, ts,
                                                    index->settings->timeseries_size, bsf);
-                //if(conter_ts<30)
-                //{printf(" %f \n", dist);
-                //conter_ts++;
-            //}
                 if (dist < bsf) {
                     bsf = dist;
                     #ifdef STORE_ANSWER
@@ -1907,10 +1703,6 @@ void calculate_node_topk (isax_index *index, isax_node *node, ts_type *query, pq
 
                 float dist = ts_euclidean_distance(query, ts,
                                                    index->settings->timeseries_size, pq_bsf->knn[pq_bsf->k-1]);
-                //if(conter_ts<30)
-                //{printf(" %f \n", dist);
-                //conter_ts++;
-            //}
             if (dist < pq_bsf->knn[pq_bsf->k-1]) {
                 pqueue_bsf_insert(pq_bsf,dist,0,NULL);
             }
@@ -1992,39 +1784,27 @@ float calculate_node_distance_SIMD (isax_index *index, isax_node *node, ts_type 
             int i=0;
             ts_type *tsp;
             void *ts_buffer = malloc(file_size);
-            //fseek(full_file, sizeof(file_position_type), SEEK_CUR);
-            //fseek(full_file, index->settings->sax_byte_size, SEEK_CUR);
                             COUNT_INPUT_TIME_START
 
             fread(ts_buffer, file_size,1, full_file);
                             COUNT_INPUT_TIME_END
 
-            //printf("wefwaeweaaef is%ld\n",index->settings->full_record_size );
             while (file_records > 0) {
 
                 COUNT_INPUT_TIME_START
-                //fseek(full_file, sizeof(file_position_type), SEEK_CUR);
-                //fseek(full_file, index->settings->sax_byte_size, SEEK_CUR);
-                //fread(ts, sizeof(ts_type), index->settings->timeseries_size, full_file);
                 COUNT_INPUT_TIME_END
                 tsp=ts_buffer+i*index->settings->full_record_size+sizeof(file_position_type)+index->settings->sax_byte_size;
                 float dist = ts_euclidean_distance_SIMD(query, tsp,
                                                    index->settings->timeseries_size, bsf);
-                //if(conter_ts<30)
-                //{printf(" %f \n", dist);
-                //conter_ts++;
-            //}
                 if (dist < bsf) {
                     bsf = dist;
                     #ifdef STORE_ANSWER
-                    //memcpy(index->answer, &(ts_buffer[i]), index->settings->timeseries_size * sizeof(ts_type));
                     #endif
                 }
                 file_records--;
                 i++;
             } 
             
-            //free(ts);
             free(ts_buffer);
         }
 
@@ -2041,7 +1821,6 @@ float calculate_node_distance_SIMD (isax_index *index, isax_node *node, ts_type 
                     node->buffer->partial_buffer_size > 0 ||
                     node->buffer->tmp_partial_buffer_size > 0
                     )) {
-        //printf("check point 1!!!!!\n");
         float partial_bsf = isax_index_load_node(index, node, query, bsf);
         
         if (partial_bsf < bsf)
@@ -2052,19 +1831,6 @@ float calculate_node_distance_SIMD (isax_index *index, isax_node *node, ts_type 
     
     return bsf;
 }
-void load_random_leaf(isax_index *index) {
-    isax_node *rnode = index->first_node;
-    
-    while (rnode->next != NULL) {
-        rnode = rnode->next;
-        isax_node *curr = rnode;
-        while (!curr->is_leaf) {
-            curr = curr->left_child;
-        }
-        isax_index_load_node(index, curr, NULL, FLT_MAX);
-    }
-}
-
 void complete_index_leafs(isax_index *index) 
 {
     isax_node *subtree_root = index->first_node;
@@ -2072,7 +1838,6 @@ void complete_index_leafs(isax_index *index)
         complete_subtree_leafs(index, subtree_root);
         subtree_root = subtree_root->next;
     }
-    // TODO: CHECK THAT THIS IS NEEDED!
     FLUSHES++;
     flush_all_leaf_buffers(index, TMP_ONLY_CLEAN);
     index->allocated_memory = 0;
@@ -2192,7 +1957,6 @@ void complete_index(isax_index *index, int ts_num)
     free(record);
     FLUSHES++;
     
-    // TODO: CHECK THAT THIS IS NEEDED!
     flush_all_leaf_buffers(index, TMP_ONLY_CLEAN);
     COUNT_INPUT_TIME_START
     fclose(ifile);
@@ -2419,7 +2183,6 @@ void index_mRecBuf_write(isax_index *index)
     char *filename = malloc(sizeof(char) * (strlen(index->settings->root_directory) + 15));
     
     filename = strcpy(filename, index->settings->root_directory);
-    //filename = strcat(filename, "/index.idx");
     filename = strcat(filename, "_index.idx");
     fprintf(stderr, "FILENAME %s", filename);
     FILE *file = fopen(filename, "wb");
@@ -2477,12 +2240,6 @@ void index_mRecBuf_write(isax_index *index)
         for(int i=0; i<index->settings->n_segments; ++i)
         {
             fwrite(index->bins[i], sizeof(float), index->settings->sax_alphabet_cardinality-1, file);
-            /*
-            for(int j=0; j<index->settings->sax_alphabet_cardinality-1; ++j)
-            {
-                float binning_value = index->bins[i][j];
-                fwrite(&binning_value, sizeof(float), 1, file);
-            }*/
         }
     }
     // FBL DATA AND NODES
@@ -2499,7 +2256,6 @@ void index_mRecBuf_write(isax_index *index)
     char *filename_adpt = malloc(sizeof(char) * (strlen(index->settings->root_directory) + 15));
     
     filename_adpt = strcpy(filename_adpt, index->settings->root_directory);
-    //filename_adpt = strcat(filename_adpt, "/adaptive");
     filename_adpt = strcat(filename_adpt, "_adaptive");
     FILE *file_adpt = fopen(filename_adpt, "wb");
     free(filename_adpt);
@@ -2726,32 +2482,6 @@ void create_wedges(isax_index *index, isax_node *node) {
 
 
 
-				///// PRINT
-				/*char s[256];
-				sprintf(s, "%p.WEDGE.txt", node);
-				FILE *op = fopen(s, "w");
-
-				for(i=0; i<index->settings->timeseries_size; i++) {
-					fprintf(op, "%lf ", node->wedges[i]);
-				}
-				fprintf(op, "\n");
-				fseeko(leaf_file, 0L, SEEK_SET);
-				for(i=0; i<size; i++) {
-					fseeko(leaf_file, index->settings->sax_byte_size + index->settings->position_byte_size, SEEK_CUR);
-					fread(tmp_ts, index->settings->ts_byte_size, 1, leaf_file);
-					int j;
-					for(j=0; j<index->settings->timeseries_size; j++) {
-						fprintf(op, "%lf ", tmp_ts[j]);
-					}
-					fprintf(op, "\n");
-				}
-				for(i=0; i<index->settings->timeseries_size; i++) {
-					fprintf(op, "%lf ", node->wedges[index->settings->timeseries_size + i]);
-				}
-
-				fprintf(op, "\n");
-				fclose(op);*/
-				///// END PRINT
 
 
 				fclose(leaf_file);
@@ -2970,29 +2700,4 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     fprintf(stderr, "===================================\n");
 
 	fflush(stderr);
-}
-
-meminfo get_memory_utilization_info(isax_index *index) {
-    meminfo bytes_mem_info;
-    memcpy(&bytes_mem_info, 
-           &(index->memory_info), sizeof(meminfo));
-
-    bytes_mem_info.mem_data = index->allocated_memory;
-    bytes_mem_info.mem_tree_structure *= sizeof(isax_node);
-    bytes_mem_info.mem_summaries *= (index->settings->n_segments * sizeof(sax_type));
-    bytes_mem_info.disk_data_full *= PAGE_SIZE;
-    bytes_mem_info.disk_data_partial *= PAGE_SIZE;
-
-    return bytes_mem_info;
-}
-
-void print_mem_info(isax_index *index) {
-    meminfo bytes_mem_info = get_memory_utilization_info(index);
-    printf("######################### MEMORY INFO ##########################\n");
-    printf("# (MEM)     TREE STRUCTURE:     %ld\n",    bytes_mem_info.mem_tree_structure);
-    printf("# (MEM)     SUMMARIZED DATA:    %ld\n",    bytes_mem_info.mem_summaries);
-    printf("# (MEM)     RAW DATA:           %ld\n",    bytes_mem_info.mem_data);
-    printf("# (DISK)    MATERIALIZED:       %ld\n",    bytes_mem_info.disk_data_full);
-    printf("# (DISK)    PARTIAL:            %ld\n",    bytes_mem_info.disk_data_partial);
-    printf("################################################################\n"); 
 }
