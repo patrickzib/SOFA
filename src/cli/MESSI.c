@@ -1468,19 +1468,6 @@ int main(int argc, char **argv) {
             }
         }
 
-        /* Do not store index for now
-        //save index and get size for analysis
-        index_mRecBuf_write(idx);
-
-        struct stat stat_index;
-        struct stat stat_adaptive;
-
-        get_index_size(idx, &stat_index, &stat_adaptive);
-
-        fprintf(stderr, "\nindex size: %ld\n", (long int) stat_index.st_size);
-        fprintf(logfile_index, "%ld\n", (long int) stat_index.st_size);
-        */
-
         fclose(logfile);
         fclose(logfile_tree);
         fclose(logfile_query);
