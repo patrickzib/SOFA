@@ -23,7 +23,6 @@ typedef struct refind_answer_fonction_data {
     pqueue_t *pq;
     isax_index *index;
     float minimum_distance;
-    int limit;
     pthread_mutex_t *lock_current_root_node;
     pthread_mutex_t *lock_queue;
     pthread_barrier_t *lock_barrier;

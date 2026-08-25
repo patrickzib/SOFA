@@ -54,10 +54,6 @@
 #include "ads/pisa/pisa.h"
 #include "ads/trie/trie.h"
 #include "include/ads/isax_file_loaders.h"
-//#define PROGRESS_CALCULATE_THREAD_NUMBER 4
-//#define PROGRESS_FLUSH_THREAD_NUMBER 4
-//#define QUERIES_THREAD_NUMBER 4
-//#define DISK_BUFFER_SIZE 32
 #define FILENAME_LENGTH 256
 
 isax_index *idx;
@@ -303,9 +299,7 @@ int main(int argc, char **argv) {
     static char *queries = query_directory;
     static char *index_path = index_directory;
     static char *labelset = index_directory;
-    //static int dataset_size = 20100;//1000000;
-    //static int dataset_size =   1000000;//simple2
-    static long int dataset_size = 6000000;//testbench
+    static long int dataset_size = 6000000;
     static int queries_size = 10;
     static int time_series_size = 256;
     static int n_segments = 16;
@@ -365,7 +359,6 @@ int main(int argc, char **argv) {
     int k_size = 0;
     long int labelsize = 1;
     int topk = 0;
-    int dtwwindowsize = 0;
     int sample_size = 1000;
 
     time_t time_now;
@@ -405,7 +398,6 @@ int main(int argc, char **argv) {
                 {"knn-label-size",      required_argument, 0,    '2'},
                 {"knn",                 no_argument,       0,    '3'},
                 {"topk",                no_argument,       0,    '4'},
-                {"dtwwindowsize",       required_argument, 0,    '5'},
                 {"queue-number",        required_argument, 0,    '6'},
                 {"sample-size",         required_argument, 0,    '8'},
                 {"is-norm",             no_argument,       0,    '9'},
@@ -617,9 +609,6 @@ int main(int argc, char **argv) {
             case '4':
                 topk = 1;
                 break;
-            case '5':
-                dtwwindowsize = atoi(optarg);
-                break;
             case '6':
                 N_PQUEUE = atoi(optarg);
                 if (N_PQUEUE <= 0) {
@@ -727,7 +716,6 @@ int main(int argc, char **argv) {
                 \t--knn\t\t\t\tSet for knn search\n\
                 \t--k-size\t\t\tSet k size of knn\n\
                 \t--topk\t\t\t\tSet for top k search\n\
-                \t--dtwwindowsize\t\t\tSet dtw window size\n\
                 \t--knn-label-set\t\t\tSet label set\n\
                 \t--queue-number\t\t\tset the number of priority queues\n\
                 \t--in-memory\t\t\tSet for in-memory search\n\
@@ -910,9 +898,6 @@ int main(int argc, char **argv) {
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
         print_settings(idx->settings, maxquerythread, trie_query_batch);
-        // fprintf(stderr,"total_records: %ld\n", idx->total_records);
-        // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
-        // create_wedges(idx, NULL);
 
         if (serial_scan) {
             cache_sax_file(idx);
@@ -946,7 +931,6 @@ int main(int argc, char **argv) {
                     isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                            &exact_search_serial_ParIS_nb);//ParIS-nb similarity search
                 } else if (function_type == 3) {
-                    //isax_query_binary_file_para(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial);
                 }
             }
 
@@ -977,8 +961,6 @@ int main(int argc, char **argv) {
         flush_all_leaf_buffers(idx, TMP_ONLY_CLEAN);
         index_write(idx);
 
-        //clear_wedges(idx, NULL);
-        //printf("this is the total search time is %f\n", total_time);
         isax_index_destroy(idx, NULL);
     } else {
         char rm_command[256];
@@ -1014,7 +996,6 @@ int main(int argc, char **argv) {
             sprintf(rm_command, "rm -rf %s", index_path);
             system(rm_command);
         }
-        // check if n_segments size is at most timeseries_size
         if (index_segments > time_series_size) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
@@ -1048,19 +1029,20 @@ int main(int argc, char **argv) {
             }
         }
 
-        //get current time for logfiles
         time(&time_now);
 
         char time_str[20];
         time_now = time(NULL);
         strftime(time_str, 20, "%Y_%m_%d_%H:%M:%S", localtime(&time_now));
 
-        //concatenate names for logfile directories
-        char log_file_directory[FILENAME_LENGTH];
-        char log_filename[FILENAME_LENGTH];
-        char log_filename_tree[FILENAME_LENGTH];
-        char log_filename_index[FILENAME_LENGTH];
-        char log_filename_query[FILENAME_LENGTH];
+        char log_filename[FILENAME_LENGTH * 3];
+        char log_filename_tree[FILENAME_LENGTH * 3];
+        char log_filename_index[FILENAME_LENGTH * 3];
+        char log_filename_query[FILENAME_LENGTH * 3];
+        char log_settings_dir[FILENAME_LENGTH * 2];
+        char log_tree_dir[FILENAME_LENGTH * 2];
+        char log_index_dir[FILENAME_LENGTH * 2];
+        char log_query_dir[FILENAME_LENGTH * 2];
 
         char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
@@ -1075,39 +1057,33 @@ int main(int argc, char **argv) {
             }
         }
 
-        snprintf(log_file_directory, sizeof(log_file_directory), "%s", log_root);
-        snprintf(log_filename, sizeof(log_filename), "%s/settings", log_root);
-        snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
-        snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
-        snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
+        if (snprintf(log_settings_dir, sizeof(log_settings_dir), "%s/settings", log_root) >=
+                (int) sizeof(log_settings_dir) ||
+            snprintf(log_tree_dir, sizeof(log_tree_dir), "%s/tree", log_root) >=
+                (int) sizeof(log_tree_dir) ||
+            snprintf(log_index_dir, sizeof(log_index_dir), "%s/index", log_root) >=
+                (int) sizeof(log_index_dir) ||
+            snprintf(log_query_dir, sizeof(log_query_dir), "%s/query", log_root) >=
+                (int) sizeof(log_query_dir) ||
+            snprintf(log_filename, sizeof(log_filename), "%s/MESSI_SETTINGS_%s.csv", log_settings_dir, time_str) >=
+                (int) sizeof(log_filename) ||
+            snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/MESSI_TREE_%s.csv", log_tree_dir, time_str) >=
+                (int) sizeof(log_filename_tree) ||
+            snprintf(log_filename_index, sizeof(log_filename_index), "%s/MESSI_INDEX_%s.csv", log_index_dir, time_str) >=
+                (int) sizeof(log_filename_index) ||
+            snprintf(log_filename_query, sizeof(log_filename_query), "%s/MESSI_QUERY_%s.csv", log_query_dir, time_str) >=
+                (int) sizeof(log_filename_query)) {
+            fprintf(stderr, "error: log path is too long.\n");
+            return EXIT_FAILURE;
+        }
 
-        if (ensure_directory(log_filename) != 0 ||
-            ensure_directory(log_filename_tree) != 0 ||
-            ensure_directory(log_filename_index) != 0 ||
-            ensure_directory(log_filename_query) != 0) {
+        if (ensure_directory(log_settings_dir) != 0 ||
+            ensure_directory(log_tree_dir) != 0 ||
+            ensure_directory(log_index_dir) != 0 ||
+            ensure_directory(log_query_dir) != 0) {
             fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
                     log_root, strerror(errno));
         }
-        //concatenate actual file names
-        strcat(log_filename, "/MESSI_SETTINGS_");
-        strcat(log_filename, time_str);
-        strcat(log_filename, ".csv");
-
-        strcat(log_filename_tree, "/MESSI_TREE_");
-        strcat(log_filename_tree, time_str);
-        strcat(log_filename_tree, ".csv");
-
-        strcat(log_filename_index, "/MESSI_INDEX_");
-        strcat(log_filename_index, time_str);
-        strcat(log_filename_index, ".csv");
-
-        strcat(log_filename_query, "/MESSI_QUERY_");
-        strcat(log_filename_query, time_str);
-        strcat(log_filename_query, ".csv");
-
-        strcat(index_directory, time_str);
-
-        //create logfiles
         FILE *logfile;
         logfile = open_logfile_or_tmp(log_filename);
 
@@ -1198,17 +1174,6 @@ int main(int argc, char **argv) {
 
         COUNT_TOTAL_TIME_START
 
-        //// #### COMMENTED OUT: BUGGY CODE!!! ####
-        /*int sorted = 0;
-        if(sorted == 1) {
-        	isax_sorted_index_binary_file(dataset, dataset_size, idx);
-        }
-        else if(sorted == 2) {
-        	isax_merge_sorted_index_binary_file(dataset, dataset_size, idx);
-        }
-        else {*/
-        /// ########################################
-
         double query_wall_seconds = 0.0;
         if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
             if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
@@ -1256,12 +1221,6 @@ int main(int argc, char **argv) {
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
 
-            //perform queries
-            // if (topk && k_size > 1) {
-            //     isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-            //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
-            //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
-            // } else {
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
                 if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
@@ -1300,12 +1259,6 @@ int main(int argc, char **argv) {
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
 
-            //perform queries
-            /*if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
                 if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
@@ -1344,12 +1297,6 @@ int main(int argc, char **argv) {
                        sizeof(ts_type) * (idx->settings->sax_alphabet_cardinality - 1));
             }
 
-            //perform queries
-            /*if (topk && k_size > 1) {
-                isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                        min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                        &exact_topk_MESSImq_inmemory);//MESSI topk
-            } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
                 if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
@@ -1381,58 +1328,19 @@ int main(int argc, char **argv) {
                                                            min_checked_leaves, k_size, 2000,
                                                            &exact_topk_MESSImq_inmemory);
                 }
-            } /*else if (topk && k_size > 1) {
-                if (function_type == 3)
-                    isax_topk_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
-                                                            min_checked_leaves, k_size, filetype_int, apply_znorm,
-                                                            &exact_topk_MESSImq_inmemory);//MESSI topk
-
-            } */ else {
-                if (function_type == 0) {
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_inmemory);
-                    //isax_DTWquery_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,dtwwindowsize);
-                } else if (function_type == 1) {
+            } else {
+                if (function_type == 1) {
                     isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                            &exact_search_parads_inmemory);
-                } else if (function_type == 4) {
-
-                } else if (function_type == 7) {
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_inmemory);
                 } else if (function_type == 2) {
                     isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                            &exact_search_serial_ParIS_inmemory);
-                } else if (function_type == 5) {
-                    //bf=1;
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS2_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, apply_znorm, &exact_search_ParISnew_inmemory_hybrid_workstealing);
-                } else if (function_type == 6) {
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParGISG_openmp_inmemory);
-                }
-                    //MESSI-mq: in-memory flag set with function-type 3
-                else if (function_type == 3) {
+                } else if (function_type == 3) {
                     double query_wall_start = monotonic_seconds();
                     isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
                     query_wall_seconds = monotonic_seconds() - query_wall_start;
                     fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
-
-                    //isax_query_binary_file_batch(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_ParIS_nb_batch_inmemory);
-                } else if (function_type == 8) {
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, filetype_int, znorm, &exact_search_ParISnew_inmemory);
-                    //isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, znorm, &exact_search_ParISnew_inmemory_workstealing);
-                } else if (function_type == 9) {
-                    // isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves, filetype_int, znorm, &exact_search_serial_ParGIS_openmp_inmemory);
-                } else if (function_type == 10) {
-
-                    //index_generate_inmemory_pRecBuf(dataset, dataset_size, idx);
-                    //COUNT_QUEUE_TIME_START
-                    //flush_pRecBuf_inmemory((parallel_first_buffer_layer*) idx->fbl, idx);
-                    //COUNT_QUEUE_TIME_END
-                    //PRINT_STATS(0.0f)
-
-                    //printf("this is the queue time: %f\n", total_queue_time);
-                    //INIT_STATS()
-                    //isax_query_binary_file(queries, queries_size, idx, minimum_distance, min_checked_leaves, &exact_search_serial_inmemory);
                 }
             }
 
@@ -1582,7 +1490,6 @@ int main(int argc, char **argv) {
         FLUSHES++;
 
         COUNT_TOTAL_TIME_END
-        //PRINT_STATS(distance)
 
         COUNT_TOTAL_TIME_START
         if (complete_type == 1) {
@@ -1616,7 +1523,6 @@ int main(int argc, char **argv) {
             } else if (function_type == 3) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else {
-                //isax_index_destroy(idx, NULL);
                 MESSI2_index_destroy(idx, NULL);
             }
         }
