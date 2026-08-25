@@ -105,44 +105,37 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
         return FAILURE;
     }
 
+    ts_type *raw_samples = malloc((size_t) sample_size * (size_t) ts_length * sizeof(*raw_samples));
+    if (raw_samples == NULL ||
+        collect_binning_samples(index, ifilename, ts_num, filetype_int, apply_znorm,
+                                raw_samples, sample_size) != SUCCESS) {
+        free(raw_samples);
+        free(input_data);
+        free_dft_memory(index, fft_dim, dft_mem_array);
+        return FAILURE;
+    }
+
     fftw_workspace fftw = {0};
     const long sample_chunk = sample_size / worker_threads;
-    const long ts_chunk = ts_num / worker_threads;
     for (int i = 0; i < worker_threads; i++) {
         fftw_workspace_init(&fftw, ts_length);
 
         input_data[i].index = index;
         input_data[i].dft_mem_array = dft_mem_array;
-        input_data[i].filename = ifilename;
+        input_data[i].samples = raw_samples;
         input_data[i].workernumber = i;
         input_data[i].records = sample_chunk;
         input_data[i].records_offset = sample_chunk;
 
-        if (index->settings->sample_type == 1) {
-            input_data[i].start_number = i * sample_chunk;
-            input_data[i].stop_number = (i + 1) * sample_chunk;
-        } else if (index->settings->sample_type == 2) {
-            input_data[i].start_number = i * ts_chunk;
-            input_data[i].stop_number = (i + 1) * ts_chunk;
-        } else if (index->settings->sample_type == 3) {
-            input_data[i].start_number = i * ts_chunk;
-            input_data[i].stop_number = (i + 1) * ts_chunk;
-        }
-
-        input_data[i].filetype_int = filetype_int;
-        input_data[i].apply_znorm = apply_znorm;
+        input_data[i].start_number = i * sample_chunk;
+        input_data[i].stop_number = (i + 1) * sample_chunk;
         input_data[i].status = SUCCESS;
         input_data[i].fftw = fftw;
     }
 
     input_data[worker_threads - 1].records =
         sample_size - (worker_threads - 1) * sample_chunk;
-
-    if (index->settings->sample_type == 1) {
-        input_data[worker_threads - 1].stop_number = sample_size;
-    } else if (index->settings->sample_type == 2 || index->settings->sample_type == 3) {
-        input_data[worker_threads - 1].stop_number = ts_num;
-    }
+    input_data[worker_threads - 1].stop_number = sample_size;
 
     for (int i = 0; i < worker_threads; i++) {
         pthread_create(&(threadid[i]), NULL, set_bins_worker_dft, (void *) &(input_data[i]));
@@ -159,10 +152,12 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
     for (int i = 0; i < worker_threads; ++i) {
         if (input_data[i].status != SUCCESS) {
             free(input_data);
+            free(raw_samples);
             free_dft_memory(index, fft_dim, dft_mem_array);
             return FAILURE;
         }
     }
+    free(raw_samples);
     double sampling_end = messi_monotonic_seconds();
 
     ts_type *samples = calloc((size_t) sample_size * (size_t) fft_dim, sizeof(ts_type));

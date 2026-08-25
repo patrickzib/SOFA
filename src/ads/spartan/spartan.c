@@ -81,11 +81,11 @@ void spartan_free_bins(isax_index *index) {
     pca_free(index);
 }
 
-static enum response spartan_collect_samples(isax_index *index, const char *ifilename,
-                                             long int ts_num, int filetype_int,
-                                             int apply_znorm, ts_type *samples,
-                                             unsigned int sample_size) {
-    if (sample_size == 0) {
+enum response collect_binning_samples(isax_index *index, const char *ifilename,
+                                      long int ts_num, int filetype_int, int apply_znorm,
+                                      ts_type *samples, unsigned int sample_size) {
+    if (index == NULL || index->settings == NULL || ifilename == NULL || samples == NULL ||
+        sample_size == 0 || ts_num <= 0 || sample_size > (unsigned long) ts_num) {
         return FAILURE;
     }
     FILE *ifile = fopen(ifilename, "rb");
@@ -283,7 +283,8 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
         return FAILURE;
     }
 
-    if (spartan_collect_samples(index, ifilename, ts_num, filetype_int, apply_znorm, samples, sample_size) != SUCCESS) {
+    if (collect_binning_samples(index, ifilename, ts_num, filetype_int, apply_znorm,
+                                samples, sample_size) != SUCCESS) {
         free(samples);
         return FAILURE;
     }

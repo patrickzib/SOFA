@@ -35,9 +35,6 @@ int compare_int (const void *a, const void *b);
 
 ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_type *sax_cardinalities, float bsf);
 
-long random_at_most(long max);
-long random_at_most_seed(uint64_t *state, long max);
-
 void sfa_printbin(unsigned long long n, int size);
 
 void fft_print(ts_type *fft, int segments);
@@ -49,13 +46,11 @@ typedef struct bins_data_inmemory
 	isax_index *index;
 	long int start_number,stop_number;	
 	ts_type ** dft_mem_array;
-    const char *filename;
+	const ts_type *samples;
 	int workernumber;
 	long int records;
 	long int records_offset;
 	fftw_workspace fftw;
-    int filetype_int;
-    int apply_znorm;
     enum response status;
 }bins_data_inmemory;
 

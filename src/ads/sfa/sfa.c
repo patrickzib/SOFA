@@ -28,6 +28,7 @@
 #include "ads/lower_bound_simd.h"
 #include "ads/isax_index.h"
 #include "ads/sfa/dft.h"
+#include "ads/spartan/spartan.h"
 
 #include "ads/sfa/sfa.h"
 
@@ -137,7 +138,15 @@ enum response sfa_set_bins(
      * sample time series and calculate DFT coefficients
      */
     const long sample_chunk = sample_size / worker_threads;
-    const long ts_chunk = ts_num / worker_threads;
+    ts_type *samples = malloc((size_t) sample_size * (size_t) ts_length * sizeof(*samples));
+    if (samples == NULL ||
+        collect_binning_samples(index, ifilename, ts_num, filetype_int, apply_znorm,
+                                samples, sample_size) != SUCCESS) {
+        free(samples);
+        free(input_data);
+        free_dft_memory(index, n_coefficients, dft_mem_array);
+        return FAILURE;
+    }
 
     for (int i = 0; i < worker_threads; ++i) {
         fftw_workspace fftw = {0};
@@ -147,31 +156,14 @@ enum response sfa_set_bins(
 
         data->index = index;
         data->dft_mem_array = dft_mem_array;
-        data->filename = ifilename;
+        data->samples = samples;
         data->workernumber = i;
 
         data->records = sample_chunk;
         data->records_offset = sample_chunk;
 
-        switch (index->settings->sample_type) {
-            case 1: /* first-n sampling */
-                data->start_number = i * sample_chunk;
-                data->stop_number = (i + 1) * sample_chunk;
-                break;
-
-            case 2: /* uniform sampling */
-                data->start_number = i * ts_chunk;
-                data->stop_number = (i + 1) * ts_chunk;
-                break;
-
-            case 3: /* random sampling */
-                data->start_number = i * ts_chunk;
-                data->stop_number = (i + 1) * ts_chunk;
-                break;
-        }
-
-        data->filetype_int = filetype_int;
-        data->apply_znorm = apply_znorm;
+        data->start_number = i * sample_chunk;
+        data->stop_number = (i + 1) * sample_chunk;
         data->status = SUCCESS;
         data->fftw = fftw;
     }
@@ -179,12 +171,7 @@ enum response sfa_set_bins(
     /* Give any remainder to the last sampling worker. */
     input_data[worker_threads - 1].records =
             sample_size - (worker_threads - 1) * sample_chunk;
-
-    if (index->settings->sample_type == 1) {
-        input_data[worker_threads - 1].stop_number = sample_size;
-    } else if (index->settings->sample_type == 2 || index->settings->sample_type == 3) {
-        input_data[worker_threads - 1].stop_number = ts_num;
-    }
+    input_data[worker_threads - 1].stop_number = sample_size;
 
     for (int i = 0; i < worker_threads; ++i) {
         pthread_create(
@@ -204,10 +191,12 @@ enum response sfa_set_bins(
                 fftw_workspace_destroy(&input_data[j].fftw);
             }
             free(input_data);
+            free(samples);
             free_dft_memory(index, n_coefficients, dft_mem_array);
             return FAILURE;
         }
     }
+    free(samples);
     double sampling_end = messi_monotonic_seconds();
 
     /*
@@ -328,14 +317,14 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
         double var_real = 0.0;
         double var_imag = 0.0;
 
-        for (int j = 0; j < sample_size; ++j) {
+        for (unsigned int j = 0; j < sample_size; ++j) {
             mean_real += dft_mem_array[i * 2][j];
             mean_imag += dft_mem_array[i * 2 + 1][j];
         }
         mean_real = mean_real / (double) sample_size;
         mean_imag = mean_imag / (double) sample_size;
 
-        for (int j = 0; j < sample_size; ++j) {
+        for (unsigned int j = 0; j < sample_size; ++j) {
             var_real += (dft_mem_array[i * 2][j] - mean_real) * (
                 dft_mem_array[i * 2][j] - mean_real);
             var_imag += (dft_mem_array[i * 2 + 1][j] - mean_imag) * (
@@ -457,20 +446,13 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     return dft_mem_array_coeff;
 }
 
-/*
-    Worker method for sampling values, calculating FFT coefficients (the first n_coefficients coefficients) and saving them to dft_mem_array
-*/
+/* Transform a disjoint range of shared samples into DFT coefficients. */
 void *set_bins_worker_dft(void *transferdata) {
     struct bins_data_inmemory *bins_data = (bins_data_inmemory *) transferdata;
 
     ts_type **dft_mem_array = bins_data->dft_mem_array;
 
     isax_index *index = ((bins_data_inmemory *) transferdata)->index;
-    unsigned long start_number = bins_data->start_number;
-    unsigned long stop_number = bins_data->stop_number;
-    uint64_t rng_state = ((uint64_t) index->settings->sampling_seed << 32) ^
-                         (uint64_t) (bins_data->workernumber + 1);
-
     unsigned long ts_length = index->settings->timeseries_size;
     long records = bins_data->records;
     if (records <= 0) {
@@ -491,87 +473,14 @@ void *set_bins_worker_dft(void *transferdata) {
         n_coefficients = (int) ts_length;
     }
 
-    unsigned long skip_elements = 0;
-    if (index->settings->sample_type == 2) {
-        unsigned long span = stop_number - start_number;
-        if (stop_number <= start_number || (unsigned long) records > span) {
-            bins_data->status = FAILURE;
-            return NULL;
-        }
-        skip_elements = (span / (unsigned long) records) - 1;
-    }
-    if (index->settings->sample_type == 3 && stop_number <= start_number) {
-        bins_data->status = FAILURE;
-        return NULL;
-    }
-
-    unsigned long start_index = start_number * ts_length * sizeof(ts_type);
-    int filetype_int = bins_data->filetype_int;
-    int apply_znorm = bins_data->apply_znorm;
-
-    FILE *ifile;
-    ifile = fopen(bins_data->filename, "rb");
-    if (ifile == NULL) {
-        bins_data->status = FAILURE;
-        return NULL;
-    }
-    fseek(ifile, start_index, SEEK_SET);
-
-    unsigned long position_count = start_number;
-
-
     ts_type *ts = bins_data->fftw.ts;
     fftw_workspace *fftw = &bins_data->fftw;
 
-    file_type *ts_orig1 = NULL;
-    ts_type *ts_orig2 = NULL;
-
-    if (filetype_int) {
-        ts_orig1 = (file_type *) calloc(index->settings->timeseries_size,
-                                        sizeof(file_type));
-    } else {
-        ts_orig2 = (ts_type *)
-                calloc(index->settings->timeseries_size, sizeof(ts_type));
-    }
-    if ((filetype_int && ts_orig1 == NULL) || (!filetype_int && ts_orig2 == NULL)) {
-        bins_data->status = FAILURE;
-        free(ts_orig1);
-        free(ts_orig2);
-        fclose(ifile);
-        return NULL;
-    }
-
     for (int i = 0; i < records; ++i) {
-        //choose random position for random sampling
-        if (index->settings->sample_type == 3) {
-            unsigned long span = stop_number - start_number;
-            unsigned long position = start_number +
-                                     (unsigned long) random_at_most_seed(&rng_state,
-                                                                         (long int) span - 1);
-            fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
-        }
-
-        if (filetype_int) {
-            if (fread(ts_orig1, sizeof(file_type), ts_length, ifile) != ts_length) {
-                bins_data->status = FAILURE;
-                break;
-            }
-            for (int j = 0; j < ts_length; ++j) {
-                ts[j] = (ts_type) ts_orig1[j];
-            }
-        } else {
-            if (fread(ts_orig2, sizeof(ts_type), ts_length, ifile) != ts_length) {
-                bins_data->status = FAILURE;
-                break;
-            }
-            for (int j = 0; j < ts_length; ++j) {
-                ts[j] = ts_orig2[j];
-            }
-        }
-        // apply z-normalization
-        if (apply_znorm) {
-            znorm(ts, ts_length);
-        }
+        const size_t sample_index = (size_t) bins_data->workernumber *
+                                    (size_t) bins_data->records_offset + (size_t) i;
+        memcpy(ts, bins_data->samples + sample_index * ts_length,
+               ts_length * sizeof(*ts));
 
         enum response transform_status;
         if (index->settings->function_type == 6) {
@@ -584,9 +493,6 @@ void *set_bins_worker_dft(void *transferdata) {
         }
         if (transform_status != SUCCESS) {
             bins_data->status = FAILURE;
-            free(ts_orig1);
-            free(ts_orig2);
-            fclose(ifile);
             return NULL;
         }
 
@@ -596,24 +502,7 @@ void *set_bins_worker_dft(void *transferdata) {
                     = value;
         }
 
-        // skip elements for uniform sampling
-        if (index->settings->sample_type == 2) {
-            fseek(ifile, skip_elements * ts_length * sizeof(ts_type), SEEK_CUR);
-            position_count += (1 + skip_elements);
-        }
-
-        /*
-            // TODO which one is correct? above or this?
-            // skip elements for uniform sampling
-            if (index->settings->sample_type == 2) {
-                fseek(ifile, skip_elements, SEEK_CUR);
-            }
-         */
     }
-
-    free(ts_orig1);
-    free(ts_orig2);
-    fclose(ifile);
     return NULL;
 }
 
@@ -626,14 +515,14 @@ void *order_divide_worker(void *transferdata) {
     ts_type **dft_mem_array = bins_data->dft_mem_array;
 
     isax_index *index = ((bins_data_inmemory *) transferdata)->index;
-    unsigned long start_number = bins_data->start_number;
-    unsigned long stop_number = bins_data->stop_number;
+    long int start_number = bins_data->start_number;
+    long int stop_number = bins_data->stop_number;
 
     unsigned int sample_size = index->settings->sample_size;
     int n_segments = index->settings->n_segments;
     ts_type *cur_coeff_line;
 
-    for (int j = start_number; j < stop_number; ++j) {
+    for (long int j = start_number; j < stop_number; ++j) {
         cur_coeff_line = (ts_type *) dft_mem_array[j];
         qsort(cur_coeff_line, sample_size, sizeof(ts_type), &compare_ts_type);
     }
@@ -643,7 +532,7 @@ void *order_divide_worker(void *transferdata) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
         ts_type depth = (ts_type) sample_size / num_symbols;
 
-        for (int i = start_number; i < stop_number; ++i) {
+        for (long int i = start_number; i < stop_number; ++i) {
             float bin_index = 0.0;
             cur_coeff_line = dft_mem_array[i];
             for (int j = 0; j < num_symbols - 1; ++j) {
@@ -656,7 +545,7 @@ void *order_divide_worker(void *transferdata) {
     else if (index->settings->histogram_type == 2) {
         int num_symbols = index->settings->sax_alphabet_cardinality;
 
-        for (int i = start_number; i < stop_number; ++i) {
+        for (long int i = start_number; i < stop_number; ++i) {
             cur_coeff_line = dft_mem_array[i];
             ts_type first = cur_coeff_line[0];
             ts_type last = cur_coeff_line[sample_size - 1];
@@ -771,41 +660,4 @@ void fft_print(ts_type *fft, int segments) {
         printf("%d:\t%.3f\n", i, fft[i]);
     }
     printf("\n");
-}
-
-/*
-    This function calculates random numbers between 0 and max
-*/
-long random_at_most(long max) {
-    unsigned long
-            num_bins = (unsigned long) max + 1,
-            num_rand = (unsigned long) RAND_MAX + 1,
-            bin_size = num_rand / num_bins,
-            defect = num_rand % num_bins;
-
-    long x;
-    do {
-        x = random();
-    } while (num_rand - defect <= (unsigned long) x);
-
-    return x / bin_size;
-}
-
-/* Deterministic, worker-local generator used by SFA/PISA bin sampling. */
-static uint64_t sfa_rng_next(uint64_t *state) {
-    uint64_t value = (*state += UINT64_C(0x9e3779b97f4a7c15));
-    value = (value ^ (value >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
-    value = (value ^ (value >> 27)) * UINT64_C(0x94d049bb133111eb);
-    return value ^ (value >> 31);
-}
-
-long random_at_most_seed(uint64_t *state, long max) {
-    if (max <= 0) return 0;
-    const uint64_t range = (uint64_t) max + 1;
-    const uint64_t limit = UINT64_MAX - (UINT64_MAX % range);
-    uint64_t value;
-    do {
-        value = sfa_rng_next(state);
-    } while (value >= limit);
-    return (long) (value % range);
 }
