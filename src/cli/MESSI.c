@@ -61,7 +61,6 @@
 #define FILENAME_LENGTH 256
 
 isax_index *idx;
-int query_report_interval = 10;
 
 void INThandler(int);
 
@@ -72,6 +71,24 @@ static int fanout_to_bits(int fanout) {
         ++bits;
     }
     return fanout == 1 ? bits : -1;
+}
+
+static enum response run_trie_queries(isax_index *index, const char *queries,
+                                      int query_count, int filetype_int, int apply_znorm,
+                                      float minimum_distance, int topk, int k_size,
+                                      int trie_query_batch) {
+    if (topk) {
+        if (k_size <= 0) {
+            fprintf(stderr, "error: --topk requires --k-size >= 1.\n");
+            return FAILURE;
+        }
+        if (trie_query_batch)
+            fprintf(stderr, ">>> trie top-k uses per-query leaf parallelism; ignoring --trie-query-batch.\n");
+        return symbolic_trie_topk_query_file(index, queries, query_count, filetype_int,
+                                             apply_znorm, (size_t) k_size);
+    }
+    return (trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+        (index, queries, query_count, filetype_int, apply_znorm, minimum_distance);
 }
 
 static FILE *open_logfile_or_tmp(const char *path) {
@@ -1201,8 +1218,8 @@ int main(int argc, char **argv) {
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             double query_wall_start = monotonic_seconds();
-            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
-                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+            if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
+                                 minimum_distance, topk, k_size, trie_query_batch) != SUCCESS) {
                 fprintf(stderr, "error: trie query processing failed.\n");
                 return EXIT_FAILURE;
             }
@@ -1247,7 +1264,8 @@ int main(int argc, char **argv) {
             // } else {
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
+                                     minimum_distance, topk, k_size, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1290,7 +1308,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
+                                     minimum_distance, topk, k_size, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1333,7 +1352,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int, apply_znorm,
+                                     minimum_distance, topk, k_size, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;

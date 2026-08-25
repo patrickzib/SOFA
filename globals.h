@@ -61,7 +61,7 @@ void* LOGFILE;
 /* Shared priority-queue count used by iSAX and trie query scheduling. */
 extern int N_PQUEUE;
 /* Console-only query-row sampling.  CSV logging and aggregate statistics are
- * unaffected.  MESSI.c initializes this to 10 unless overridden. */
+ * unaffected.  The library defaults it to 10 unless overridden. */
 extern int query_report_interval;
 
 #define SHOULD_REPORT_QUERY(query_index, query_count) \

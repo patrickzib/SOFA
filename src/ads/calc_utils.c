@@ -15,6 +15,9 @@
 #include "ads/spartan/spartan.h"
 #include "ads/sax/sax_breakpoints.h"
 
+/* Query reporting is used by the trie library as well as the CLI. */
+int query_report_interval = 10;
+
 double messi_monotonic_seconds(void) {
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);

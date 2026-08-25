@@ -224,6 +224,12 @@ int messi_index_search(messi_index *index,
     if (dim != (size_t) index->index->settings->timeseries_size) {
         return -2;
     }
+    if (k == 0 || k > (size_t) index->index->total_records) {
+        return -3;
+    }
+    if (index->index->settings->index_type != MESSI_INDEX_TRIE && k != 1) {
+        return -4;
+    }
 
     ts_type *paa_buffer = malloc(sizeof(ts_type) * index->index->settings->n_segments);
 
@@ -269,7 +275,23 @@ int messi_index_search(messi_index *index,
         }
         query_result res;
         if (index->index->settings->index_type == MESSI_INDEX_TRIE) {
-            res = symbolic_trie_exact_search(index->index, ts, paa_buffer, FLT_MAX);
+            symbolic_trie_topk_result topk = symbolic_trie_exact_topk_search(
+                index->index, ts, paa_buffer, k, FLT_MAX);
+            if (topk.count != k) {
+                free(nlist.nlist);
+                if (index->index->settings->function_type == 4 ||
+                    index->index->settings->function_type == 6)
+                    fftw_workspace_destroy(&fftw);
+                free(paa_buffer);
+                return -6;
+            }
+            for (size_t j = 0; j < k; ++j) {
+                distances[i * k + j] = topk.distances[j];
+                labels[i * k + j] = (long) topk.positions[j];
+            }
+            symbolic_trie_topk_result_destroy(&topk);
+            if (nlist.nlist != NULL) free(nlist.nlist);
+            continue;
         } else {
             res = exact_search_MESSI(
                 (ts_type *) (queries + i * dim), paa_buffer, index->index,

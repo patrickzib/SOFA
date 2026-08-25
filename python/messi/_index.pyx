@@ -321,15 +321,15 @@ cdef class Index:
             raise
 
     def search(self, queries, int k=1, int dynamic_index=1):
-        """Return exact 1-NN distances and ``None`` for unavailable indices."""
+        """Return exact nearest-neighbour distances and zero-based record IDs."""
         cdef np.ndarray[FLOAT32_t, ndim=2, mode="c"] query_array
         cdef np.ndarray[FLOAT32_t, ndim=2] distances
         cdef np.ndarray[INT64_t, ndim=2] labels
         cdef Py_ssize_t nq
         cdef object input_array
         self._ensure_searchable()
-        if k != 1:
-            raise NotImplementedError("exact top-k search is not implemented; only k=1 is supported")
+        if k < 1:
+            raise ValueError("k must be at least 1")
         input_array = np.asarray(queries)
         if input_array.ndim != 2 or input_array.shape[1] != self._dim or input_array.shape[0] == 0:
             raise ValueError("queries must have shape (n_queries, timeseries_size) with at least one row")
@@ -339,12 +339,12 @@ cdef class Index:
         if not np.isfinite(query_array).all():
             raise ValueError("queries must contain only finite values")
         nq = query_array.shape[0]
-        distances = np.empty((nq, 1), dtype=np.float32)
-        labels = np.empty((nq, 1), dtype=np.int64)
-        if messi_index_search(self._index, <float*> query_array.data, nq, self._dim, 1,
+        distances = np.empty((nq, k), dtype=np.float32)
+        labels = np.empty((nq, k), dtype=np.int64)
+        if messi_index_search(self._index, <float*> query_array.data, nq, self._dim, k,
                               <float*> distances.data, <long*> labels.data, dynamic_index) != 0:
             raise RuntimeError("search failed")
-        return distances, None
+        return distances, labels
 
     def pca_transform(self, queries):
         """Return the learned SPARTAN PCA projection for query rows."""
