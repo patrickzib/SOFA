@@ -7,23 +7,28 @@ Symbolic trie
 - Added an in-memory symbolic-trie index with configurable 2-, 4-, or 8-way
   fanout, leaf capacity, sampled root splitting, and entropy × variance-based
   splits.
-- Stores MBRs and selects split dimensions across the full transform word
-  (up to 128 dimensions, capped by the series length); record lower bounds
-  use the leading 16 dimensions.
+- Separates the trie word into independently configurable concerns: node and
+  leaf MBRs may use up to 128 transform dimensions (capped by series length),
+  split selection uses a configurable prefix, and record bounds use a
+  configurable 16--64-dimension symbolic prefix.
 - Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
   optional z-normalization, and query-specific symbolic lower-bound tables.
 - Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
-  bounds, with exact-distance early abandonment.  An optional disjoint
-  leaf-MBR suffix contribution strengthens record bounds beyond the first
-  16 dimensions (`--trie-record-mbr-suffix-bound`).
+  bounds, with exact-distance early abandonment.  The optional disjoint
+  leaf-MBR suffix contribution combines dimensions outside the record prefix
+  with its symbolic bound (`--trie-record-mbr-suffix-bound`).
 - Added an optional post-build, flat k-means directory inside large SFA, PISA,
   and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
-  groups before their records are scanned, without changing the main trie;
-  eligible leaves are clustered in parallel during construction.
+  groups before their records are scanned, without changing the main trie or
+  using raw-space centroid/radius bounds; eligible leaves are clustered in
+  parallel during construction.
+- Removes the redundant full root-MBR scan after a successful root split by
+  merging the child MBRs already formed during partitioning.
 - Provides batch and single-query parallel modes with configurable worker and
   queue counts, plus construction, coverage, and per-phase query timings.
 - Reports split occupancy, non-empty-child, and largest-child diagnostics to
-  make fanout experiments directly comparable.
+  make fanout experiments directly comparable.  Query summaries now separate
+  node-MBR, leaf-cluster-MBR, and record-prefix/suffix pruning stages.
 
 SIMD and distance kernels
 -------------------------
@@ -35,6 +40,20 @@ SIMD and distance kernels
   kernels, plus a target-CPU exact-distance microbenchmark.
 - Configuration output now identifies the SIMD instruction set in use (or
   states when no SIMD ISA was compiled in).
+- Record lower-bound lookup tables support all configured trie record-prefix
+  widths (16--64 dimensions) in both SIMD and scalar paths.
+
+Transforms and PCA projection
+-----------------------------
+
+- PISA uses the independent coordinates of the full real FFT before PCA, with
+  the appropriate real-spectrum weighting and mean-coefficient handling.
+- SPARTAN and PISA bulk trie construction project records in blocks through
+  optional CBLAS SGEMM.  Builds retain a scalar fallback when CBLAS is absent;
+  a single-threaded OpenBLAS installation splits an SGEMM block across OpenMP
+  workers, while threaded OpenBLAS keeps ownership of parallelism.
+- Build and run output state which PCA projection path is active, including
+  the detected OpenBLAS configuration when available.
 
 Sampling
 --------
@@ -67,11 +86,15 @@ Benchmark runners
   be overridden with `--trie-mbr-dims` (16--128, capped by series length);
   trie fanout is configurable with `--trie-fanout 2|4|8`.
 - Trie suite and dataset runners forward the record-MBR suffix and leaf
-  k-means options.  Runner and MESSI logs again default to
-  `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
+  k-means options, along with record-prefix, MBR-width, split-width, leaf,
+  sampling, queue, NUMA, and input-override settings.  Runner and MESSI logs
+  again default to `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
 
 Build integration
 -----------------
 
 - Kept generated Autotools configuration headers out of source control, so
   local configure/build output does not pollute commits.
+- Autotools detects CBLAS headers and `cblas_sgemm`; `build_local.sh` and
+  `build_sonic.sh` preserve FFTW, OpenBLAS/LAPACK, CBLAS, and compiler flags
+  across configure rechecks.

@@ -39,13 +39,22 @@ import numpy as np
 from messi import Index
 
 ts_size = 256
-idx = Index(timeseries_size=ts_size, function_type=5, sample_size=1000, max_query_threads=8)
-idx.add("data_head/astro_head.bin", ts_num=1000)
+idx = Index(timeseries_size=ts_size, transform="spartan", layout="trie",
+            sample_size=1000, max_query_threads=8,
+            trie_mbr_dimensions=128, trie_record_lb_dimensions=32,
+            trie_split_dimensions=32, trie_record_mbr_suffix_bound=True)
+idx.add_file("data_head/astro_head.bin", ts_num=1000)
 
 queries = np.fromfile("data_queries/astro_queries.bin", dtype=np.float32, count=10 * ts_size)
 queries = queries.reshape(10, ts_size)
-distances, labels = idx.search(queries, k=1)
+distances, indices = idx.search(queries, k=1)
 ```
+
+`Index.add_array(data)` accepts a two-dimensional NumPy array and creates an
+owned temporary float32 raw-data snapshot for exact refinement.  The snapshot
+is removed by `idx.close()` or by a context manager.  The native query engines
+currently return exact 1-NN distances only: `k` must be 1 and `indices` is
+`None` until stable raw-record offsets are propagated by the native backends.
 
 # Scripts
 
