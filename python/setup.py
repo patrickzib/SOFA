@@ -9,6 +9,7 @@ except ImportError:  # pragma: no cover - fallback for runtime without Cython
     cythonize = None
 
 ROOT = Path(__file__).resolve().parent.parent
+BUILD_CONFIG_DIR = ROOT / "build"
 FFTW_CFLAGS = os.environ.get("FFTW_CFLAGS", "")
 FFTW_LIBS = os.environ.get("FFTW_LIBS", "")
 LAPACK_LIBS = os.environ.get("LAPACK_LIBS", "")
@@ -66,14 +67,16 @@ def _env_flag(name: str, default: bool = False) -> bool:
 enable_asan = _env_flag("MESSI_ENABLE_ASAN")
 asan_compile_flags = ["-fsanitize=address", "-fno-omit-frame-pointer"] if enable_asan else []
 asan_link_flags = ["-fsanitize=address"] if enable_asan else []
+debug_build = _env_flag("MESSI_DEBUG")
+optimization_flags = ["-O0", "-g"] if debug_build else ["-O3"]
 
 source_file = "messi/_index.pyx" if cythonize is not None else "messi/_index.c"
 
 extension = Extension(
     "messi._index",
     sources=[source_file] + sourcedirs,
-    include_dirs=[str(ROOT), str(ROOT / "include"), numpy.get_include()],
-    extra_compile_args=COMMON_CFLAGS + omp_compile + ["-fcommon", "-O0", "-g"] + asan_compile_flags,
+    include_dirs=[str(ROOT), str(BUILD_CONFIG_DIR), str(ROOT / "include"), numpy.get_include()],
+    extra_compile_args=COMMON_CFLAGS + omp_compile + ["-fcommon"] + optimization_flags + asan_compile_flags,
     extra_link_args=COMMON_LDFLAGS + omp_link + asan_link_flags,
     language="c",
 )

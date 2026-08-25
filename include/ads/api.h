@@ -32,6 +32,18 @@ typedef struct {
     int filetype_int;
     int max_query_threads;
     int queue_count;
+    int index_type;
+    unsigned int sampling_seed;
+    int node_split_criterion;
+    int trie_bound_dimensions;
+    int trie_split_dimensions;
+    char trie_record_mbr_suffix_bound;
+    int trie_leaf_kmeans;
+    int trie_fanout;
+    char trie_dynamic_alphabet;
+    int trie_min_fanout;
+    int trie_max_fanout;
+    int trie_alphabet_budget_bits;
 } messi_index_params;
 
 messi_index *messi_index_create(const messi_index_params *params);

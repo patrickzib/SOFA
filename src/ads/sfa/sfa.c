@@ -69,6 +69,9 @@ enum response sfa_bins_init(isax_index *index) {
   This functions frees the allocated bins-array
 */
 void sfa_free_bins(isax_index *index) {
+    if (index == NULL || index->bins == NULL) {
+        return;
+    }
     for (int i = 0; i < index->settings->n_segments; ++i) {
         free(index->bins[i]);
     }

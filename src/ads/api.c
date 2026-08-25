@@ -8,6 +8,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/trie/trie.h"
 #include <stdlib.h>
 #include <float.h>
 #include <stdint.h>
@@ -18,7 +19,18 @@
 struct messi_index {
     isax_index *index;
     int filetype_int;
+    int built;
 };
+
+static int fanout_to_bits(int fanout) {
+    int bits = 0;
+    if (fanout < 2 || fanout > 256 || (fanout & (fanout - 1)) != 0) return -1;
+    while (fanout > 1) {
+        ++bits;
+        fanout >>= 1;
+    }
+    return bits;
+}
 
 static void populate_root_nodes(isax_index *index, node_list *list);
 static enum response prepare_sfa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
@@ -65,6 +77,8 @@ messi_index *messi_index_create(const messi_index_params *params) {
         }
     }
 
+    const messi_index_type index_type = params->index_type == MESSI_INDEX_TRIE
+                                            ? MESSI_INDEX_TRIE : MESSI_INDEX_ISAX;
     isax_index_settings *settings = isax_index_settings_init(
         root_directory,
         params->timeseries_size,
@@ -87,9 +101,34 @@ messi_index *messi_index_create(const messi_index_params *params) {
         params->histogram_type,
         params->sample_type,
         params->n_coefficients,
-        MESSI_INDEX_ISAX);
+        index_type);
 
     if (settings == NULL) {
+        free(wrapper);
+        return NULL;
+    }
+
+    settings->sampling_seed = params->sampling_seed == 0 ? 1 : params->sampling_seed;
+    settings->node_split_criterion = params->node_split_criterion == 0
+                                        ? 1 : params->node_split_criterion;
+    settings->trie_bound_dimensions = params->trie_bound_dimensions;
+    settings->trie_split_dimensions = params->trie_split_dimensions;
+    settings->trie_record_mbr_suffix_bound = params->trie_record_mbr_suffix_bound;
+    settings->trie_leaf_kmeans = params->trie_leaf_kmeans;
+    settings->trie_fanout = params->trie_fanout == 0 ? 8 : params->trie_fanout;
+    settings->trie_dynamic_alphabet = params->trie_dynamic_alphabet;
+    settings->trie_min_bits = fanout_to_bits(params->trie_min_fanout == 0
+                                                  ? 2 : params->trie_min_fanout);
+    settings->trie_max_bits = fanout_to_bits(params->trie_max_fanout == 0
+                                                  ? 16 : params->trie_max_fanout);
+    settings->trie_alphabet_budget_bits = params->trie_alphabet_budget_bits == 0
+                                                ? 3 : params->trie_alphabet_budget_bits;
+    if (settings->node_split_criterion < 1 || settings->node_split_criterion > 4 ||
+        settings->trie_min_bits < 1 || settings->trie_max_bits < settings->trie_min_bits ||
+        settings->trie_max_bits > 8 ||
+        settings->trie_alphabet_budget_bits < settings->trie_min_bits ||
+        settings->trie_alphabet_budget_bits > settings->trie_max_bits) {
+        free(settings);
         free(wrapper);
         return NULL;
     }
@@ -113,22 +152,34 @@ void messi_index_destroy(messi_index *index) {
         return;
     }
     if (index->index != NULL) {
-        if (index->index->settings && index->index->settings->function_type == 4) {
+        if (index->index->settings && index->index->bins != NULL &&
+            index->index->settings->function_type == 4) {
             sfa_free_bins(index->index);
         }
         if (index->index->settings && index->index->settings->function_type == 5) {
             spartan_free_bins(index->index);
         }
-        if (index->index->settings && index->index->settings->function_type == 6) {
+        if (index->index->settings && index->index->bins != NULL &&
+            index->index->settings->function_type == 6) {
             pisa_free_bins(index->index);
         }
-        MESSI2_index_destroy(index->index, index->index->first_node);
+        if (index->built && index->index->settings &&
+            index->index->settings->index_type == MESSI_INDEX_TRIE) {
+            symbolic_trie_destroy(index->index);
+        }
+        /* rawfile is the process-global in-memory raw-series buffer used by
+         * both pRecBuf and symbolic-trie exact refinement. */
+        if (index->built && rawfile != NULL) {
+            free(rawfile);
+            rawfile = NULL;
+        }
+        isax_index_pRecBuf_destroy(index->index, NULL, maxquerythread);
     }
     free(index);
 }
 
 int messi_index_add_file(messi_index *index, const char *path, long ts_num, int dynamic_index) {
-    if (index == NULL || index->index == NULL || path == NULL) {
+    if (index == NULL || index->index == NULL || path == NULL || ts_num <= 0 || index->built) {
         return -1;
     }
     int apply_znorm = index->index->settings ? !index->index->settings->is_norm : 0;
@@ -137,11 +188,25 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num, int 
         prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS) {
         return -3;
     }
-    index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm, index->index, dynamic_index);
+    enum response build_result;
+    if (index->index->settings->index_type == MESSI_INDEX_TRIE) {
+        build_result = symbolic_trie_build(index->index, path, ts_num,
+                                           index->filetype_int, apply_znorm);
+    } else {
+        index_creation_pRecBuf(path, ts_num, index->filetype_int, apply_znorm,
+                               index->index, dynamic_index);
+        build_result = SUCCESS;
+    }
+    if (build_result != SUCCESS) {
+        finalize_sfa_bins_if_needed(index->index);
+        finalize_spartan_bins_if_needed(index->index);
+        finalize_pisa_bins_if_needed(index->index);
+        return -4;
+    }
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
     finalize_pisa_bins_if_needed(index->index);
-
+    index->built = 1;
     return 0;
 }
 
@@ -202,16 +267,18 @@ int messi_index_search(messi_index *index,
                         paa_buffer,
                         index->index->settings);
         }
-        query_result res = exact_search_MESSI(
-			(ts_type *) (queries + i * dim),
-            paa_buffer,
-            index->index,
-            &nlist,
-            FLT_MAX,
-            -1,
-            dynamic_index);
+        query_result res;
+        if (index->index->settings->index_type == MESSI_INDEX_TRIE) {
+            res = symbolic_trie_exact_search(index->index, ts, paa_buffer, FLT_MAX);
+        } else {
+            res = exact_search_MESSI(
+                (ts_type *) (queries + i * dim), paa_buffer, index->index,
+                &nlist, FLT_MAX, -1, dynamic_index);
+        }
         distances[i] = res.distance;
-        labels[i] = res.node ? (long) (intptr_t) res.node : -1;
+        /* Query engines do not yet propagate winning record positions.  Do
+         * not leak an implementation-address as a Python-visible label. */
+        labels[i] = -1;
         if (nlist.nlist != NULL) {
             free(nlist.nlist);
         }
