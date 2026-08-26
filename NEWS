@@ -14,9 +14,10 @@ Symbolic trie
 - Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
   optional z-normalization, and query-specific symbolic lower-bound tables.
 - Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
-  bounds, with exact-distance early abandonment.  The optional disjoint
-  leaf-MBR suffix contribution combines dimensions outside the record prefix
-  with its symbolic bound (`--trie-record-mbr-suffix-bound`).
+  bounds, with exact-distance early abandonment.  The disjoint leaf-MBR
+  suffix contribution is enabled by default and combines dimensions outside
+  the record prefix with its symbolic bound; it can be disabled with
+  `--no-trie-record-mbr-suffix-bound`.
 - Added an optional post-build, flat k-means directory inside large SFA, PISA,
   and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
   groups before their records are scanned, without changing the main trie or
@@ -81,14 +82,28 @@ Benchmark runners
   end-of-run table of query work, coverage, and wall time for all methods run.
 - `run_suite.sh` accepts `--index-type isax|trie` to run a regular suite across
   all configured datasets with either layout.
-- iSAX runner methods use variance-driven root cardinalities by default;
-  trie MBR/split dimensions follow each dataset's coefficient setting and can
+- iSAX runner tight-bound pruning is enabled by default, while variance-driven
+  root cardinalities are opt-in with `--dynamic-root-split-variance`; trie
+  MBR/split dimensions follow each dataset's coefficient setting and can
   be overridden with `--trie-mbr-dims` (16--128, capped by series length);
   trie fanout is configurable with `--trie-fanout 2|4|8`.
 - Trie suite and dataset runners forward the record-MBR suffix and leaf
   k-means options, along with record-prefix, MBR-width, split-width, leaf,
   sampling, queue, NUMA, and input-override settings.  Runner and MESSI logs
   again default to `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
+
+Python API
+----------
+
+- Aligned `Index` defaults with the benchmark runners: iSAX tight-bound
+  pruning and trie record-MBR suffix pruning are enabled, while variance-based
+  iSAX root splitting and trie leaf k-means remain opt-in.
+- Added `dynamic_root_split_variance` to the native and Python APIs, with
+  validation for iSAX SFA, SPARTAN, and PISA only.  Default SFA coefficient
+  pools are capped at 64 dimensions for iSAX and widen automatically to the
+  full trie transform width.
+- Made the standalone API own its query-reporting default so the Python
+  extension no longer depends on the CLI entry point for linking.
 
 Build integration
 -----------------

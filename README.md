@@ -1,33 +1,61 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# Build environment variables
-Set these if FFTW/LAPACK aren’t in default paths
-```bash
-export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
-export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
-```
+# Build MESSI
 
-# To compile SOFA 
-Using Autotools, call from repo root.
+MESSI requires the single-precision FFTW library (`fftw3f`). OpenBLAS is
+recommended: it provides the LAPACK routines required by PISA/SPARTAN and the
+optional CBLAS acceleration used for bulk PCA projection. On systems where
+FFTW is discoverable through `pkg-config`, build from the repository root:
+
 ```bash
 ./configure
-make
+make -j
 ```
 
+If FFTW is installed outside the system paths, give its prefix to `configure`
+and provide OpenBLAS for LAPACK/CBLAS. For a MacPorts installation this is:
 
-# Build Python (Cython) API 
-Again, set environment-variables, if FFTW/LAPACK aren’t in default paths or to enable SIMD in the extension build.
+```bash
+export LAPACK_LIBS="-L/opt/local/lib -lopenblas"
+export CBLAS_LIBS="$LAPACK_LIBS"
+./configure --with-fftw=/opt/local
+make -j
+```
 
-Call from repo root.
+`build_local.sh` is the maintained MacPorts convenience build. It sets those
+paths, enables native optimization, creates a fresh out-of-tree `build/`
+directory, and copies the executable to `bin/MESSI`:
+
+```bash
+./build_local.sh
+```
+
+`build_sonic.sh` is the equivalent site-specific helper for the Sonic cluster;
+edit its FFTW prefix if that installation changes. Pass `--enable-simd=no` to
+`configure` to disable AVX2 detection. Do not add AVX compiler flags manually:
+the configure step selects AVX2 when the compiler supports it, while ARM NEON
+uses its native implementation automatically.
+
+Run `autoreconf -fi` before `configure` only when modifying Autotools inputs
+or when a clone does not include a usable generated `configure` script.
+
+# Build Python (Cython) API
+
+The Python extension compiles the native engine directly. Use an environment
+with NumPy and Cython installed, and provide the same FFTW/OpenBLAS paths when
+they are not in the compiler defaults:
+
 ```bash
 export FFTW_CFLAGS="-I/opt/local/include"
-export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
-export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
-export SIMD_CFLAGS="-mavx -mavx2 -msse3"
+export FFTW_LIBS="-L/opt/local/lib -lfftw3f"
+export LAPACK_LIBS="-L/opt/local/lib -lopenblas"
 
-python3 -m pip install -e ./python
+python3 -m pip install --no-build-isolation -e ./python
 ```
+
+For a direct extension build, run the equivalent command from `python/`:
+`python3 setup.py build_ext --inplace`.
 
 # Minimal Python API usage
 The API consumes float32 binary datasets (same format as CLI). 
@@ -55,6 +83,24 @@ owned temporary float32 raw-data snapshot for exact refinement.  The snapshot
 is removed by `idx.close()` or by a context manager.  The native query engines
 currently return exact 1-NN distances only: `k` must be 1 and `indices` is
 `None` until stable raw-record offsets are propagated by the native backends.
+
+## Index defaults
+
+The direct CLI intentionally keeps iSAX tight-bound pruning off; benchmark
+runners and the Python API enable it by default.  All trie entry points build
+node MBRs and enable the record-MBR suffix contribution by default.
+
+| Setting | Direct CLI | Script runners | Python `Index` |
+|---|---|---|---|
+| iSAX tight-bound pruning | Off; use `--tight-bound` | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
+| iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
+| Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
+| Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
+| Trie leaf k-means groups | Off; use `--trie-leaf-kmeans K` | Off; use `--trie-leaf-kmeans K` | Off; pass `trie_leaf_kmeans=K` |
+
+Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
+leaf k-means is valid only for learned trie transforms (SFA, SPARTAN, and
+PISA), with `K` from 2 to 64.
 
 # Scripts
 
