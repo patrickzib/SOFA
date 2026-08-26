@@ -44,6 +44,7 @@ typedef struct {
     int trie_min_fanout;
     int trie_max_fanout;
     int trie_alphabet_budget_bits;
+    char dynamic_root_split_variance;
 } messi_index_params;
 
 messi_index *messi_index_create(const messi_index_params *params);

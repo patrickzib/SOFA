@@ -14,29 +14,35 @@ while IFS= read -r script; do bash -n "$script"; done < <(find "$SCRIPT_DIR" -ty
 pass 'all maintained scripts pass bash syntax validation'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 7 ]] || fail 'standard profile should emit seven commands'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 5 ]] || fail 'standard profile should emit five default commands'
 assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'
-assert_contains "$OUTPUT" '--function-type 6'
+assert_not_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_contains "$OUTPUT" '--tight-bound'
 assert_contains "$OUTPUT" '--sample-type 2'
 assert_not_contains "$OUTPUT" '--sample-type 3'
-[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'iSAX should enable variance root splits for learned methods by default'
+assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --no-tight-bound --binary /tmp/MESSI --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--tight-bound'
+pass 'iSAX tight-bound pruning can be disabled explicitly'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_not_contains "$OUTPUT" '--queue-number'
 pass 'queue count is optional and defaults in MESSI'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type trie --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 6 ]] || fail 'trie standard profile should exclude SAX'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'trie standard profile should exclude SAX and PISA by default'
 assert_not_contains "$OUTPUT" '--function-type 3'
 assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
-assert_contains "$OUTPUT" '--function-type 6'
+assert_not_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
 assert_contains "$OUTPUT" '--trie-split-dimensions 32'
 assert_contains "$OUTPUT" '--trie-fanout 8'
+assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+assert_not_contains "$OUTPUT" '--tight-bound'
 pass 'trie standard profile excludes SAX from its method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
@@ -64,8 +70,9 @@ fi
 pass 'trie fanout is forwarded and validated'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 6 ]] || fail 'variance root split should apply to each learned iSAX method'
-pass 'iSAX variance root split is forwarded only to learned transforms'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --dynamic-root-split-variance --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--dynamic-root-split-variance') == 4 ]] || fail 'variance root split should apply to each learned iSAX method'
+pass 'iSAX variance root split is opt-in and forwarded only to learned transforms'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --no-dynamic-root-split-variance --dry-run 2>/dev/null)
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
@@ -88,6 +95,12 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
     fail 'runner accepted trie record/MBR suffix bound for iSAX'
 fi
 pass 'trie record/MBR suffix bound is forwarded and scoped to trie'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --no-trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
+assert_not_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+assert_contains "$OUTPUT" '--no-trie-record-mbr-suffix-bound'
+pass 'trie record-MBR suffix pruning is enabled by default and can be disabled'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-kmeans 16 --dry-run 2>/dev/null)

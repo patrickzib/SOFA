@@ -42,7 +42,7 @@ ts_size = 256
 idx = Index(timeseries_size=ts_size, transform="spartan", layout="trie",
             sample_size=1000, max_query_threads=8,
             trie_mbr_dimensions=128, trie_record_lb_dimensions=32,
-            trie_split_dimensions=32, trie_record_mbr_suffix_bound=True)
+            trie_split_dimensions=32)
 idx.add_file("data_head/astro_head.bin", ts_num=1000)
 
 queries = np.fromfile("data_queries/astro_queries.bin", dtype=np.float32, count=10 * ts_size)

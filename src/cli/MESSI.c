@@ -331,6 +331,7 @@ int main(int argc, char **argv) {
     static int trie_mbr_dimensions = 0;
     static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
+    static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_kmeans = 0;
     static int trie_fanout = 8;
     static int trie_fanout_specified = 0;
@@ -407,6 +408,7 @@ int main(int argc, char **argv) {
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
+                {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-kmeans", required_argument, 0, 1014},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
@@ -470,6 +472,11 @@ int main(int argc, char **argv) {
                 break;
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
+                trie_record_mbr_suffix_bound_specified = 1;
+                break;
+            case 1016:
+                trie_record_mbr_suffix_bound = 0;
+                trie_record_mbr_suffix_bound_specified = 1;
                 break;
             case 1014:
                 trie_leaf_kmeans = atoi(optarg);
@@ -692,7 +699,8 @@ int main(int argc, char **argv) {
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
                 \t--trie-mbr-dimensions XX\tTrie MBR dimensions (16--128; default: maximum available)\n\
                 \t--trie-split-dimensions XX\tTrie split-candidate dimensions (default: min(32, MBR dimensions))\n\
-                \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds\n\
+                \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds (default for trie)\n\
+                \t--no-trie-record-mbr-suffix-bound\tDisable trie record-MBR suffix pruning\n\
                 \t--trie-leaf-kmeans K\tBuild K flat k-means MBR groups inside trie leaves (2--64; default: off)\n\
                 \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
                 \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
@@ -765,6 +773,7 @@ int main(int argc, char **argv) {
     query_report_interval = query_report_interval_requested;
 
     if (index_type == MESSI_INDEX_TRIE) {
+        if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
         if (function_type < 3 || function_type > 6) {
             fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
             return EXIT_FAILURE;

@@ -16,6 +16,10 @@
 #include <unistd.h>
 #include <string.h>
 
+/* The CLI owns this global in executable builds.  The standalone API links
+ * query engines directly, so it provides the same default independently. */
+int query_report_interval = 10;
+
 struct messi_index {
     isax_index *index;
     int filetype_int;
@@ -123,6 +127,8 @@ messi_index *messi_index_create(const messi_index_params *params) {
                                                   ? 16 : params->trie_max_fanout);
     settings->trie_alphabet_budget_bits = params->trie_alphabet_budget_bits == 0
                                                 ? 3 : params->trie_alphabet_budget_bits;
+    settings->dynamic_root_split_variance =
+        index_type == MESSI_INDEX_ISAX && params->dynamic_root_split_variance;
     if (settings->node_split_criterion < 1 || settings->node_split_criterion > 4 ||
         settings->trie_min_bits < 1 || settings->trie_max_bits < settings->trie_min_bits ||
         settings->trie_max_bits > 8 ||

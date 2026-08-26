@@ -35,7 +35,9 @@ Options:
   --n-segments N          Trie record-prefix lower-bound dimensions (default: 16; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
-                          Add leaf-MBR contributions outside the 16 record-bound dimensions
+                          Add leaf-MBR contributions outside record-prefix dimensions (default for trie)
+  --no-trie-record-mbr-suffix-bound
+                          Disable trie record-MBR suffix pruning
   --trie-leaf-kmeans K     Build K flat k-means MBR groups inside large trie leaves
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
@@ -52,7 +54,7 @@ Options:
                           Enable variance-assigned iSAX root bits
   --no-dynamic-root-split-variance
                           Disable variance-assigned root bits for learned iSAX methods
-  --no-tight-bound        Disable the standard profile's tight-bound option
+  --tight-bound           Enable iSAX tight-bound pruning (default for iSAX)
   --binary PATH           MESSI executable
   --data-root PATH        Main dataset root
   --query-root PATH       Main query root
@@ -108,7 +110,7 @@ TRIE_FANOUT=8
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
-TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_LEAF_KMEANS=
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -152,6 +154,7 @@ while [[ $# -gt 0 ]]; do
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-leaf-kmeans) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_KMEANS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
@@ -164,6 +167,7 @@ while [[ $# -gt 0 ]]; do
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
+        --tight-bound) TIGHT_BOUND=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
@@ -192,7 +196,7 @@ esac
     die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || \
     die '--n-segments requires --index-type trie'
-[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || \
+[[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || \
     die '--trie-query-parallel requires --index-type trie'
@@ -205,6 +209,9 @@ esac
 [[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
+if [[ $INDEX_TYPE == trie ]]; then
+    TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+fi
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
     [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
     [[ $TRIE_MIN_FANOUT =~ ^(2|4|8|16|32|64|128|256)$ ]] || die '--trie-min-fanout must be a power of two between 2 and 256'
@@ -257,6 +264,7 @@ run_one() {
         command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
         [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
+        [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
         [[ -n $TRIE_LEAF_KMEANS ]] && command+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
@@ -274,7 +282,10 @@ run_one() {
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
-    $TIGHT_BOUND || command+=(--no-tight-bound)
+    if [[ $INDEX_TYPE == isax ]]; then
+        $TIGHT_BOUND && command+=(--tight-bound)
+        [[ $TIGHT_BOUND == false ]] && command+=(--no-tight-bound)
+    fi
     [[ -n $METHODS_OVERRIDE ]] && command+=(--methods "$METHODS_OVERRIDE")
     command+=("$@")
     $DRY_RUN && command+=(--dry-run)
@@ -383,6 +394,7 @@ run_query_suite() {
                 command+=(--n-segments "$TRIE_RECORD_LB_DIMS")
                 [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
                 $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
+                [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
                 [[ -n $TRIE_LEAF_KMEANS ]] && command+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
                     command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
@@ -400,7 +412,11 @@ run_query_suite() {
             $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
-            command+=(--query-file "$query" --methods "$methods" --no-tight-bound)
+            command+=(--query-file "$query" --methods "$methods")
+            if [[ $INDEX_TYPE == isax ]]; then
+                $TIGHT_BOUND && command+=(--tight-bound)
+                [[ $TIGHT_BOUND == false ]] && command+=(--no-tight-bound)
+            fi
             $DRY_RUN && command+=(--dry-run)
             "${command[@]}"
             if [[ $DRY_RUN == false ]]; then "$SCRIPT_DIR/archive_results.sh" "$label" "$threads"; fi

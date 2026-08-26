@@ -49,7 +49,7 @@ cdef class Index:
                   int max_total_buffer_size=200000,
                   int initial_fbl_buffer_size=100,
                   int total_loaded_leaves=1,
-                  int tight_bound=0,
+                  int tight_bound=1,
                   int aggressive_check=0,
                   int function_type=3,
                   transform=None,
@@ -59,7 +59,7 @@ cdef class Index:
                   char is_norm=1,
                   int histogram_type=2,
                   int sample_type=1,
-                  int sfa_n_coefficients=32,
+                  sfa_n_coefficients=None,
                   int filetype_int=0,
                   int max_query_threads=1,
                   int queue_count=0,
@@ -68,13 +68,14 @@ cdef class Index:
                   int trie_mbr_dimensions=0,
                   int trie_record_lb_dimensions=0,
                   int trie_split_dimensions=0,
-                  bint trie_record_mbr_suffix_bound=False,
+                  bint trie_record_mbr_suffix_bound=True,
                   int trie_leaf_kmeans=0,
                   int trie_fanout=8,
                   bint trie_dynamic_alphabet=False,
                   int trie_min_fanout=2,
                   int trie_max_fanout=16,
                   int trie_alphabet_budget_bits=3,
+                  bint dynamic_root_split_variance=False,
                   root_directory=None):
         cdef messi_index_params params
         cdef bytes root_dir_bytes
@@ -82,6 +83,7 @@ cdef class Index:
         cdef int index_type
         cdef int transform_dim
         cdef int record_lb_dim
+        cdef int resolved_sfa_n_coefficients
         cdef object layout_name
         cdef object transform_name
 
@@ -135,6 +137,25 @@ cdef class Index:
             record_lb_dim = 0
             if n_segments <= 0 or n_segments > timeseries_size:
                 raise ValueError("n_segments must be between 1 and timeseries_size")
+        if dynamic_root_split_variance:
+            if index_type != MESSI_INDEX_ISAX:
+                raise ValueError("dynamic_root_split_variance requires layout='isax'")
+            if function_type not in (4, 5, 6):
+                raise ValueError("dynamic_root_split_variance requires SFA, SPARTAN, or PISA")
+        if sfa_n_coefficients is None:
+            resolved_sfa_n_coefficients = min(64, timeseries_size)
+            if resolved_sfa_n_coefficients % 2 != 0:
+                resolved_sfa_n_coefficients -= 1
+            if index_type == MESSI_INDEX_TRIE and function_type == 4 and \
+                    resolved_sfa_n_coefficients < transform_dim:
+                resolved_sfa_n_coefficients = transform_dim
+        else:
+            resolved_sfa_n_coefficients = int(sfa_n_coefficients)
+        if function_type == 4 and (resolved_sfa_n_coefficients <= 0 or
+                                   resolved_sfa_n_coefficients % 2 != 0 or
+                                   resolved_sfa_n_coefficients < transform_dim or
+                                   resolved_sfa_n_coefficients > timeseries_size):
+            raise ValueError("sfa_n_coefficients must be even and between the transform width and timeseries_size")
 
         if root_directory is None:
             root_dir_bytes = b""
@@ -165,7 +186,7 @@ cdef class Index:
         params.is_norm = is_norm
         params.histogram_type = histogram_type
         params.sample_type = sample_type
-        params.n_coefficients = sfa_n_coefficients
+        params.n_coefficients = resolved_sfa_n_coefficients
         params.filetype_int = filetype_int
         params.max_query_threads = max_query_threads
         params.queue_count = queue_count or max_query_threads
@@ -181,6 +202,7 @@ cdef class Index:
         params.trie_min_fanout = trie_min_fanout
         params.trie_max_fanout = trie_max_fanout
         params.trie_alphabet_budget_bits = trie_alphabet_budget_bits
+        params.dynamic_root_split_variance = dynamic_root_split_variance
         self._index = messi_index_create(&params)
         if self._index is NULL:
             raise MemoryError("Failed to create MESSI index")
@@ -191,11 +213,14 @@ cdef class Index:
         self._filetype_int = filetype_int
         self._is_norm = is_norm
         self._config = {"layout": layout_name, "function_type": function_type,
+                        "tight_bound": bool(tight_bound),
+                        "sfa_n_coefficients": resolved_sfa_n_coefficients if function_type == 4 else None,
                         "transform_dimensions": transform_dim,
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
                         "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
                         "trie_leaf_kmeans": trie_leaf_kmeans,
+                        "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,
                         "queue_count": queue_count or max_query_threads,
                         "sampling_seed": sampling_seed or 1}

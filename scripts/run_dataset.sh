@@ -30,7 +30,9 @@ Options:
                             alias: --trie-record-lb-dims)
   --trie-split-dims N       Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
-                            Add leaf-MBR contributions outside the 16 record-bound dimensions
+                            Add leaf-MBR contributions outside record-prefix dimensions (default for trie)
+  --no-trie-record-mbr-suffix-bound
+                            Disable trie record-MBR suffix pruning
   --trie-leaf-kmeans K      Build K flat k-means MBR groups inside large trie leaves
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
@@ -40,14 +42,13 @@ Options:
                             Average dynamic alphabet budget in bits (default: 3)
   --dynamic-root-split-variance
                             Use variance-assigned root bits for iSAX SFA/PISA/SPARTAN
-                            (the iSAX runner default)
   --no-dynamic-root-split-variance
                             Disable variance-assigned root bits for learned iSAX methods
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
-  --no-tight-bound          Disable standard profile's tight-bound option
+  --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
   --binary PATH             MESSI executable
   MESSI_SHELL_LOG_DIR       Directory for per-method shell output logs
   --data-root PATH          Main dataset root
@@ -173,7 +174,7 @@ TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
-TRIE_RECORD_MBR_SUFFIX_BOUND=false
+TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_LEAF_KMEANS=
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
@@ -221,6 +222,7 @@ while [[ $# -gt 0 ]]; do
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-leaf-kmeans) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_KMEANS=$2; shift 2 ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
@@ -231,6 +233,7 @@ while [[ $# -gt 0 ]]; do
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
+        --tight-bound) TIGHT_BOUND=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
         --data-root) [[ $# -ge 2 ]] || die "$1 requires a value"; DATA_ROOT=$2; shift 2 ;;
@@ -260,13 +263,13 @@ is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonneg
 DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
 if [[ -z $DYNAMIC_ROOT_SPLIT_VARIANCE ]]; then
-    [[ $INDEX_TYPE == isax ]] && DYNAMIC_ROOT_SPLIT_VARIANCE=true || DYNAMIC_ROOT_SPLIT_VARIANCE=false
+    DYNAMIC_ROOT_SPLIT_VARIANCE=false
 fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
-[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
+[[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
@@ -281,6 +284,7 @@ MIN_LEAF_SIZE=${MIN_LEAF_SIZE:-$LEAF_SIZE}
 MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must be a positive integer or use k/m/mio/g'
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
+    TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
     is_positive_integer "$TRIE_RECORD_LB_DIMS" || die '--n-segments must be a positive integer'
     (( TRIE_RECORD_LB_DIMS >= 16 && TRIE_RECORD_LB_DIMS <= 64 )) || \
         die '--n-segments must be between 16 and 64 for trie runs'
@@ -341,14 +345,14 @@ DATASET_PATH=$(resolve_path "$ROOT" "$DATASET_FILE")
 QUERY_PATH=$(resolve_path "$QUERY_BASE" "$QUERY_FILE")
 
 case "$PROFILE" in
-    standard) DEFAULT_METHODS=sax,sfa-depth,sfa-width,pisa-depth,pisa-width,spartan-depth,spartan-width ;;
+    standard) DEFAULT_METHODS=sax,sfa-depth,sfa-width,spartan-depth,spartan-width ;;
     high-frequency) DEFAULT_METHODS=sfa-width ;;
     knn) DEFAULT_METHODS=sax,sfa-depth,sfa-width ;;
     sampling) DEFAULT_METHODS=sfa-depth,sfa-width ;;
 esac
 if [[ $INDEX_TYPE == trie ]]; then
     case "$PROFILE" in
-        standard) DEFAULT_METHODS=sfa-depth,sfa-width,pisa-depth,pisa-width,spartan-depth,spartan-width ;;
+        standard) DEFAULT_METHODS=sfa-depth,sfa-width,spartan-depth,spartan-width ;;
         knn) DEFAULT_METHODS=sfa-depth,sfa-width ;;
     esac
 fi
@@ -384,7 +388,10 @@ COMMON_ARGS+=(
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--n-segments "$TRIE_RECORD_LB_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
-[[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
+if [[ $INDEX_TYPE == trie ]]; then
+    [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
+    [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && COMMON_ARGS+=(--no-trie-record-mbr-suffix-bound)
+fi
 [[ -n $TRIE_LEAF_KMEANS ]] && COMMON_ARGS+=(--trie-leaf-kmeans "$TRIE_LEAF_KMEANS")
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
@@ -514,11 +521,8 @@ run_method() {
         # previously issued one scattered seek/read for each sampled record.
         args+=(--sample-size "$SAMPLE_SIZE" --sample-type 2 --is-norm --histogram-type "$histogram_type")
         [[ $function_type == 4 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
-        if [[ $PROFILE == standard && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
-        if [[ $DATASET_ID == sift1b && $histogram_type == 1 && ( $PROFILE == knn || $PROFILE == sampling ) ]]; then
-            args+=(--tight-bound)
-        fi
     fi
+    if [[ $INDEX_TYPE == isax && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
     if [[ $PROFILE == knn ]]; then args+=(--topk --k-size "$K_SIZE"); fi
 
     if [[ $DRY_RUN == false && -z $RUN_LOG_FILE ]]; then
