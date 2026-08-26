@@ -136,7 +136,7 @@ query_result approximate_search_inmemory_messi(ts_type *ts, ts_type *paa, isax_i
 }
 
 query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax_index *index, int kn) {
-    query_result result;
+    query_result result = { FLT_MAX, NULL, 0, QUERY_RESULT_NO_POSITION };
 
     sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
 
@@ -178,16 +178,77 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
             // Adaptive splitting
         }
 
-        result.distance = calculate_node_distance_inmemory(index, node, ts, paa, FLT_MAX);
+        result = calculate_node_result_inmemory(index, node, ts, paa, result);
         result.node = node;
     } else {
         result.node = NULL;
-        result.distance = FLT_MAX;
     }
     COUNT_TREE_PASS_TIME_END
 
     free(sax);
 
+    return result;
+}
+
+static int query_result_is_better(float distance, file_position_type position,
+                                  const query_result *best) {
+    return distance < best->distance ||
+           (distance == best->distance &&
+            (best->record_position == QUERY_RESULT_NO_POSITION ||
+             position < best->record_position));
+}
+
+static void update_node_result(query_result *best, float distance,
+                               file_position_type position) {
+    if (query_result_is_better(distance, position, best)) {
+        best->distance = distance;
+        best->record_position = position;
+    }
+}
+
+static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
+                             sax_type *sax, ts_type *series,
+                             file_position_type position, query_result *best) {
+    const float lower = messi_minidist_raw(index, paa, sax,
+                                           index->settings->max_sax_cardinalities,
+                                           best->distance);
+    if (lower > best->distance) return;
+    /* An equal lower bound can still be the equal-distance record with the
+     * smaller sequential id.  Avoid a bounded early abandon in that case. */
+    const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
+                                     position < best->record_position;
+    const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
+    const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
+    update_node_result(best, distance, position);
+}
+
+query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
+                                            ts_type *query, ts_type *paa,
+                                            query_result result) {
+    if (node == NULL || node->buffer == NULL) return result;
+    isax_node_buffer *buffer = node->buffer;
+    for (int i = 0; i < buffer->full_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
+                         *buffer->full_position_buffer[i], &result);
+    for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
+                         *buffer->tmp_full_position_buffer[i], &result);
+    for (int i = 0; i < buffer->partial_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
+                         rawfile + *buffer->partial_position_buffer[i],
+                         *buffer->partial_position_buffer[i], &result);
+    return result;
+}
+
+query_result calculate_node_result2_inmemory(isax_index *index, isax_node *node,
+                                             ts_type *query, ts_type *paa,
+                                             query_result result) {
+    if (node == NULL || node->buffer == NULL) return result;
+    isax_node_buffer *buffer = node->buffer;
+    for (int i = 0; i < buffer->partial_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
+                         rawfile + *buffer->partial_position_buffer[i],
+                         *buffer->partial_position_buffer[i], &result);
     return result;
 }
 

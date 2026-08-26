@@ -17,7 +17,11 @@ typedef struct query_result {
     float distance;
     isax_node *node;
     size_t pqueue_position;
+    /* Raw-data offset (in samples) of the winning record, when available. */
+    file_position_type record_position;
 } query_result;
+
+#define QUERY_RESULT_NO_POSITION ((file_position_type) -1)
 
 
 static int

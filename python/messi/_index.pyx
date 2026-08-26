@@ -271,7 +271,7 @@ cdef class Index:
         if self._closed or self._index is NULL:
             raise RuntimeError("Index is closed")
         if not self._has_data:
-            raise RuntimeError("Index contains no data. Call add_file() or add_array() before search().")
+            raise RuntimeError("Index contains no data. Call add_file() or add() before search().")
 
     def add_file(self, filename, ts_num=None, int dynamic_index=1):
         """Build from a caller-owned raw binary dataset."""
@@ -301,11 +301,7 @@ cdef class Index:
             raise RuntimeError("Bulk add failed; the Index was closed")
         self._has_data = True
 
-    def add(self, filename, ts_num=None, int dynamic_index=1):
-        """Compatibility alias for :meth:`add_file`."""
-        return self.add_file(filename, ts_num, dynamic_index)
-
-    def add_array(self, data, storage_dir=None, int dynamic_index=1):
+    def add(self, data, storage_dir=None, int dynamic_index=1):
         """Build from a finite 2-D array via an owned temporary raw snapshot."""
         cdef np.ndarray[FLOAT32_t, ndim=2, mode="c"] array
         cdef object input_array
@@ -346,7 +342,7 @@ cdef class Index:
             raise
 
     def search(self, queries, int k=1, int dynamic_index=1):
-        """Return exact 1-NN distances and ``None`` for unavailable indices."""
+        """Return exact 1-NN distances and zero-based sequential row IDs."""
         cdef np.ndarray[FLOAT32_t, ndim=2, mode="c"] query_array
         cdef np.ndarray[FLOAT32_t, ndim=2] distances
         cdef np.ndarray[INT64_t, ndim=2] labels
@@ -369,7 +365,7 @@ cdef class Index:
         if messi_index_search(self._index, <float*> query_array.data, nq, self._dim, 1,
                               <float*> distances.data, <long*> labels.data, dynamic_index) != 0:
             raise RuntimeError("search failed")
-        return distances, None
+        return distances, labels
 
     def pca_transform(self, queries):
         """Return the learned SPARTAN PCA projection for query rows."""

@@ -282,9 +282,9 @@ int messi_index_search(messi_index *index,
                 &nlist, FLT_MAX, -1, dynamic_index);
         }
         distances[i] = res.distance;
-        /* Query engines do not yet propagate winning record positions.  Do
-         * not leak an implementation-address as a Python-visible label. */
-        labels[i] = -1;
+        labels[i] = res.record_position == QUERY_RESULT_NO_POSITION
+                        ? -1
+                        : (long) (res.record_position / index->index->settings->timeseries_size);
         if (nlist.nlist != NULL) {
             free(nlist.nlist);
         }

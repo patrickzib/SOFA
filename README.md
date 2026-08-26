@@ -78,11 +78,10 @@ queries = queries.reshape(10, ts_size)
 distances, indices = idx.search(queries, k=1)
 ```
 
-`Index.add_array(data)` accepts a two-dimensional NumPy array and creates an
+`Index.add(data)` accepts a two-dimensional NumPy array and creates an
 owned temporary float32 raw-data snapshot for exact refinement.  The snapshot
 is removed by `idx.close()` or by a context manager.  The native query engines
-currently return exact 1-NN distances only: `k` must be 1 and `indices` is
-`None` until stable raw-record offsets are propagated by the native backends.
+return exact 1-NN distances and zero-based sequential row IDs. `k` must be 1.
 
 ## Index defaults
 

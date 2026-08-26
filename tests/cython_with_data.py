@@ -55,7 +55,7 @@ def main() -> None:
     """
 
     start = time.perf_counter()
-    idx.add(str(data_path), ts_num=sample_size)
+    idx.add_file(str(data_path), ts_num=sample_size)
     index_seconds = time.perf_counter() - start
 
     query_count = 100

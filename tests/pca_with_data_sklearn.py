@@ -56,7 +56,7 @@ def main() -> None:
     queries = queries.reshape(QUERY_COUNT, TS_SIZE)
 
     start = time.perf_counter()
-    idx.add(str(data_path), ts_num=SAMPLE_SIZE)
+    idx.add_file(str(data_path), ts_num=SAMPLE_SIZE)
     index_seconds = time.perf_counter() - start
 
     start = time.perf_counter()
