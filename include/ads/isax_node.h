@@ -10,7 +10,7 @@
 
 struct isax_node;
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include "isax_node_record.h"
 #include "isax_node_buffer.h"
@@ -46,11 +46,14 @@ typedef struct isax_node {
     
     // Wedges
     ts_type *wedges;
+    sax_type *mbb_sax_min;
+    sax_type *mbb_sax_max;
+    char mbb_sax_valid;
 
 } isax_node;
 
 
 isax_node * isax_root_node_init(root_mask_type mask, int initial_buffer_size);
-isax_node * isax_leaf_node_init(int initial_buffer_size);
+isax_node * isax_leaf_node_init(int initial_buffer_size, struct isax_node *parent);
 
 #endif

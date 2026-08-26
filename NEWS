@@ -1,5 +1,100 @@
-** For next releases **
--> Addition of an index loading module.
--> Addition of a query front-end for interactive analysis - libreadline
--> When it cannot split any more - it should not fail - but it should increase the max leaf size for this leaf
--> Can we increment the index - what happens to already materialized leaves?
+Unreleased
+==========
+
+Symbolic trie
+-------------
+
+- Added an in-memory symbolic-trie index with configurable 2-, 4-, or 8-way
+  fanout, leaf capacity, sampled root splitting, and entropy × variance-based
+  splits.
+- Separates the trie word into independently configurable concerns: node and
+  leaf MBRs may use up to 128 transform dimensions (capped by series length),
+  split selection uses a configurable prefix, and record bounds use a
+  configurable 16--64-dimension symbolic prefix.
+- Supports SAX, SFA, PISA, and SPARTAN words, including integer input files,
+  optional z-normalization, and query-specific symbolic lower-bound tables.
+- Uses node-MBR pruning plus best-first leaf scans, ordered by record lower
+  bounds, with exact-distance early abandonment.  The optional disjoint
+  leaf-MBR suffix contribution combines dimensions outside the record prefix
+  with its symbolic bound (`--trie-record-mbr-suffix-bound`).
+- Added an optional post-build, flat k-means directory inside large SFA, PISA,
+  and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
+  groups before their records are scanned, without changing the main trie or
+  using raw-space centroid/radius bounds; eligible leaves are clustered in
+  parallel during construction.
+- Removes the redundant full root-MBR scan after a successful root split by
+  merging the child MBRs already formed during partitioning.
+- Provides batch and single-query parallel modes with configurable worker and
+  queue counts, plus construction, coverage, and per-phase query timings.
+- Reports split occupancy, non-empty-child, and largest-child diagnostics to
+  make fanout experiments directly comparable.  Query summaries now separate
+  node-MBR, leaf-cluster-MBR, and record-prefix/suffix pruning stages.
+
+SIMD and distance kernels
+-------------------------
+
+- Improved BSF-aware SIMD Euclidean-distance and symbolic lower-bound paths,
+  including register-only horizontal reductions and alignment selection
+  outside the vector loop where supported.
+- Added scalar-reference coverage for exact distance and lower-bound SIMD
+  kernels, plus a target-CPU exact-distance microbenchmark.
+- Configuration output now identifies the SIMD instruction set in use (or
+  states when no SIMD ISA was compiled in).
+- Record lower-bound lookup tables support all configured trie record-prefix
+  widths (16--64 dimensions) in both SIMD and scalar paths.
+
+Transforms and PCA projection
+-----------------------------
+
+- PISA uses the independent coordinates of the full real FFT before PCA, with
+  the appropriate real-spectrum weighting and mean-coefficient handling.
+- SPARTAN and PISA bulk trie construction project records in blocks through
+  optional CBLAS SGEMM.  Builds retain a scalar fallback when CBLAS is absent;
+  a single-threaded OpenBLAS installation splits an SGEMM block across OpenMP
+  workers, while threaded OpenBLAS keeps ownership of parallelism.
+- Build and run output state which PCA projection path is active, including
+  the detected OpenBLAS configuration when available.
+
+Sampling
+--------
+
+- Reworked SPARTAN uniform and random binning samples to read contiguous
+  blocks instead of seeking separately for every sampled record.  This avoids
+  the severe random-I/O slowdown on large datasets.
+
+iSAX
+----
+
+- Added dynamic, variance-driven root-cardinality splitting for symbolic
+  transforms and support for SAX, SFA, PISA, and SPARTAN words.
+- Added full-word node MBR pruning and transform-specific lower bounds,
+  including SIMD-capable exact-distance paths where available.
+- Improved parallel index construction and hybrid query scheduling, including
+  configurable worker/queue counts and robust queue ownership.
+- Unified iSAX and trie benchmark summaries, CSV logs, coverage reporting,
+  construction timings, and optional per-phase query profiling.
+
+Benchmark runners
+-----------------
+
+- `run_dataset.sh` now prints compact K/M/G configuration counts and an
+  end-of-run table of query work, coverage, and wall time for all methods run.
+- `run_suite.sh` accepts `--index-type isax|trie` to run a regular suite across
+  all configured datasets with either layout.
+- iSAX runner methods use variance-driven root cardinalities by default;
+  trie MBR/split dimensions follow each dataset's coefficient setting and can
+  be overridden with `--trie-mbr-dims` (16--128, capped by series length);
+  trie fanout is configurable with `--trie-fanout 2|4|8`.
+- Trie suite and dataset runners forward the record-MBR suffix and leaf
+  k-means options, along with record-prefix, MBR-width, split-width, leaf,
+  sampling, queue, NUMA, and input-override settings.  Runner and MESSI logs
+  again default to `$HOME/MESSI_logs` (overridable with `MESSI_LOG_ROOT`).
+
+Build integration
+-----------------
+
+- Kept generated Autotools configuration headers out of source control, so
+  local configure/build output does not pollute commits.
+- Autotools detects CBLAS headers and `cblas_sgemm`; `build_local.sh` and
+  `build_sonic.sh` preserve FFTW, OpenBLAS/LAPACK, CBLAS, and compiler flags
+  across configure rechecks.

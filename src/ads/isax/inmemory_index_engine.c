@@ -1,0 +1,477 @@
+#ifdef VALUES
+#include <values.h>
+#endif
+
+#include <float.h>
+#include "config.h"
+#include "../../../globals.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <math.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include "ads/isax_query_engine.h"
+#include "ads/calc_utils.h"
+#include "ads/inmemory_index_engine.h"
+#include "ads/inmemory_query_engine.h"
+#include "ads/parallel_index_engine.h"
+#include "ads/isax_first_buffer_layer.h"
+#include "ads/isax_visualize_index.h"
+#include "ads/pqueue.h"
+#include "ads/sax/sax.h"
+#include "ads/isax_node_split.h"
+#include "ads/sfa/dft.h"
+#include "ads/spartan/spartan.h"
+#include "ads/pisa/pisa.h"
+
+ts_type *rawfile;
+
+static void *index_creation_pRecBuf_worker(void *transferdata);
+
+void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
+                            isax_index *index, int kn) {
+    fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+    double build_start = messi_monotonic_seconds();
+    if (kn <= 0) {
+        fprintf(stderr, "warning: dynamic_index=%d is invalid; defaulting to 1\n", kn);
+        kn = 1;
+    }
+
+    FILE *ifile;
+    COUNT_INPUT_TIME_START
+    COUNT_INDEXING_TIME_START
+
+    ifile = fopen(ifilename, "rb");
+    COUNT_INPUT_TIME_END
+    double load_end = messi_monotonic_seconds();
+    if (ifile == NULL) {
+        fprintf(stderr, "File %s not found!\n", ifilename);
+        exit(-1);
+    }
+    fseek(ifile, 0L, SEEK_END);
+    file_position_type sz = (file_position_type) ftell(ifile);
+    file_position_type total_records = sz / index->settings->ts_byte_size;
+    fseek(ifile, 0L, SEEK_SET);
+
+    if (total_records < (file_position_type) ts_num) {
+        fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);
+        exit(-1);
+    }
+    index->sax_file = NULL;
+
+    int i;
+    int node_counter = 0;
+    pthread_t threadid[maxquerythread];
+    buffer_data_inmemory *input_data = malloc(sizeof(buffer_data_inmemory) * (maxquerythread));
+
+    file_type *rawfile_int32;
+    if (filetype_int) {
+        rawfile_int32 = malloc(sizeof(file_type) * index->settings->timeseries_size * ts_num);
+    }
+    rawfile = malloc(sizeof(ts_type) * index->settings->timeseries_size * ts_num);
+
+    index->sax_cache = malloc(sizeof(sax_type) * index->settings->n_segments * ts_num);
+    pthread_barrier_t lock_barrier1;
+    pthread_barrier_init(&lock_barrier1, NULL, maxquerythread);
+
+    index->settings->raw_filename = malloc(256);
+    strcpy(index->settings->raw_filename, ifilename);
+
+    COUNT_INPUT_TIME_START
+    if (filetype_int) {
+
+        fprintf(stderr, ">>> Reading file as int8\n");
+        fread(rawfile_int32, sizeof(file_type), index->settings->timeseries_size * ts_num, ifile);
+
+        fprintf(stderr, ">>> Converting int8 to float\n");
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+        for (long int i = 0; i < index->settings->timeseries_size * ts_num; i++) {
+            rawfile[i] = (ts_type) rawfile_int32[i];
+        }
+        fprintf(stderr, ">>> Conversions done.\n");
+    } else {
+        fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
+    }
+
+    if (apply_znorm) {
+        fprintf(stderr, ">>> Applying z-norm\n");
+        long int ts_length = index->settings->timeseries_size;
+#pragma omp parallel for schedule(static) num_threads(maxquerythread)
+        for (long int i = 0; i < ts_num; i++) {
+            znorm(&rawfile[i * ts_length], ts_length);
+        }
+    }
+    COUNT_INPUT_TIME_END
+
+    pthread_mutex_t lock_firstnode = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t lock_fft_plan = PTHREAD_MUTEX_INITIALIZER;
+
+    destroy_fbl(index->fbl);
+    index->fbl = (first_buffer_layer *) initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
+                                                           pow(2, index->settings->n_segments),
+                                                           index->settings->max_total_buffer_size +
+                                                           DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
+                                                           index);
+    COUNT_OUTPUT_TIME_START
+
+    for (i = 0; i < maxquerythread; i++) {
+        input_data[i].index = index;
+        input_data[i].lock_firstnode = &lock_firstnode;
+        input_data[i].lock_fft_plan = &lock_fft_plan;
+        input_data[i].ts = rawfile;
+        input_data[i].workernumber = i;
+        input_data[i].total_workernumber = maxquerythread;
+        input_data[i].start_number = i * (ts_num / maxquerythread);
+        input_data[i].stop_number = (i + 1) * (ts_num / maxquerythread);
+        input_data[i].node_counter = &node_counter;
+        input_data[i].lock_barrier1 = &lock_barrier1;
+        input_data[i].kn = kn;
+    }
+
+    input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (ts_num / maxquerythread);
+    input_data[maxquerythread - 1].stop_number = ts_num;
+    for (i = 0; i < maxquerythread; i++) {
+        pthread_create(&(threadid[i]), NULL, index_creation_pRecBuf_worker, (void *) &(input_data[i]));
+    }
+    for (i = 0; i < maxquerythread; i++) {
+        pthread_join(threadid[i], NULL);
+    }
+    double build_end = messi_monotonic_seconds();
+    __sync_fetch_and_add(&(index->total_records), ts_num);
+    index->sax_cache_size = index->total_records;
+    fclose(ifile);
+    free(input_data);
+
+    if (filetype_int) {
+        free(rawfile_int32);
+    }
+
+    COUNT_INDEXING_TIME_END
+
+    fprintf(stderr,
+            ">>> iSAX build timing: load%s=%.3fs transform+insert+flush=%.3fs total=%.3fs\n",
+            apply_znorm ? "+znorm" : "", load_end - build_start,
+            build_end - load_end, build_end - build_start);
+    fprintf(stderr, ">>> Finished indexing\n");
+    COUNT_OUTPUT_TIME_END
+}
+
+
+static void *index_creation_pRecBuf_worker(void *transferdata) {
+    unsigned long int transformation_time = 0.0;
+    unsigned long int indexing_time = 0.0;
+
+    buffer_data_inmemory *data = (buffer_data_inmemory *) transferdata;
+
+    struct timeval current_time;
+    struct timeval transformation_time_start;
+    struct timeval indexing_time_start;
+
+    sax_type *sax = malloc(sizeof(sax_type) * data->index->settings->n_segments);
+
+    unsigned long start_number = data->start_number;
+    unsigned long stop_number = data->stop_number;
+    file_position_type *pos = malloc(sizeof(file_position_type));
+    isax_index *index = data->index;
+    ts_type *ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
+
+    unsigned long i = 0;
+    float *raw_file = data->ts;
+
+    fftw_workspace fftw = {0};
+    ts_type *coeff_scratch = NULL;
+
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
+        unsigned long ts_length = index->settings->timeseries_size;
+
+        pthread_mutex_lock(data->lock_fft_plan);
+        fftw_workspace_init(&fftw, ts_length);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+    if (index->settings->function_type == 5 || index->settings->function_type == 6) {
+        coeff_scratch = malloc(sizeof(ts_type) * index->settings->n_segments);
+        if (coeff_scratch == NULL) {
+            fprintf(stderr, "error: cannot allocate transformation scratch buffer\n");
+            if (index->settings->function_type == 4 || index->settings->function_type == 6) {
+                pthread_mutex_lock(data->lock_fft_plan);
+                fftw_workspace_destroy(&fftw);
+                pthread_mutex_unlock(data->lock_fft_plan);
+            }
+            free(ts);
+            free(pos);
+            free(sax);
+            return NULL;
+        }
+    }
+
+    for (i = start_number; i < stop_number; i++) {
+#ifndef DEBUG
+#if VERBOSE_LEVEL == 2
+        printf("\r\x1b[32mLoading: \x1b[36m%d\x1b[0m",(i + 1));
+#endif
+#endif
+        memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
+
+        gettimeofday(&transformation_time_start, NULL);
+        int success = FAILURE;
+        if (index->settings->function_type == 4) {
+            success = sfa_from_ts(index, ts, sax, &fftw);
+        } else if (index->settings->function_type == 5) {
+            success = spartan_from_ts(index, ts, sax, coeff_scratch);
+        } else if (index->settings->function_type == 6) {
+            success = pisa_from_ts(index, ts, sax, &fftw, coeff_scratch);
+        } else {
+            success = sax_from_ts(ts, sax, index->settings);
+        }
+
+        gettimeofday(&current_time, NULL);
+        transformation_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                                (transformation_time_start.tv_sec * 1000000 +
+                                 (transformation_time_start.tv_usec)));
+
+        if (success == SUCCESS) {
+            gettimeofday(&indexing_time_start, NULL);
+            *pos = (file_position_type) (i * index->settings->timeseries_size);
+            memcpy(&(index->sax_cache[i * index->settings->n_segments]), sax,
+                   sizeof(sax_type) * index->settings->n_segments);
+
+            isax_pRecBuf_index_insert_inmemory(index, sax, pos, data->lock_firstnode,
+                                               data->workernumber, data->total_workernumber, data->kn);
+
+            gettimeofday(&current_time, NULL);
+            indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                              (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+        } else {
+            fprintf(stderr, "error: cannot insert record in index, since representation failed to be created\n");
+        }
+    }
+
+    if (index->settings->function_type == 4 || index->settings->function_type == 6) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        fftw_workspace_destroy(&fftw);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+
+    free(coeff_scratch);
+    free(pos);
+    free(sax);
+    free(ts);
+
+    pthread_barrier_wait(data->lock_barrier1);
+
+    bool have_record = false;
+    int j;
+    isax_node_record *r = calloc(1, sizeof(isax_node_record));
+
+    gettimeofday(&indexing_time_start, NULL);
+
+    while (1) {
+
+        j = __sync_fetch_and_add(data->node_counter, 1);
+
+        if (j >= index->fbl->number_of_buffers) {
+            break;
+        }
+        parallel_fbl_soft_buffer *current_fbl_node = &((parallel_first_buffer_layer * )(index->fbl))->soft_buffers[j];
+        if (!current_fbl_node->initialized) {
+            continue;
+        }
+
+        int i;
+        have_record = false;
+        for (int k = 0; k < data->total_workernumber; k++) {
+            if (current_fbl_node->buffer_size[k] > 0)
+                have_record = true;
+
+            for (i = 0; i < current_fbl_node->buffer_size[k]; i++) {
+                r->sax = (sax_type *) &(((current_fbl_node->sax_records[k]))[i * index->settings->n_segments]);
+                r->position = (file_position_type *) &((file_position_type *) (current_fbl_node->pos_records[k]))[i];
+                r->insertion_mode = NO_TMP | PARTIAL;
+                add_record_to_node_inmemory(index, current_fbl_node->node, r, 1, data->kn);
+            }
+        }
+        if (have_record) {
+            flush_subtree_leaf_buffers_inmemory(index, current_fbl_node->node);
+
+        }
+
+    }
+
+    gettimeofday(&current_time, NULL);
+    indexing_time += ((current_time.tv_sec * 1000000 + (current_time.tv_usec)) -
+                      (indexing_time_start.tv_sec * 1000000 + (indexing_time_start.tv_usec)));
+
+    __sync_fetch_and_add(&TOTAL_INDEXING_PART_TIME, (int) indexing_time);
+    __sync_fetch_and_add(&TOTAL_TRANSFORMATION_PART_TIME, (int) transformation_time);
+
+    free(r);
+    return NULL;
+}
+
+enum response flush_subtree_leaf_buffers_inmemory(isax_index *index, isax_node *node) {
+
+    if (node->is_leaf && node->filename != NULL) {
+        if (node->buffer->partial_buffer_size > 0
+            || node->buffer->tmp_partial_buffer_size > 0) {
+            node->has_partial_data_file = 1;
+        }
+        if (node->buffer->full_buffer_size > 0
+            || node->buffer->tmp_full_buffer_size > 0) {
+            node->has_full_data_file = 1;
+        }
+
+        if (node->has_full_data_file) {
+            int prev_rec_count =
+                    node->leaf_size - (node->buffer->full_buffer_size + node->buffer->tmp_full_buffer_size);
+
+            int previous_page_size = ceil(
+                    (float) (prev_rec_count * index->settings->full_record_size) / (float) PAGE_SIZE);
+            int current_page_size = ceil(
+                    (float) (node->leaf_size * index->settings->full_record_size) / (float) PAGE_SIZE);
+            __sync_fetch_and_add(&(index->memory_info.disk_data_full), (current_page_size - previous_page_size));
+        }
+        if (node->has_partial_data_file) {
+            int prev_rec_count =
+                    node->leaf_size - (node->buffer->partial_buffer_size + node->buffer->tmp_partial_buffer_size);
+
+            int previous_page_size = ceil(
+                    (float) (prev_rec_count * index->settings->partial_record_size) / (float) PAGE_SIZE);
+            int current_page_size = ceil(
+                    (float) (node->leaf_size * index->settings->partial_record_size) / (float) PAGE_SIZE);
+
+            __sync_fetch_and_add(&(index->memory_info.disk_data_partial), (current_page_size - previous_page_size));
+        }
+        if (node->has_full_data_file && node->has_partial_data_file) {
+            printf("WARNING: (Mem size counting) this leaf has both partial and full data.\n");
+        }
+        __sync_fetch_and_add(&(index->memory_info.disk_data_full),
+                             (node->buffer->full_buffer_size + node->buffer->tmp_full_buffer_size));
+        __sync_fetch_and_add(&(index->memory_info.disk_data_partial),
+                             (node->buffer->partial_buffer_size + node->buffer->tmp_partial_buffer_size));
+    } else if (!node->is_leaf) {
+        flush_subtree_leaf_buffers_inmemory(index, node->left_child);
+        flush_subtree_leaf_buffers_inmemory(index, node->right_child);
+    }
+
+    return SUCCESS;
+}
+
+isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
+    isax_index *index = malloc(sizeof(isax_index));
+    if (index == NULL) {
+        fprintf(stderr, "error: could not allocate memory for index structure.\n");
+        return NULL;
+    }
+    index->memory_info.mem_tree_structure = 0;
+    index->memory_info.mem_data = 0;
+    index->memory_info.mem_summaries = 0;
+    index->memory_info.disk_data_full = 0;
+    index->memory_info.disk_data_partial = 0;
+
+    index->settings = settings;
+    index->first_node = NULL;
+    index->fbl = NULL;
+    if (settings->index_type == MESSI_INDEX_ISAX) {
+        index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
+                                    pow(2, settings->n_segments),
+                                    settings->max_total_buffer_size +
+                                    DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1), index);
+    }
+
+
+    /* The in-memory constructor does not open a SAX file.  Initialise every
+     * optional ownership field because the shared teardown routine checks and
+     * frees them, including for the trie layout. */
+    index->sax_file = NULL;
+    index->sax_cache = NULL;
+    index->sax_cache_size = 0;
+    index->locations = NULL;
+
+    index->total_records = 0;
+    index->loaded_records = 0;
+
+    index->root_nodes = 0;
+    index->allocated_memory = 0;
+    index->has_wedges = 0;
+
+    index->answer = malloc(sizeof(ts_type) * settings->timeseries_size);
+
+    index->bins = NULL;
+    index->binsv = NULL;
+    index->norm_factor = ((ts_type) 1) / (sqrtf(settings->timeseries_size));
+    index->coefficients = NULL;
+    index->pca_mean = NULL;
+    index->pca_components = NULL;
+    index->pca_bias = NULL;
+    index->pca_explained_variance = NULL;
+    index->pca_components_count = 0;
+    index->pca_dim = 0;
+    index->trie = NULL;
+
+    return index;
+}
+root_mask_type isax_pRecBuf_index_insert_inmemory(isax_index *index,
+                                                  sax_type *sax,
+                                                  file_position_type *pos, pthread_mutex_t *lock_firstnode,
+                                                  int workernumber, int total_workernumber, int kn) {
+    root_mask_type first_bit_mask = 0x00;
+    if (kn <= 0) {
+        kn = 1;
+    }
+
+    first_bit_mask = isax_root_mask_from_sax(index, sax, kn);
+
+    insert_to_pRecBuf((parallel_first_buffer_layer * )(index->fbl), sax, pos, first_bit_mask, index, lock_firstnode,
+                      workernumber, total_workernumber);
+    return first_bit_mask;
+}
+isax_node *add_record_to_node_inmemory(isax_index *index,
+                                       isax_node *tree_node,
+                                       isax_node_record *record,
+                                       const char leaf_size_check, int kn) {
+#ifdef DEBUG
+    printf("*** Adding to node ***\n\n");
+#endif
+    isax_node *node = tree_node;
+
+    while (!node->is_leaf) {
+        if (record->sax != NULL) {
+            isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+        } else {
+            fprintf(stderr, "debug: missing sax for MBR update.\n");
+        }
+        int location = index->settings->sax_bit_cardinality - 1 -
+                       node->split_data->split_mask[node->split_data->splitpoint];
+
+        root_mask_type mask = index->settings->bit_masks[location];
+        if (record->sax[node->split_data->splitpoint] & mask) {
+            node = node->right_child;
+        } else {
+            node = node->left_child;
+        }
+    }
+    if ((node->leaf_size) >= index->settings->max_leaf_size && leaf_size_check) {
+#ifdef DEBUG
+        printf(">>> %s leaf size: %d\n\n", node->filename, node->leaf_size);
+#endif
+        if (split_node(index, node, 1, kn)) {
+            return add_record_to_node_inmemory(index, node, record, leaf_size_check, kn);
+        }
+    }
+    if (node->filename == NULL) {
+        create_node_filename(index, node, record, kn);
+    }
+    add_to_node_buffer(node->buffer, record, index->settings->n_segments,
+                       index->settings->timeseries_size);
+    node->leaf_size++;
+    if (record->sax != NULL) {
+        isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
+    }
+    else {
+        fprintf(stderr, "debug: missing sax for MBR update.\n");
+    }
+
+    return node;
+}

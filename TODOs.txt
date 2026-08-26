@@ -1,0 +1,9 @@
+TODOs:
+
+- Return IDs along the distances
+
+- Make insertion from array possible? Right now only bulk-load using a file-handle is possible
+
+- Incremental adding?
+
+- github actions for building on other systems

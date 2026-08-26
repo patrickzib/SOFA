@@ -1,10 +1,12 @@
 
-#include "../../config.h"
+#include "config.h"
 #include "../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#if ADS_HAVE_AVX2
 #include "immintrin.h"
+#endif
 #ifdef VALUES
 	#include <values.h>
 #endif
@@ -166,7 +168,8 @@ float minidist_paa_to_isax_DTW(float *paaU, float *paaL , sax_type *sax,
         
         
         sax_type region_lower = (v <<  (c_m - c_c));
-        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
+        sax_type region_upper = region_lower | ((1U << (c_m - c_c)) - 1);
+        // sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
 		//printf("[%d, %d] %d -- %d\n", sax[i], c_c, region_lower, region_upper);
         float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
         float breakpoint_upper = 0; // <-- - || -
@@ -238,8 +241,9 @@ float   minidist_paa_to_isax_raw_DTW(float *paaU, float *paaL , sax_type *sax,
         sax_type v = sax[i];
         //sax_print(&v, 1, c_m);
 
-        sax_type region_lower = (v >> (c_m - c_c)) <<  (c_m - c_c);//shift operation 
-        sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
+        sax_type region_lower = (v >> (c_m - c_c)) <<  (c_m - c_c);//shift operation
+        sax_type region_upper = region_lower | ((1U << (c_m - c_c)) - 1);
+        // sax_type region_upper = (~((int)MAXFLOAT << (c_m - c_c)) | region_lower);
 		//printf("[%d, %d] %d -- %d\n", sax[i], c_c, region_lower, region_upper);
 
         float breakpoint_lower = 0; // <-- TODO: calculate breakpoints.
@@ -315,17 +319,17 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
 
     int q_loaded = 0; 
     ts_type * ts = malloc(sizeof(ts_type) * index->settings->timeseries_size);
-    ts_type * paa = malloc(sizeof(ts_type) * index->settings->paa_segments);
-    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-            ts_type * paaUpperLemQuery = malloc(sizeof(ts_type) * index->settings->paa_segments);
-            ts_type * paaLowerLemQuery = malloc(sizeof(ts_type) * index->settings->paa_segments);
+    ts_type * paa = malloc(sizeof(ts_type) * index->settings->n_segments);
+    //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+            ts_type * paaUpperLemQuery = malloc(sizeof(ts_type) * index->settings->n_segments);
+            ts_type * paaLowerLemQuery = malloc(sizeof(ts_type) * index->settings->n_segments);
             
             ts_type * upperLemire = malloc(sizeof(ts_type) * index->settings->timeseries_size);
             ts_type * lowerLemire = malloc(sizeof(ts_type) * index->settings->timeseries_size);
             
 
     node_list nodelist;
-    nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->paa_segments));
+    nodelist.nlist=malloc(sizeof(isax_node*)*pow(2, index->settings->n_segments));
     nodelist.node_amount=0;
     isax_node *current_root_node = index->first_node;
     while(1)
@@ -353,19 +357,13 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
             lower_upper_lemire(ts,index->settings->timeseries_size,warpWind,lowerLemire,upperLemire);
                     
                 
-            paa_from_ts(upperLemire, paaUpperLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
-            paa_from_ts(lowerLemire, paaLowerLemQuery, index->settings->paa_segments,
-                        index->settings->ts_values_per_paa_segment,
-                        index->settings->timeseries_size);
+            paa_from_ts(upperLemire, paaUpperLemQuery, index->settings);
+            paa_from_ts(lowerLemire, paaLowerLemQuery, index->settings);
 
 
         //printf("Querying for: %d\n", index->settings->ts_byte_size * q_loaded);
         // Parse ts and make PAA representation
-        paa_from_ts(ts, paa, index->settings->paa_segments,
-                    index->settings->ts_values_per_paa_segment,
-                    index->settings->timeseries_size);
+        paa_from_ts(ts, paa, index->settings);
         COUNT_TOTAL_TIME_START
                 query_result result = exact_DTW_serial_ParIS_inmemory(ts, paa,paaUpperLemQuery,paaLowerLemQuery, index, minimum_distance, min_checked_leaves,warpWind);
 
@@ -379,9 +377,9 @@ void isax_DTWquery_binary_file_traditional(const char *ifilename, int q_num, isa
     #if VERBOSE_LEVEL >= 1
         printf("[%p]: Distance: %lf\n", result.node, result.distance);
     #endif
-        //sax_from_paa(paa, sax, index->settings->paa_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
+        //sax_from_paa(paa, sax, index->settings->n_segments, index->settings->sax_alphabet_cardinality, index->settings->sax_bit_cardinality);
         //if (index->settings->timeseries_size * sizeof(ts_type) * q_loaded == 1024) {
-        //    sax_print(sax, index->settings->paa_segments, index->settings->sax_bit_cardinality);
+        //    sax_print(sax, index->settings->n_segments, index->settings->sax_bit_cardinality);
         //}
 
         q_loaded++;
@@ -682,11 +680,11 @@ query_result exact_DTW_serial_ParIS_openmp_inmemory(ts_type *ts,ts_type *paa, ts
     //LBDcalculationnumber=index->sax_cache_size;
     #pragma omp parallel for num_threads(maxquerythread) reduction(min : bsf_distance)
     for(unsigned long  j=0; j<index->sax_cache_size; j++) {
-        sax_type *sax = &index->sax_cache[j * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[j * index->settings->n_segments];
         if(minidist_paa_to_isax_raw_DTW_SIMD(paaU,paaL, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt) <= bsf_distance) {
             ts_buffer=&rawfile[j*index->settings->timeseries_size];
 
@@ -812,7 +810,6 @@ query_result exact_DTW_serial_ParIS_inmemory(ts_type *ts,ts_type *paa, ts_type *
     readpointer.tsL=lowerLemire;
     readpointer.index=index;
     readpointer.counter=&readcounter;
-    readpointer.bsf=approximate_result.distance;
     readpointer.load_point=label_number;
     readpointer.lock_bsf=&lock_bsf;
     readpointer.bsf2=&bsfdistance;
@@ -839,7 +836,7 @@ query_result exact_DTW_serial_ParIS_inmemory(ts_type *ts,ts_type *paa, ts_type *
     //printf("I need to check: %2.2lf%% of the data.\n", (double)tocheck*100/(double)index->sax_cache_size);
     /*bit_array_free(bitarray);*/
             //printf("the new distance is: %f \n",approximate_result.distance);
-                //.sax_type *sax = &index->sax_cache[1 * index->settings->paa_segments];
+                //.sax_type *sax = &index->sax_cache[1 * index->settings->n_segments];
     return approximate_result;
 }
 void* mindtwdistance_worker_inmemory(void *essdata)
@@ -862,12 +859,12 @@ void* mindtwdistance_worker_inmemory(void *essdata)
     for(i=start_number;i<stop_number;i++)
     {
 
-        sax_type *sax = &index->sax_cache[i * index->settings->paa_segments];
+        sax_type *sax = &index->sax_cache[i * index->settings->n_segments];
 
         mindist = minidist_paa_to_isax_raw_DTW_SIMD(paaU,paaL, sax, index->settings->max_sax_cardinalities,
                                                          index->settings->sax_bit_cardinality,
                                                          index->settings->sax_alphabet_cardinality,
-                                                         index->settings->paa_segments, MINVAL, MAXVAL,
+                                                         index->settings->n_segments, MINVAL, MAXVAL,
                                                          index->settings->mindist_sqrt);
         if(mindist <= ((ParIS_LDCW_data*)essdata)->bsfdistance) 
         {
@@ -1235,7 +1232,7 @@ void insert_tree_node_m_hybridpqueue_DTW(float *paaU,float *paaL,isax_node *node
                                             node->isax_cardinalities,
                                             index->settings->sax_bit_cardinality,
                                             index->settings->sax_alphabet_cardinality,
-                                            index->settings->paa_segments,
+                                            index->settings->n_segments,
                                             MINVAL, MAXVAL,
                                             index->settings->mindist_sqrt);
     //COUNT_CAL_TIME_END
@@ -1270,10 +1267,8 @@ query_result  approximate_DTW_inmemory_messi (ts_type *ts, ts_type *paa, isax_in
 {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -1389,7 +1384,7 @@ float calculate_node_DTW2_inmemory (isax_index *index, isax_node *node, ts_type 
                                                index->settings->max_sax_cardinalities,
                                                index->settings->sax_bit_cardinality,
                                                index->settings->sax_alphabet_cardinality,
-                                               index->settings->paa_segments, MINVAL, MAXVAL,
+                                               index->settings->n_segments, MINVAL, MAXVAL,
                                                index->settings->mindist_sqrt);
 
             if (distmin<bsf)
@@ -1445,10 +1440,8 @@ query_result  approximate_DTW_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_
 {
     query_result result;
 
-    sax_type *sax = malloc(sizeof(sax_type) * index->settings->paa_segments);
-    sax_from_paa(paa, sax, index->settings->paa_segments,
-                 index->settings->sax_alphabet_cardinality,
-                 index->settings->sax_bit_cardinality);
+    sax_type *sax = malloc(sizeof(sax_type) * index->settings->n_segments);
+    sax_from_paa(paa, sax, index->settings);
 
     root_mask_type root_mask = 0;
     CREATE_MASK(root_mask, index, sax);
@@ -1492,6 +1485,7 @@ query_result  approximate_DTW_inmemory_pRecBuf (ts_type *ts, ts_type *paa, isax_
 
 
 
+#if ADS_HAVE_AVX2
 float   minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax, 
                            sax_type *sax_cardinalities,
                            sax_type max_bit_cardinality,
@@ -1684,6 +1678,20 @@ float   minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax
 
             return (distancef[0]+distancef[4])*ratio_sqrt ;
 }
+#else
+float minidist_paa_to_isax_raw_DTW_SIMD(float *paaU,float *paaL, sax_type *sax,
+                           sax_type *sax_cardinalities,
+                           sax_type max_bit_cardinality,
+                           int max_cardinality,
+                           int number_of_segments,
+                           int min_val,
+                           int max_val,
+                           float ratio_sqrt) {
+    return minidist_paa_to_isax_raw_DTW(paaU, paaL, sax, sax_cardinalities, max_bit_cardinality,
+                                        max_cardinality, number_of_segments, min_val, max_val,
+                                        ratio_sqrt);
+}
+#endif
 
 
 
@@ -1715,11 +1723,11 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 	float lb = 0;
 	float uu=0,ll=0,d=0;
 	int i=0;
-
+#if ADS_HAVE_AVX2	
 	int len1 = (len/8)*8;
-	__m256 tu256, tl256, cb256, Q, calc1, calc2;
+	__m256 tu256, tl256, Q, calc1, calc2;
 	__m128 temp1, temp2;
-	float *cbtmp = malloc(sizeof(float)*8);
+	float cbtmp[8];
 	
 	for(i=0; i<len1&&lb<bsf; i+=8)
 	{
@@ -1730,15 +1738,15 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		//tl256 = _mm_setr_ps(tl[order[i]],tl[order[i+1]],tl[order[i+2]],tl[order[i+3]]);
 		calc1 = _mm256_min_ps(Q,tu256);
 		calc1 = _mm256_sub_ps(Q,calc1);
-
+	
 		calc2 = _mm256_max_ps(Q,tl256);
 		calc2 = _mm256_sub_ps(calc2,Q);
 		calc1 = _mm256_add_ps(calc1,calc2);
-
+	
 		calc1 = _mm256_mul_ps(calc1,calc1);
-
+	
 		_mm256_storeu_ps(cbtmp,calc1);
-
+	
 		calc1 = _mm256_hadd_ps(calc1,calc1);
 		calc1 = _mm256_hadd_ps(calc1,calc1);
 		temp1 = _mm256_extractf128_ps(calc1,1);
@@ -1748,7 +1756,7 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		cb[i]=cbtmp[0];cb[i+1] = cbtmp[1];cb[i+2]=cbtmp[2];cb[i+3]=cbtmp[3];
 		cb[i+4]=cbtmp[4];cb[i+5] = cbtmp[5];cb[i+6]=cbtmp[6];cb[i+7]=cbtmp[7];
 	}
-
+#endif
 	for(;i<len&&lb<bsf;i++)
 	{
 		uu = tu[i];
@@ -1765,7 +1773,5 @@ float lb_keogh_data_bound( float* qo,float* tu,  float* tl, float* cb, int len, 
 		lb += d;
 		cb[i] = d;
 	}
-
-	free( cbtmp);
 	return lb;
 }

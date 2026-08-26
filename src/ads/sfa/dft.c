@@ -21,16 +21,21 @@
 /*
     This function calculates the FFT coefficients for a given time series
 */
-void fft_from_ts(
-        isax_index *index, ts_type *ts,
-        int coeff_number, int best_only,
-        fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward) {
-    unsigned long ts_length = index->settings->timeseries_size;
+enum response fft_from_ts(
+        isax_index *index,
+        int n_coefficients, int best_only,
+        fftw_workspace *fftw) {
+    if (index == NULL || index->settings == NULL || fftw == NULL || fftw->plan_forward == NULL ||
+        fftw->ts_out == NULL || fftw->transform == NULL || n_coefficients <= 0 ||
+        n_coefficients % 2 != 0 || n_coefficients > index->settings->timeseries_size ||
+        (best_only && index->coefficients == NULL)) {
+        return FAILURE;
+    }
 
-    fftwf_execute(plan_forward);
+    fftwf_execute(fftw->plan_forward);
 
     // Image part of first (DC) coefficient
-    ts_out[0][1] = 0;
+    fftw->ts_out[0][1] = 0;
 
     int j = 0;
 
@@ -38,67 +43,99 @@ void fft_from_ts(
     int start_offset = index->settings->is_norm ? 1 : 0;
 
     if (best_only) {
-        for (int k = 0; k < coeff_number / 2; ++k, j+= 2) {
+        for (int k = 0; k < n_coefficients / 2; ++k, j+= 2) {
             int coeff = index->coefficients[k] + start_offset;
-            transform[j] = ts_out[coeff][0];
-            transform[j + 1] = ts_out[coeff][1] * -1;
+            fftw->transform[j] = fftw->ts_out[coeff][0];
+            fftw->transform[j + 1] = fftw->ts_out[coeff][1] * -1;
         }
     } else {
-        for (int k = start_offset; k < coeff_number / 2 + start_offset; ++k, j+= 2) {
-            transform[j] = ts_out[k][0];
-            transform[j + 1] = ts_out[k][1] * -1;
+        for (int k = start_offset; k < n_coefficients / 2 + start_offset; ++k, j+= 2) {
+            fftw->transform[j] = fftw->ts_out[k][0];
+            fftw->transform[j + 1] = fftw->ts_out[k][1] * -1;
         }
     }
 
     // normalizing fft result in frequency domain to allow for lower bounding
     ts_type norm_factor = index->norm_factor;
-    for (int i = 0; i < coeff_number; ++i) {
-        transform[i] *= norm_factor;
+    for (int i = 0; i < n_coefficients; ++i) {
+        fftw->transform[i] *= norm_factor;
     }
-    return;
+    return SUCCESS;
+}
+
+enum response fft_full_real_from_ts(isax_index *index, fftw_workspace *fftw) {
+    if (index == NULL || index->settings == NULL || fftw == NULL ||
+        fftw->plan_forward == NULL || fftw->ts_out == NULL || fftw->transform == NULL) {
+        return FAILURE;
+    }
+
+    const int length = index->settings->timeseries_size;
+    if (length <= 0) {
+        return FAILURE;
+    }
+
+    fftwf_execute(fftw->plan_forward);
+
+    /* DC and (for an even length) Nyquist are real-valued.  Each remaining
+     * positive-frequency coefficient represents a conjugate pair, hence the
+     * sqrt(2) scaling required by Parseval's equality. */
+    const ts_type edge_scale = index->norm_factor;
+    const ts_type pair_scale = (ts_type) sqrt(2.0) * edge_scale;
+    int output = 0;
+    fftw->transform[output++] = fftw->ts_out[0][0] * edge_scale;
+    for (int frequency = 1; frequency <= (length - 1) / 2; ++frequency) {
+        fftw->transform[output++] = fftw->ts_out[frequency][0] * pair_scale;
+        fftw->transform[output++] = -fftw->ts_out[frequency][1] * pair_scale;
+    }
+    if ((length & 1) == 0) {
+        fftw->transform[output++] = fftw->ts_out[length / 2][0] * edge_scale;
+    }
+
+    return output == length ? SUCCESS : FAILURE;
+}
+
+/* Return the first bin boundary strictly above value, preserving the legacy
+ * linear scan's behavior for values equal to a boundary. */
+static unsigned int sfa_symbol_from_value(const ts_type *boundaries, int count,
+                                          ts_type value) {
+    int low = 0, high = count;
+    while (low < high) {
+        const int middle = low + (high - low) / 2;
+        if (value < boundaries[middle]) high = middle;
+        else low = middle + 1;
+    }
+    return (unsigned int) low;
 }
 
 /*
     This function discretized FFT coefficients with the intervals from MCB
     The current transform is pointed to by dft_mem_array
 */
-void sfa_from_fft(isax_index *index, ts_type *cur_transform, unsigned char *cur_sfa_word) {
-    unsigned long ts_length = index->settings->timeseries_size;
-    int paa_segments = index->settings->paa_segments;
-    int cardinality = index->settings->sax_alphabet_cardinality;
-    int offset = ((cardinality - 1) * (cardinality - 2)) / 2;
-
-    for (int k = 0; k < paa_segments; ++k) {
-        unsigned int c;
-        for (c = 0; c < index->settings->sax_alphabet_cardinality - 1; c++) {
-            if (cur_transform[k] < index->bins[k][c]) {
-                break;
-            }
-        }
-        cur_sfa_word[k] = (unsigned char) (c);
-    }
+void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word) {
+    const int n_segments = index->settings->n_segments;
+    const int boundary_count = index->settings->sax_alphabet_cardinality - 1;
+    for (int k = 0; k < n_segments; ++k)
+        cur_sfa_word[k] = (sax_type) sfa_symbol_from_value(index->bins[k], boundary_count,
+                                                            cur_transform[k]);
 }
 
 /*
     This function creates an SFA representation of a time series 
 */
-enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform,
-            fftwf_plan plan_forward) {
+enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out,
+                          fftw_workspace *fftw) {
 
-    int use_best = index->settings->coeff_number != 0;
-    fft_from_ts(index, ts_in, index->settings->paa_segments, use_best, ts_out, transform, plan_forward);
-
-    ts_type *cur_coeff_line = calloc(index->settings->paa_segments, sizeof(ts_type));
-    for (int i = 0; i < index->settings->paa_segments; ++i) {
-        cur_coeff_line[i] = transform[i];
+    int use_best = index->settings->n_coefficients != 0;
+    memcpy(fftw->ts, ts, sizeof(ts_type) * index->settings->timeseries_size);
+    if (fft_from_ts(index, index->settings->n_segments, use_best, fftw) != SUCCESS) {
+        return FAILURE;
     }
 
-    sfa_from_fft(index, cur_coeff_line, sax_out);
-
-    free(cur_coeff_line);
+    sfa_from_fft(index, fftw->transform, sax_out);
 
     if (sax_out != NULL) return SUCCESS;
     else {
         fprintf(stderr, "SFA error");
     }
+    return FAILURE;
 }

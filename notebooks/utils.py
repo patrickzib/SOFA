@@ -40,13 +40,23 @@ def read_logs(log_type: str = "query",
                         # print("Queries", i, q, key, q)
                         all_files[key][config_names[i]] = queries + "/" + q
 
-            print("-----------------")
+            # print("-----------------")
 
     return all_files
 
 
 def read_UCR_logs():
     path = "logs/UCR_SUITE_logs"
+    all_files = {}
+    for i, key in enumerate(np.sort(fnmatch.filter(os.listdir(path), "*.log"))):
+        # print("Queries", i, key)
+        config = key.split("_")[-1].split(".")[0]
+        all_files[key] = {}
+        all_files[key][config] = path + "/" + key
+    return all_files
+
+def read_UCR_logs_vdb():
+    path = "logs/UCR_SUITE_logs_vdb"
     all_files = {}
     for i, key in enumerate(np.sort(fnmatch.filter(os.listdir(path), "*.log"))):
         # print("Queries", i, key)
@@ -65,3 +75,27 @@ def read_faiss_logs(log_type:str ="queries"):
         all_files[key] = {}
         all_files[key][config] = path + "/" + key
     return all_files
+
+
+def read_faiss_logs_knn(log_type:str ="queries"):
+    # path = "logs/FAISS_mini_batch_logs"
+    path = "logs/FAISS_L2_logs_mini_batch_knn"
+    all_files = {}
+    for i, key in enumerate(np.sort(fnmatch.filter(os.listdir(path), log_type+"*.csv"))):
+        # print("Queries", i, key)
+        knns = key.split("_")[-2].split(".")[0]
+        all_files[key] = {}
+        all_files[key][knns] = path + "/" + key
+    return all_files    
+
+
+def read_faiss_logs_vdb(log_type:str ="queries"):
+    # path = "logs/FAISS_mini_batch_logs"
+    path = "logs/FAISS_L2_logs_mini_batch_vdb"
+    all_files = {}
+    for i, key in enumerate(np.sort(fnmatch.filter(os.listdir(path), log_type+"*.csv"))):
+        # print("Queries", i, key)
+        config = key.split("_")[-1].split(".")[0]
+        all_files[key] = {}
+        all_files[key][config] = path + "/" + key
+    return all_files        

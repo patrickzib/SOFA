@@ -1,17 +1,80 @@
 This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
 
 
-# To compile MESSI v2.0
+# Build environment variables
+Set these if FFTW/LAPACK aren’t in default paths
+```bash
+export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
+export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
+```
+
+# To compile SOFA 
+Using Autotools, call from repo root.
 ```bash
 ./configure
 make
 ```
 
+
+# Build Python (Cython) API 
+Again, set environment-variables, if FFTW/LAPACK aren’t in default paths or to enable SIMD in the extension build.
+
+Call from repo root.
+```bash
+export FFTW_CFLAGS="-I/opt/local/include"
+export FFTW_LIBS="-L/opt/local/lib -lfftw3f -lfftw3"
+export LAPACK_LIBS="-L/opt/local/lib -llapack -lblas"
+export SIMD_CFLAGS="-mavx -mavx2 -msse3"
+
+python3 -m pip install -e ./python
+```
+
+# Minimal Python API usage
+The API consumes float32 binary datasets (same format as CLI). 
+
+This mirrors `tests/cython_with_data.py`.
+
+```python
+import numpy as np
+from messi import Index
+
+ts_size = 256
+idx = Index(timeseries_size=ts_size, transform="spartan", layout="trie",
+            sample_size=1000, max_query_threads=8,
+            trie_mbr_dimensions=128, trie_record_lb_dimensions=32,
+            trie_split_dimensions=32, trie_record_mbr_suffix_bound=True)
+idx.add_file("data_head/astro_head.bin", ts_num=1000)
+
+queries = np.fromfile("data_queries/astro_queries.bin", dtype=np.float32, count=10 * ts_size)
+queries = queries.reshape(10, ts_size)
+distances, indices = idx.search(queries, k=1)
+```
+
+`Index.add_array(data)` accepts a two-dimensional NumPy array and creates an
+owned temporary float32 raw-data snapshot for exact refinement.  The snapshot
+is removed by `idx.close()` or by a context manager.  The native query engines
+currently return exact 1-NN distances only: `k` must be 1 and `indices` is
+`None` until stable raw-record offsets are propagated by the native backends.
+
 # Scripts
 
 See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
 
-The SOFA command is 
+- SAX command is `--function-type 3`
+- SFA/SOFA command is `--function-type 4`
+- SPARTAN command is `--function-type 5`
+- PISA command is `--function-type 6`
+
+For trie indexes, `--trie-fanout 2|4|8` selects a fixed fanout. Learned
+SFA/SPARTAN/PISA tries can instead use one global, precomputed dynamic
+alphabet allocation with `--trie-dynamic-alphabet`; this uses a 3-bit average
+budget by default and supports 1--4 bits per coefficient (fanouts 2--16).
+The allocation is computed once from the training representation and reused
+for all trie splits. These fixed and dynamic modes are mutually exclusive.
+
+SAX tries remain on the fixed-fanout path. iSAX’s
+`--dynamic-root-split-variance` is a separate legacy root-only allocation and
+does not control trie alphabets.
 
 ```bash
 FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin
@@ -23,11 +86,19 @@ DATASET_SIZE=100000000
 SAMPLE_SIZE=1000000
 QUERY_SIZE=100
 
-./MESSI --dataset --dataset $FILE_PATH --in-memory --timeseries-size $TS_SIZE  --function-type 4 
---dataset-size $DATASET_SIZE --flush-limit 300000 --read-block 20000 --sax-cardinality 8 
---queries $QUERIES_PATH --queries-size $QUERY_SIZE --queue-number $2 --sample-size $SAMPLE_SIZE 
---sample-type 3 --cpu-type $1 --is-norm --histogram-type 2 --leaf-size 20000 --min-leaf-size 20000 
---initial-lbl-size 20000 --coeff-number $COEFF_NUMBER  --SIMD
+./MESSI 
+  --dataset --dataset $FILE_PATH 
+  --dataset-size $DATASET_SIZE 
+  --queries $QUERIES_PATH 
+  --queries-size $QUERY_SIZE 
+  --timeseries-size $TS_SIZE  
+  --function-type 4 
+  --histogram-type 2 
+  --sample-type 3 
+  --sample-size $SAMPLE_SIZE 
+  --sfa-n-coefficients $COEFF_NUMBER  
+  --is-norm 
+  --SIMD
 ```
 
 For help, please type:

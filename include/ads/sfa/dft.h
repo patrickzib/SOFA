@@ -1,7 +1,7 @@
 #ifndef sfalib_dft_h
 #define sfalib_dft_h
 
-#include "../../../config.h"
+#include "config.h"
 #include "../../../globals.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,9 +13,46 @@
 #include <fftw3.h>
 #include <sys/types.h>
 
-void fft_from_ts(isax_index *index, ts_type *ts, int coeff_number, int best_only, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward);
-void sfa_from_fft(isax_index *index, ts_type * cur_transform, unsigned char * cur_sfa_word);
+typedef struct fftw_workspace {
+    ts_type *ts;
+    fftwf_complex *ts_out;
+    fftwf_plan plan_forward;
+    ts_type *transform;
+} fftw_workspace;
 
-enum response sfa_from_ts(isax_index *index, ts_type *ts_in, sax_type *sax_out, fftwf_complex *ts_out, ts_type *transform, fftwf_plan plan_forward);
+static inline void fftw_workspace_init(fftw_workspace *ws, unsigned long ts_length) {
+    ws->ts = fftwf_malloc(sizeof(ts_type) * ts_length);
+    ws->ts_out = (fftwf_complex *) fftwf_malloc(sizeof(fftwf_complex) * (ts_length / 2 + 1));
+    ws->plan_forward = fftwf_plan_dft_r2c_1d(ts_length, ws->ts, ws->ts_out, FFTW_ESTIMATE);
+    ws->transform = fftwf_malloc(sizeof(ts_type) * ts_length);
+}
+
+static inline void fftw_workspace_destroy(fftw_workspace *ws) {
+    if (ws->plan_forward) {
+        fftwf_destroy_plan(ws->plan_forward);
+    }
+    if (ws->ts) {
+        fftwf_free(ws->ts);
+    }
+    if (ws->ts_out) {
+        fftwf_free(ws->ts_out);
+    }
+    if (ws->transform) {
+        fftwf_free(ws->transform);
+    }
+    ws->ts = NULL;
+    ws->ts_out = NULL;
+    ws->plan_forward = NULL;
+    ws->transform = NULL;
+}
+
+enum response fft_from_ts(isax_index *index, int n_coefficients, int best_only,
+                          fftw_workspace *fftw);
+/* Complete independent real-FFT coordinates: no conjugate duplicates and
+ * sqrt(2)-scaled interior pairs, preserving the time-domain Euclidean norm. */
+enum response fft_full_real_from_ts(isax_index *index, fftw_workspace *fftw);
+void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
+
+enum response sfa_from_ts(isax_index *index, const ts_type *ts, sax_type *sax_out, fftw_workspace *fftw);
 
 #endif

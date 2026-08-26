@@ -78,6 +78,8 @@ fabric.properties
 
 # General
 .DS_Store
+notebooks/**/.DS_Store
+/scripts/output*.txt
 .AppleDouble
 .LSOverride
 
@@ -110,6 +112,7 @@ __pycache__/
 
 # C extensions
 *.so
+python/messi/_index.c
 
 # Distribution / packaging
 .Python
@@ -120,6 +123,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!/scripts/lib/
+!/scripts/lib/datasets.sh
 lib64/
 parts/
 sdist/
@@ -343,6 +348,29 @@ cython_debug/
 *.su
 *.idb
 *.pdb
+
+# Autotools artifacts
+ar-lib
+config.h
+config.log
+config.status
+configure~
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+depcomp
+install-sh
+missing
+stamp-h1
+
+# Build outputs
+bin/MESSI
+lib/libads.a
+src/**/.deps/
+scripts/**/.deps/
+src/**/.dirstamp
 
 # Kernel Module Compile Results
 *.mod*
