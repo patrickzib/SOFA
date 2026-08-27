@@ -197,9 +197,7 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
     return result;
 }
 
-static int query_result_is_better(float distance, file_position_type position,
-                                  const query_result *best) {
-    (void) position;
+static int query_result_is_better(float distance, const query_result *best) {
     /*
      * Keep the historical iSAX semantics: the first record found at the
      * minimum distance wins.  In particular, do not force full-distance
@@ -209,30 +207,26 @@ static int query_result_is_better(float distance, file_position_type position,
     return distance < best->distance;
 }
 
-static void update_node_result(query_result *best, float distance,
-                               file_position_type position) {
-    if (query_result_is_better(distance, position, best)) {
+static void update_node_result(query_result *best, float distance) {
+    if (query_result_is_better(distance, best)) {
         best->distance = distance;
-        best->record_position = position;
     }
 }
 
 static void scan_node_record_untracked(isax_index *index, ts_type *query, ts_type *paa,
-                                       sax_type *sax, ts_type *series,
-                                       file_position_type position, query_result *best) {
+                                       sax_type *sax, ts_type *series, query_result *best) {
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
                                            best->distance);
     if (lower >= best->distance) return;
     const float distance = ts_ed(query, series, index->settings->timeseries_size,
                                  best->distance);
-    update_node_result(best, distance, position);
+    update_node_result(best, distance);
 }
 
 static void scan_node_record_tracked(isax_index *index, ts_type *query, ts_type *paa,
                                      sax_type *sax, ts_type *series,
-                                     file_position_type position, query_result *best,
-                                     messi_query_stats *stats) {
+                                     query_result *best, messi_query_stats *stats) {
     ++stats->lower_bounds;
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
@@ -241,7 +235,7 @@ static void scan_node_record_tracked(isax_index *index, ts_type *query, ts_type 
     ++stats->exact_distances;
     const float distance = ts_ed(query, series, index->settings->timeseries_size,
                                  best->distance);
-    update_node_result(best, distance, position);
+    update_node_result(best, distance);
 }
 
 query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
@@ -253,25 +247,25 @@ query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
     if (stats == NULL) {
         for (int i = 0; i < buffer->full_buffer_size; ++i)
             scan_node_record_untracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
-                                       *buffer->full_position_buffer[i], &result);
+                                       &result);
         for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
             scan_node_record_untracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
-                                       *buffer->tmp_full_position_buffer[i], &result);
+                                       &result);
         for (int i = 0; i < buffer->partial_buffer_size; ++i)
             scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
                                        rawfile + *buffer->partial_position_buffer[i],
-                                       *buffer->partial_position_buffer[i], &result);
+                                       &result);
     } else {
         for (int i = 0; i < buffer->full_buffer_size; ++i)
             scan_node_record_tracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
-                                     *buffer->full_position_buffer[i], &result, stats);
+                                     &result, stats);
         for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
             scan_node_record_tracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
-                                     *buffer->tmp_full_position_buffer[i], &result, stats);
+                                     &result, stats);
         for (int i = 0; i < buffer->partial_buffer_size; ++i)
             scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
                                      rawfile + *buffer->partial_position_buffer[i],
-                                     *buffer->partial_position_buffer[i], &result, stats);
+                                     &result, stats);
     }
     return result;
 }
@@ -286,12 +280,12 @@ query_result calculate_node_result2_inmemory(isax_index *index, isax_node *node,
         for (int i = 0; i < buffer->partial_buffer_size; ++i)
             scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
                                        rawfile + *buffer->partial_position_buffer[i],
-                                       *buffer->partial_position_buffer[i], &result);
+                                       &result);
     } else {
         for (int i = 0; i < buffer->partial_buffer_size; ++i)
             scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
                                      rawfile + *buffer->partial_position_buffer[i],
-                                     *buffer->partial_position_buffer[i], &result, stats);
+                                     &result, stats);
     }
     return result;
 }
