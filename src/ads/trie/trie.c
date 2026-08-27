@@ -1267,7 +1267,6 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
          * streaming order rather than dropping candidates. */
         for (int i = offset; i < end; ++i) {
             if (stats != NULL) ++stats->lower_bounds;
-            else __sync_fetch_and_add(&LBDcalculationnumber, 1);
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
             const float lower = trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
@@ -1276,15 +1275,9 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 if (bound_start != 0)
                     stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
                 if (stats != NULL) ++stats->exact_distances;
-                else __sync_fetch_and_add(&RDcalculationnumber, 1);
-                const int needs_tie_resolution = best_position != NULL &&
-                        (*best_position == QUERY_RESULT_NO_POSITION || node->positions[i] < *best_position);
-                const float cap = (lower == bsf || needs_tie_resolution) ? FLT_MAX : bsf;
                 float d = trie_exact_distance(query, rawfile + node->positions[i],
-                                              index->settings->timeseries_size, cap, stats);
-                if (d < bsf || (d == bsf && best_position != NULL &&
-                                (*best_position == QUERY_RESULT_NO_POSITION ||
-                                 node->positions[i] < *best_position))) {
+                                              index->settings->timeseries_size, bsf, stats);
+                if (d < bsf) {
                     bsf = d;
                     if (best_position != NULL) *best_position = node->positions[i];
                 }
@@ -1300,7 +1293,6 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                                          ? trie_monotonic_microseconds() : 0;
     for (int i = offset; i < end; ++i) {
         if (stats != NULL) ++stats->lower_bounds;
-        else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
                                                      node->words[i], bsf, mbr_suffix, scratch);
         if (lower_bound <= bsf) {
@@ -1322,17 +1314,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         if (heap_start != 0)
             stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
         if (stats != NULL) ++stats->exact_distances;
-        else __sync_fetch_and_add(&RDcalculationnumber, 1);
-        const int needs_tie_resolution = best_position != NULL &&
-                (*best_position == QUERY_RESULT_NO_POSITION ||
-                 node->positions[candidate.record_index] < *best_position);
-        const float cap = (candidate.lower_bound == bsf || needs_tie_resolution) ? FLT_MAX : bsf;
         float d = trie_exact_distance(query,
                                       rawfile + node->positions[candidate.record_index],
-                                      index->settings->timeseries_size, cap, stats);
-        if (d < bsf || (d == bsf && best_position != NULL &&
-                        (*best_position == QUERY_RESULT_NO_POSITION ||
-                         node->positions[candidate.record_index] < *best_position))) {
+                                      index->settings->timeseries_size, bsf, stats);
+        if (d < bsf) {
             bsf = d;
             if (best_position != NULL) *best_position = node->positions[candidate.record_index];
         }
@@ -1439,37 +1424,6 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
         node = next;
     }
     return node;
-}
-
-static void trie_search_task(isax_index *index, const symbolic_trie_node *node, const ts_type *query,
-                             const ts_type *transform, float *shared_bsf, pthread_mutex_t *bsf_lock,
-                             int depth, const symbolic_trie_node *skip_leaf) {
-    if (node == skip_leaf) return;
-    __sync_fetch_and_add(&checked_nodes, 1);
-    float bsf;
-    pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
-    if (trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                         index->trie->dimensions, bsf, NULL) >= bsf) return;
-    if (!node->leaf) {
-        for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL) {
-#ifdef _OPENMP
-#pragma omp task firstprivate(i) if (depth < 6)
-#endif
-            trie_search_task(index, node->children[i], query, transform, shared_bsf, bsf_lock, depth + 1,
-                             skip_leaf);
-        }
-        return;
-    }
-    for (int i = 0; i < node->size; ++i) {
-        pthread_mutex_lock(bsf_lock); bsf = *shared_bsf; pthread_mutex_unlock(bsf_lock);
-        __sync_fetch_and_add(&LBDcalculationnumber, 1);
-        if (trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
-                                    0.0f, NULL) < bsf) {
-            __sync_fetch_and_add(&RDcalculationnumber, 1);
-            float d = ts_ed((ts_type *) query, rawfile + node->positions[i], index->settings->timeseries_size, bsf);
-            if (d < bsf) { pthread_mutex_lock(bsf_lock); if (d < *shared_bsf) *shared_bsf = d; pthread_mutex_unlock(bsf_lock); }
-        }
-    }
 }
 
 /* The single-query engine deliberately mirrors the iSAX MESSI engine: first
@@ -1662,10 +1616,9 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
                 float distance = trie_scan_leaf_best_first(index, work.node, query, transform,
                                                             current_bsf, stats, &worker_scratch[worker],
                                                             &candidate_position);
-                if (distance <= current_bsf) {
+                if (distance < current_bsf) {
                     pthread_rwlock_wrlock(&bsf_lock);
-                    if (distance < shared_bsf ||
-                        (distance == shared_bsf && candidate_position < shared_position)) {
+                    if (distance < shared_bsf) {
                         shared_bsf = distance;
                         shared_position = candidate_position;
                     }
