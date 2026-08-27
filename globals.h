@@ -339,7 +339,8 @@ extern int query_report_interval;
         #define min(x,y)  ( x<y?x:y )
         #define COUNT_NEW_NODE() __sync_fetch_and_add(&total_tree_nodes,1);
         #define COUNT_LOADED_NODE() loaded_nodes++;
-        #define COUNT_CHECKED_NODE() checked_nodes++;
+        /* Query workers share this counter in the parallel iSAX engine. */
+        #define COUNT_CHECKED_NODE() __sync_fetch_and_add(&checked_nodes, 1);
         #define COUNT_LOADED_RECORD() loaded_records++;
 
         #define COUNT_INIT_TIME_START gettimeofday(&init_time_start, NULL);

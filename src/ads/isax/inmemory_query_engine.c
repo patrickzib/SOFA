@@ -209,6 +209,11 @@ static void update_node_result(query_result *best, float distance,
 static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
                              sax_type *sax, ts_type *series,
                              file_position_type position, query_result *best) {
+    /* This helper is the common record scan used by the iSAX approximate
+     * seed and the parallel MESSI refinement.  Keep the logical-work
+     * counters here so normal runs do not depend on optional phase profiling.
+     * Multiple MESSI workers can execute it concurrently. */
+    __sync_fetch_and_add(&LBDcalculationnumber, 1);
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
                                            best->distance);
@@ -218,6 +223,7 @@ static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
     const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
                                      position < best->record_position;
     const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
+    __sync_fetch_and_add(&RDcalculationnumber, 1);
     const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
     update_node_result(best, distance, position);
 }

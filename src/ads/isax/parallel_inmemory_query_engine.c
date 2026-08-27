@@ -2084,8 +2084,6 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
                                                          unsigned long int *record_bound_time,
                                                          unsigned long int *exact_distance_time) {
     if (node->buffer == NULL) return bsf;
-    COUNT_CHECKED_NODE()
-    int exact_count = 0;
     for (int i = 0; i < node->buffer->partial_buffer_size; ++i) {
         struct timeval start, end;
         gettimeofday(&start, NULL);
@@ -2101,12 +2099,9 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
             gettimeofday(&end, NULL);
             *exact_distance_time += (unsigned long int)
                 ((end.tv_sec - start.tv_sec) * 1000000L + end.tv_usec - start.tv_usec);
-            ++exact_count;
             if (distance < bsf) bsf = distance;
         }
     }
-    __sync_fetch_and_add(&LBDcalculationnumber, node->buffer->partial_buffer_size);
-    __sync_fetch_and_add(&RDcalculationnumber, exact_count);
     return bsf;
 }
 
@@ -2651,6 +2646,9 @@ insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_i
 void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                      pthread_mutex_t *lock_queue, int *tnumber) {
 
+    /* One checked node is one index-node lower-bound evaluation.  Leaf
+     * record scanning has separate lower-bound and exact-distance counters. */
+    COUNT_CHECKED_NODE()
     // float distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(
         index, paa,
@@ -2685,6 +2683,7 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
     struct timeval current_time;
     struct timeval lb_dist_time_start;
 
+    COUNT_CHECKED_NODE()
     gettimeofday(&lb_dist_time_start, NULL);
     // distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(
