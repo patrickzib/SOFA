@@ -90,18 +90,27 @@ def parse_args():
 
 
 def run_benchmark(all_threads, output_dir):
-    try:
-        import faiss
-    except ImportError as exc:
-        raise RuntimeError("FAISS is required; install the Python package before running this benchmark") from exc
     os.makedirs(output_dir, exist_ok=True)
+    faiss = None
     k = 1
     for dataset, (file_data, file_queries, d, path_switch, data_type) in datasets.items():
-        print("Running: ", dataset)
         path = NORMAL_PATH if path_switch == 0 else SEISBENCH_PATH
+        data_path = os.path.join(path, file_data)
+        query_path = os.path.join(path, file_queries)
+        missing = [candidate for candidate in (data_path, query_path) if not os.path.isfile(candidate)]
+        if missing:
+            print(f"Skipping {dataset}: missing " + ", ".join(missing))
+            continue
+
+        if faiss is None:
+            try:
+                import faiss
+            except ImportError as exc:
+                raise RuntimeError("FAISS is required; install the Python package before running this benchmark") from exc
+        print("Running: ", dataset)
         record_count, apply_znorm = dataset_properties[dataset]
-        data = read(path + file_data, dim=d, data_type=data_type, count=record_count)
-        queries = read(path + file_queries, data_type=data_type, dim=d, count=100)
+        data = read(data_path, dim=d, data_type=data_type, count=record_count)
+        queries = read(query_path, data_type=data_type, dim=d, count=100)
         if apply_znorm:
             z_normalize_rows(data)
             z_normalize_rows(queries)
