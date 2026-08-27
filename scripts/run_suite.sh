@@ -29,6 +29,7 @@ Options:
   --leaf-size N           Maximum records per leaf; accepts count suffixes
   --min-leaf-size N       iSAX query-leaf threshold; trie does not enforce it
   --sample-size N         Override binning sample size; accepts count suffixes
+  --sample-type 1|2|3     Binning sampling: first values, uniform (default), or random
   --sampling-seed N       Sampling seed (default: 1)
   --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
@@ -104,6 +105,7 @@ QUERY_SIZE=
 LEAF_SIZE=
 MIN_LEAF_SIZE=
 SAMPLE_SIZE=
+SAMPLE_TYPE=2
 SAMPLING_SEED=
 NO_SIMD=false
 TRIE_FANOUT=8
@@ -148,6 +150,7 @@ while [[ $# -gt 0 ]]; do
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
+        --sample-type) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_TYPE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
         --no-simd) NO_SIMD=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
@@ -188,6 +191,8 @@ case "$SUITE" in
     *) die "unknown suite '$SUITE'" ;;
 esac
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+[[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
+    die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || \
     die '--trie-fanout must be 2, 4, or 8'
 [[ $INDEX_TYPE == trie || $TRIE_FANOUT == 8 ]] || \
@@ -252,6 +257,7 @@ run_one() {
     [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
     [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
     [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
+    command+=(--sample-type "$SAMPLE_TYPE")
     [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
     [[ -n $MESSI_EXECUTABLE ]] && command+=(--binary "$MESSI_EXECUTABLE")
     [[ -n $DATA_ROOT ]] && command+=(--data-root "$DATA_ROOT")
@@ -382,6 +388,7 @@ run_query_suite() {
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
             [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
             [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
+            command+=(--sample-type "$SAMPLE_TYPE")
             [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
             [[ -n $MESSI_EXECUTABLE ]] && command+=(--binary "$MESSI_EXECUTABLE")
             [[ -n $DATA_ROOT ]] && command+=(--data-root "$DATA_ROOT")

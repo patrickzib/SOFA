@@ -24,6 +24,13 @@ assert_not_contains "$OUTPUT" '--sample-type 3'
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--sample-type 3'
+if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --sample-type 4 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted an invalid binning sample type'
+fi
+pass 'binning sample type can be overridden and is validated'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --no-tight-bound --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_not_contains "$OUTPUT" '--tight-bound'
 pass 'iSAX tight-bound pruning can be disabled explicitly'

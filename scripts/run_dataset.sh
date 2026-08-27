@@ -21,6 +21,7 @@ Options:
   --k N                     Required by the knn profile
   --sample-factor F         Sampling fraction for sampling (default: 0.01)
   --sample-size N           Override the sample size; accepts count suffixes
+  --sample-type 1|2|3       Binning sampling: first values, uniform (default), or random
   --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
@@ -165,6 +166,7 @@ MIN_LEAF_SIZE=
 K_SIZE=
 SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
+SAMPLE_TYPE=2
 SAMPLING_SEED=1
 NO_SIMD=false
 METHODS_OVERRIDE=
@@ -212,6 +214,7 @@ while [[ $# -gt 0 ]]; do
         --k) [[ $# -ge 2 ]] || die "$1 requires a value"; K_SIZE=$2; shift 2 ;;
         --sample-factor) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTOR=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
+        --sample-type) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_TYPE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
@@ -257,6 +260,8 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonnegative integer'
+[[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
+    die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
@@ -519,7 +524,7 @@ run_method() {
     if [[ -n $histogram_type ]]; then
         # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
         # previously issued one scattered seek/read for each sampled record.
-        args+=(--sample-size "$SAMPLE_SIZE" --sample-type 2 --is-norm --histogram-type "$histogram_type")
+        args+=(--sample-size "$SAMPLE_SIZE" --sample-type "$SAMPLE_TYPE" --is-norm --histogram-type "$histogram_type")
         [[ $function_type == 4 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
     fi
     if [[ $INDEX_TYPE == isax && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi

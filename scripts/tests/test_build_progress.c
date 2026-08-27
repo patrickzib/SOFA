@@ -25,11 +25,12 @@ int main(void) {
     size_t bytes = fread(output, 1, sizeof(output) - 1, capture);
     fclose(capture);
     if (bytes == 0) return 1;
-    if (strstr(output, "\r>> building index: 0%") == NULL ||
-        strstr(output, "\r>> building index: 42%") == NULL ||
-        strstr(output, "\r>> building index: 99%") == NULL ||
-        strstr(output, "\r>> building index: 100%\n") == NULL) return 1;
+    if (strstr(output, "\r>> building index: \x1b[32m0%\x1b[0m") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m42%\x1b[0m") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m99%\x1b[0m") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m100%\x1b[0m\n") == NULL) return 1;
 
-    const char *first = strstr(output, "100%\n");
-    return first != NULL && strstr(first + 1, "100%\n") == NULL ? 0 : 1;
+    const char *first = strstr(output, "\x1b[32m100%\x1b[0m\n");
+    return first != NULL &&
+           strstr(first + 1, "\x1b[32m100%\x1b[0m\n") == NULL ? 0 : 1;
 }
