@@ -170,7 +170,8 @@ isax_index_settings * isax_index_settings_init (const char * root_directory,
                                                 int sample_size, char is_norm, int histogram_type,
                                                 int sample_type, int n_coefficients,
                                                 messi_index_type index_type);
-void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch);
+/* trie_query_mode: 0 per-query, 1 query-batch, 2 experimental leaf-batch. */
+void print_settings(isax_index_settings *settings, int query_workers, int trie_query_mode);
 
 isax_node * add_record_to_node(isax_index *index, isax_node *node,
                                isax_node_record *record,

@@ -95,6 +95,11 @@ assert_contains "$OUTPUT" '--trie-query-parallel'
 pass 'trie query-parallel option is forwarded'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-query-leaf-batch --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-query-leaf-batch'
+pass 'experimental trie leaf-batch option is forwarded'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-record-mbr-suffix-bound --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \

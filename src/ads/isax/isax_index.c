@@ -2814,7 +2814,7 @@ static const char *format_compact_count(unsigned long long value, char buffer[32
     return buffer;
 }
 
-void print_settings(isax_index_settings *settings, int query_workers, int trie_query_batch) {
+void print_settings(isax_index_settings *settings, int query_workers, int trie_query_mode) {
     const char *split_name = "informed";
     char trie_layout[128];
     const char *layout = "iSAX";
@@ -2900,7 +2900,10 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     char worker_count[32], queue_count[32];
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        if (trie_query_batch) {
+        if (trie_query_mode == 2) {
+            fprintf(stderr, "  query parallel: experimental shared leaf ranges (%s workers)\n",
+                    format_compact_count((unsigned long long) query_workers, worker_count));
+        } else if (trie_query_mode == 1) {
             fprintf(stderr, "  query parallel: batch queries across %s workers\n",
                     format_compact_count((unsigned long long) query_workers, worker_count));
         } else {

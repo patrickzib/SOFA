@@ -1,6 +1,7 @@
 #include "config.h"
 #include "globals.h"
 #include "ads/trie/trie.h"
+#include "trie_batch.h"
 
 #define TRIE_MAX_FANOUT 256
 #include "ads/calc_utils.h"
@@ -1266,7 +1267,7 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         /* Allocation failure is not a correctness failure: retain the former
          * streaming order rather than dropping candidates. */
         for (int i = offset; i < end; ++i) {
-            if (stats != NULL) ++stats->lower_bounds;
+            if (profile_query_phases && stats != NULL) ++stats->lower_bounds;
             else __sync_fetch_and_add(&LBDcalculationnumber, 1);
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
@@ -1275,7 +1276,7 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             if (lower <= bsf) {
                 if (bound_start != 0)
                     stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
-                if (stats != NULL) ++stats->exact_distances;
+                if (profile_query_phases && stats != NULL) ++stats->exact_distances;
                 else __sync_fetch_and_add(&RDcalculationnumber, 1);
                 const int needs_tie_resolution = best_position != NULL &&
                         (*best_position == QUERY_RESULT_NO_POSITION || node->positions[i] < *best_position);
@@ -1299,7 +1300,7 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     unsigned long long bound_start = profile_query_phases && stats != NULL
                                          ? trie_monotonic_microseconds() : 0;
     for (int i = offset; i < end; ++i) {
-        if (stats != NULL) ++stats->lower_bounds;
+        if (profile_query_phases && stats != NULL) ++stats->lower_bounds;
         else __sync_fetch_and_add(&LBDcalculationnumber, 1);
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
                                                      node->words[i], bsf, mbr_suffix, scratch);
@@ -1321,7 +1322,7 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         trie_leaf_candidate candidate = trie_heap_pop(scratch->candidates, &candidate_count);
         if (heap_start != 0)
             stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
-        if (stats != NULL) ++stats->exact_distances;
+        if (profile_query_phases && stats != NULL) ++stats->exact_distances;
         else __sync_fetch_and_add(&RDcalculationnumber, 1);
         const int needs_tie_resolution = best_position != NULL &&
                 (*best_position == QUERY_RESULT_NO_POSITION ||
@@ -1905,6 +1906,287 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
         fflush(stderr);
     }
     free(queries); free(distances); free(stats); return failed ? FAILURE : SUCCESS;
+}
+
+/* Experimental cross-query leaf scheduler.  The generic OpenMP dispatch is
+ * deliberately kept in trie_batch.c; these adapters stay here because trie
+ * nodes and the bound implementation are private to this translation unit. */
+#define TRIE_LEAF_BATCH_SCOUT_RECORDS 2048
+#define TRIE_LEAF_BATCH_SPLIT_RECORDS 8192
+
+typedef struct {
+    const ts_type *query;
+    const ts_type *transform;
+    float bsf;
+    file_position_type best_position;
+    trie_query_stats stats;
+    pthread_mutex_t lock;
+} trie_leaf_batch_query;
+
+typedef struct {
+    trie_leaf_batch_query *query;
+    const symbolic_trie_node *node;
+    int offset;
+    int count;
+    float mbr_suffix;
+    unsigned char scout;
+} trie_leaf_batch_task;
+
+typedef struct {
+    trie_leaf_batch_task *items;
+    int count;
+    int capacity;
+    int failed;
+} trie_leaf_batch_tasks;
+
+typedef struct {
+    isax_index *index;
+    trie_leaf_batch_task *tasks;
+    trie_query_scratch *scratch;
+    int scout_phase;
+} trie_leaf_batch_context;
+
+static void trie_stats_add(trie_query_stats *total, const trie_query_stats *part) {
+    total->checked_nodes += part->checked_nodes;
+    total->lower_bounds += part->lower_bounds;
+    total->exact_distances += part->exact_distances;
+    total->mbr_bound_microseconds += part->mbr_bound_microseconds;
+    total->record_bound_microseconds += part->record_bound_microseconds;
+    total->exact_distance_microseconds += part->exact_distance_microseconds;
+    total->traversal_microseconds += part->traversal_microseconds;
+    total->frontier_microseconds += part->frontier_microseconds;
+    total->queue_microseconds += part->queue_microseconds;
+    total->candidate_heap_microseconds += part->candidate_heap_microseconds;
+    total->synchronization_microseconds += part->synchronization_microseconds;
+    total->cluster_bounds += part->cluster_bounds;
+    total->cluster_pruned += part->cluster_pruned;
+    total->cluster_records_pruned += part->cluster_records_pruned;
+}
+
+static int trie_leaf_batch_append(trie_leaf_batch_tasks *tasks,
+                                  trie_leaf_batch_task task) {
+    if (tasks->count == tasks->capacity) {
+        int capacity = tasks->capacity == 0 ? 256 : tasks->capacity * 2;
+        trie_leaf_batch_task *items = realloc(tasks->items,
+                                               (size_t) capacity * sizeof(*items));
+        if (items == NULL) { tasks->failed = 1; return 0; }
+        tasks->items = items;
+        tasks->capacity = capacity;
+    }
+    tasks->items[tasks->count++] = task;
+    return 1;
+}
+
+static void trie_leaf_batch_append_range(trie_leaf_batch_tasks *tasks,
+                                         trie_leaf_batch_query *query,
+                                         const symbolic_trie_node *node,
+                                         int offset, int count, float suffix) {
+    if (tasks->failed || count <= 0) return;
+    const int scout = count < TRIE_LEAF_BATCH_SCOUT_RECORDS ? count : TRIE_LEAF_BATCH_SCOUT_RECORDS;
+    trie_leaf_batch_append(tasks, (trie_leaf_batch_task) {
+        query, node, offset, scout, suffix, 1
+    });
+    offset += scout;
+    count -= scout;
+    if (count == 0 || tasks->failed) return;
+    if (count <= TRIE_LEAF_BATCH_SPLIT_RECORDS) {
+        trie_leaf_batch_append(tasks, (trie_leaf_batch_task) {
+            query, node, offset, count, suffix, 0
+        });
+        return;
+    }
+    while (count > 0 && !tasks->failed) {
+        const int chunk = count < TRIE_LEAF_BATCH_SCOUT_RECORDS ? count : TRIE_LEAF_BATCH_SCOUT_RECORDS;
+        trie_leaf_batch_append(tasks, (trie_leaf_batch_task) {
+            query, node, offset, chunk, suffix, 0
+        });
+        offset += chunk;
+        count -= chunk;
+    }
+}
+
+static void trie_leaf_batch_collect(isax_index *index, const symbolic_trie_node *node,
+                                    trie_leaf_batch_query *query,
+                                    const symbolic_trie_node *skip_leaf,
+                                    trie_leaf_batch_tasks *tasks,
+                                    const trie_query_scratch *scratch) {
+    if (node == skip_leaf || tasks->failed) return;
+    if (profile_query_phases) ++query->stats.checked_nodes;
+    const float bsf = query->bsf;
+    const float bound = trie_lower_bound(index->trie, index, query->transform,
+                                         node->min_word, node->max_word,
+                                         index->trie->dimensions, bsf, &query->stats);
+    if (bound > bsf) return;
+    if (!node->leaf) {
+        for (int i = 0; i < node->split_fanout; ++i)
+            if (node->children[i] != NULL)
+                trie_leaf_batch_collect(index, node->children[i], query, skip_leaf, tasks, scratch);
+        return;
+    }
+    if (node->cluster_count == 0) {
+        const float suffix = trie_record_mbr_suffix(index->trie, index, query->transform,
+                                                     node->min_word, node->max_word, scratch);
+        trie_leaf_batch_append_range(tasks, query, node, 0, node->size, suffix);
+        return;
+    }
+    for (int i = 0; i < node->cluster_count; ++i) {
+        const trie_leaf_cluster *group = &node->clusters[i];
+        const sax_type *minimum = node->cluster_min_words + (size_t) i * index->trie->dimensions;
+        const sax_type *maximum = node->cluster_max_words + (size_t) i * index->trie->dimensions;
+        if (profile_query_phases) ++query->stats.cluster_bounds;
+        const float cluster_bound = trie_lower_bound(index->trie, index, query->transform,
+                                                     (sax_type *) minimum, (sax_type *) maximum,
+                                                     index->trie->dimensions, bsf, &query->stats);
+        if (cluster_bound > bsf) {
+            if (profile_query_phases) {
+                ++query->stats.cluster_pruned;
+                query->stats.cluster_records_pruned += group->size;
+            }
+            continue;
+        }
+        const float suffix = trie_record_mbr_suffix(index->trie, index, query->transform,
+                                                     minimum, maximum, scratch);
+        trie_leaf_batch_append_range(tasks, query, node, group->offset, group->size, suffix);
+    }
+}
+
+static void trie_leaf_batch_execute(void *opaque, int worker, int task_index) {
+    trie_leaf_batch_context *context = opaque;
+    trie_leaf_batch_task *task = &context->tasks[task_index];
+    if (task->scout != context->scout_phase) return;
+    trie_leaf_batch_query *query = task->query;
+    float bsf;
+    file_position_type position;
+    pthread_mutex_lock(&query->lock);
+    bsf = query->bsf;
+    position = query->best_position;
+    pthread_mutex_unlock(&query->lock);
+
+    trie_query_stats local = {0};
+    trie_query_scratch *scratch = &context->scratch[worker];
+    trie_prepare_record_lb_table(context->index->trie, context->index, query->transform, scratch);
+    const float result = trie_scan_leaf_range(context->index, task->node, task->offset,
+                                              task->count, task->mbr_suffix, query->query,
+                                              query->transform, bsf, &local, scratch, &position);
+    pthread_mutex_lock(&query->lock);
+    trie_stats_add(&query->stats, &local);
+    if (result < query->bsf ||
+        (result == query->bsf && position < query->best_position)) {
+        query->bsf = result;
+        query->best_position = position;
+    }
+    pthread_mutex_unlock(&query->lock);
+}
+
+enum response symbolic_trie_query_file_leaf_batch(isax_index *index, const char *path,
+                                                  int query_count, int filetype_int,
+                                                  int apply_znorm, float minimum_distance) {
+    if (index == NULL || index->trie == NULL || path == NULL || query_count < 0) return FAILURE;
+    const int length = index->settings->timeseries_size;
+    const int dimensions = index->settings->n_segments;
+    const int workers = maxquerythread > 0 ? maxquerythread : 1;
+    const size_t values = (size_t) query_count * length;
+    FILE *file = fopen(path, "rb");
+    ts_type *queries = malloc(values * sizeof(*queries));
+    ts_type *transforms = malloc((size_t) query_count * dimensions * sizeof(*transforms));
+    sax_type *words = malloc((size_t) query_count * dimensions * sizeof(*words));
+    float *distances = malloc((size_t) query_count * sizeof(*distances));
+    trie_leaf_batch_query *states = calloc((size_t) query_count, sizeof(*states));
+    if (file == NULL || queries == NULL || transforms == NULL || words == NULL ||
+        distances == NULL || states == NULL) {
+        if (file != NULL) fclose(file);
+        free(queries); free(transforms); free(words); free(distances); free(states);
+        return FAILURE;
+    }
+    int read_ok = 1;
+    if (filetype_int) {
+        file_type *input = malloc(values * sizeof(*input));
+        if (input == NULL || fread(input, sizeof(*input), values, file) != values) read_ok = 0;
+        else for (size_t i = 0; i < values; ++i) queries[i] = (ts_type) input[i];
+        free(input);
+    } else if (fread(queries, sizeof(*queries), values, file) != values) read_ok = 0;
+    fclose(file);
+    if (!read_ok) { free(queries); free(transforms); free(words); free(distances); free(states); return FAILURE; }
+
+    int failed = 0;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(workers)
+#endif
+    {
+        fftw_workspace fftw = {0};
+        pthread_mutex_lock(&trie_fftw_plan_lock); fftw_workspace_init(&fftw, length); pthread_mutex_unlock(&trie_fftw_plan_lock);
+#ifdef _OPENMP
+#pragma omp for schedule(dynamic, 1)
+#endif
+        for (int i = 0; i < query_count; ++i) {
+            ts_type *query = queries + (size_t) i * length;
+            if (apply_znorm) znorm(query, length);
+            if (trie_word_from_ts(index, query, words + (size_t) i * dimensions,
+                                  transforms + (size_t) i * dimensions, &fftw) != SUCCESS) {
+#ifdef _OPENMP
+#pragma omp atomic write
+#endif
+                failed = 1;
+            }
+        }
+        pthread_mutex_lock(&trie_fftw_plan_lock); fftw_workspace_destroy(&fftw); pthread_mutex_unlock(&trie_fftw_plan_lock);
+    }
+    if (failed) { free(queries); free(transforms); free(words); free(distances); free(states); return FAILURE; }
+
+    trie_leaf_batch_tasks tasks = {0};
+    for (int i = 0; i < query_count; ++i) {
+        trie_leaf_batch_query *state = &states[i];
+        state->query = queries + (size_t) i * length;
+        state->transform = transforms + (size_t) i * dimensions;
+        state->best_position = QUERY_RESULT_NO_POSITION;
+        pthread_mutex_init(&state->lock, NULL);
+        trie_query_scratch scratch = {0};
+        trie_prepare_record_lb_table(index->trie, index, state->transform, &scratch);
+        const symbolic_trie_node *seed = trie_seed_leaf(index, words + (size_t) i * dimensions,
+                                                        state->transform, &state->stats);
+        state->bsf = seed == NULL ? FLT_MAX : trie_search_node(index, seed, state->query,
+            state->transform, FLT_MAX, &state->stats, NULL, &scratch, &state->best_position);
+        state->stats.approximate_distance = state->bsf;
+        if (minimum_distance < state->bsf) state->bsf = minimum_distance;
+        trie_leaf_batch_collect(index, index->trie->root, state, seed, &tasks, &scratch);
+        free(scratch.candidates);
+    }
+    if (tasks.failed) {
+        for (int i = 0; i < query_count; ++i) pthread_mutex_destroy(&states[i].lock);
+        free(tasks.items); free(queries); free(transforms); free(words); free(distances); free(states);
+        return FAILURE;
+    }
+    trie_query_scratch *scratch = calloc((size_t) workers, sizeof(*scratch));
+    if (scratch == NULL && tasks.count != 0) {
+        for (int i = 0; i < query_count; ++i) pthread_mutex_destroy(&states[i].lock);
+        free(tasks.items); free(queries); free(transforms); free(words); free(distances); free(states);
+        return FAILURE;
+    }
+    trie_leaf_batch_context context = { index, tasks.items, scratch, 1 };
+    const unsigned long long batch_start = trie_monotonic_microseconds();
+    trie_batch_run_tasks(tasks.count, workers, trie_leaf_batch_execute, &context);
+    context.scout_phase = 0;
+    trie_batch_run_tasks(tasks.count, workers, trie_leaf_batch_execute, &context);
+    const unsigned long long batch_elapsed = trie_monotonic_microseconds() - batch_start;
+    unsigned long long cumulative = 0;
+    for (int i = 0; i < query_count; ++i) {
+        distances[i] = states[i].bsf;
+        /* Work overlaps across queries.  Divide the shared wall time only for
+         * the legacy per-query CSV field; the CLI's wall-time report remains
+         * the authoritative batch measurement. */
+        states[i].stats.total_microseconds = query_count == 0 ? 0 : batch_elapsed / query_count;
+        cumulative += states[i].stats.total_microseconds;
+        trie_save_query_stats(index->trie, &states[i].stats, distances[i], cumulative);
+        if (SHOULD_REPORT_QUERY(i, query_count)) {
+            PRINT_STATS_HEADER();
+            trie_print_query_stats(i, index->trie, &states[i].stats, distances[i], cumulative);
+        }
+        pthread_mutex_destroy(&states[i].lock);
+    }
+    fflush(stderr);
+    for (int i = 0; i < workers; ++i) free(scratch[i].candidates);
+    free(scratch); free(tasks.items); free(queries); free(transforms); free(words); free(distances); free(states);
+    return SUCCESS;
 }
 
 query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,

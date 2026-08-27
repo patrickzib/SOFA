@@ -47,6 +47,7 @@ Options:
                             Disable variance-assigned root bits for learned iSAX methods
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
+  --trie-query-leaf-batch   Experimental shared leaf-range scheduling across trie queries
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
@@ -173,6 +174,7 @@ METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
+TRIE_QUERY_LEAF_BATCH=false
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
@@ -221,6 +223,7 @@ while [[ $# -gt 0 ]]; do
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --trie-query-leaf-batch) TRIE_QUERY_LEAF_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
@@ -272,13 +275,15 @@ if [[ -z $DYNAMIC_ROOT_SPLIT_VARIANCE ]]; then
 fi
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
+[[ $TRIE_QUERY_LEAF_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-leaf-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
-[[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $TRIE_QUERY_BATCH == false || $TRIE_QUERY_LEAF_BATCH == false ]] || die 'choose at most one of --trie-query-batch and --trie-query-leaf-batch'
+[[ $TRIE_QUERY_PARALLEL == false || ( $TRIE_QUERY_BATCH == false && $TRIE_QUERY_LEAF_BATCH == false ) ]] || die 'choose at most one of --trie-query-parallel, --trie-query-batch, and --trie-query-leaf-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
@@ -413,6 +418,9 @@ if [[ $TRIE_QUERY_PARALLEL == true ]]; then
 fi
 if [[ $TRIE_QUERY_BATCH == true ]]; then
     COMMON_ARGS+=(--trie-query-batch)
+fi
+if [[ $TRIE_QUERY_LEAF_BATCH == true ]]; then
+    COMMON_ARGS+=(--trie-query-leaf-batch)
 fi
 if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)

@@ -42,6 +42,7 @@ set(ADS_SOURCES
   src/ads/pisa/pisa.c
   src/ads/calc_utils.c
   src/ads/trie/trie.c
+  src/ads/trie/trie_batch.c
 )
 
 add_library(ads STATIC ${ADS_SOURCES})

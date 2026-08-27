@@ -326,6 +326,7 @@ int main(int argc, char **argv) {
     static messi_index_type index_type = MESSI_INDEX_ISAX;
     /* The trie mirrors iSAX's per-query worker scheduling by default. */
     static int trie_query_batch = 0;
+    static int trie_query_leaf_batch = 0;
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
@@ -405,6 +406,7 @@ int main(int argc, char **argv) {
                 {"trie-query-parallel", no_argument, 0, 1001},
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
+                {"trie-query-leaf-batch", no_argument, 0, 1017},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
@@ -435,6 +437,7 @@ int main(int argc, char **argv) {
                 break;
             case 1001:
                 trie_query_batch = 0;
+                trie_query_leaf_batch = 0;
                 break;
             case 1002:
                 profile_query_phases_requested = 1;
@@ -443,6 +446,9 @@ int main(int argc, char **argv) {
                 break;
             case 1003:
                 trie_query_batch = 1;
+                break;
+            case 1017:
+                trie_query_leaf_batch = 1;
                 break;
             case 1004:
                 trie_mbr_dimensions = atoi(optarg);
@@ -699,6 +705,7 @@ int main(int argc, char **argv) {
                 \t--index-type isax|trie\tIndex layout (default: isax)\n\
                 \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
                 \t--trie-query-batch\tBatch independent trie queries instead\n\
+                \t--trie-query-leaf-batch\tExperimental shared leaf-range scheduler for trie query batches\n\
                 \t--trie-mbr-dimensions XX\tTrie MBR dimensions (16--128; default: maximum available)\n\
                 \t--trie-split-dimensions XX\tTrie split-candidate dimensions (default: min(32, MBR dimensions))\n\
                 \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds (default for trie)\n\
@@ -774,7 +781,19 @@ int main(int argc, char **argv) {
     }
     query_report_interval = query_report_interval_requested;
 
+    if (trie_query_leaf_batch && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-query-leaf-batch requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
     if (index_type == MESSI_INDEX_TRIE) {
+        if (trie_query_batch && trie_query_leaf_batch) {
+            fprintf(stderr, "error: choose at most one of --trie-query-batch and --trie-query-leaf-batch.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_query_leaf_batch && !inmemory_flag) {
+            fprintf(stderr, "error: --trie-query-leaf-batch requires --in-memory.\n");
+            return EXIT_FAILURE;
+        }
         if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
         if (function_type < 3 || function_type > 6) {
             fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
@@ -903,7 +922,8 @@ int main(int argc, char **argv) {
         idx->settings->aggressive_check = aggressive_check;
         idx->settings->total_loaded_leaves = total_loaded_leaves;
         idx->settings->min_leaf_size = min_leaf_size;
-        print_settings(idx->settings, maxquerythread, trie_query_batch);
+        print_settings(idx->settings, maxquerythread,
+                       trie_query_leaf_batch ? 2 : trie_query_batch);
         // fprintf(stderr,"total_records: %ld\n", idx->total_records);
         // fprintf(stderr,"loaded_records: %ld\n", idx->loaded_records);
         // create_wedges(idx, NULL);
@@ -1178,10 +1198,12 @@ int main(int argc, char **argv) {
 
         if (!inmemory_flag) {
             idx = isax_index_init(index_settings);
-            print_settings(idx->settings, maxquerythread, trie_query_batch);
+            print_settings(idx->settings, maxquerythread,
+                           trie_query_leaf_batch ? 2 : trie_query_batch);
         } else {
             idx = isax_index_init_inmemory(index_settings);
-            print_settings(idx->settings, maxquerythread, trie_query_batch);
+            print_settings(idx->settings, maxquerythread,
+                           trie_query_leaf_batch ? 2 : trie_query_batch);
         }
 
 #ifdef CLUSTERED
@@ -1212,7 +1234,8 @@ int main(int argc, char **argv) {
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             double query_wall_start = monotonic_seconds();
-            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+            if ((trie_query_leaf_batch ? symbolic_trie_query_file_leaf_batch :
+                 trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
                     (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
                 fprintf(stderr, "error: trie query processing failed.\n");
                 return EXIT_FAILURE;
@@ -1258,7 +1281,8 @@ int main(int argc, char **argv) {
             // } else {
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if ((trie_query_leaf_batch ? symbolic_trie_query_file_leaf_batch :
+                     trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1301,7 +1325,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if ((trie_query_leaf_batch ? symbolic_trie_query_file_leaf_batch :
+                     trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1344,7 +1369,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if ((trie_query_leaf_batch ? symbolic_trie_query_file_leaf_batch :
+                     trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;

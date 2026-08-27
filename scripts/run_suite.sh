@@ -48,6 +48,7 @@ Options:
                           Average dynamic alphabet budget in bits (default: 3)
   --trie-query-parallel   Parallelize each trie query
   --trie-query-batch      Batch independent trie queries
+  --trie-query-leaf-batch Experimental shared leaf-range scheduling across trie queries
   --query-report-interval N
                           Print query progress every N queries (0 disables it)
   --profile-query-phases  Measure traversal, lower-bound, and exact work
@@ -120,6 +121,7 @@ TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
+TRIE_QUERY_LEAF_BATCH=false
 QUERY_REPORT_INTERVAL=
 PROFILE_QUERY_PHASES=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=
@@ -166,6 +168,7 @@ while [[ $# -gt 0 ]]; do
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --trie-query-leaf-batch) TRIE_QUERY_LEAF_BATCH=true; shift ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
@@ -207,8 +210,12 @@ esac
     die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || \
     die '--trie-query-batch requires --index-type trie'
-[[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || \
-    die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $TRIE_QUERY_LEAF_BATCH == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-query-leaf-batch requires --index-type trie'
+[[ $TRIE_QUERY_BATCH == false || $TRIE_QUERY_LEAF_BATCH == false ]] || \
+    die 'choose at most one of --trie-query-batch and --trie-query-leaf-batch'
+[[ $TRIE_QUERY_PARALLEL == false || ( $TRIE_QUERY_BATCH == false && $TRIE_QUERY_LEAF_BATCH == false ) ]] || \
+    die 'choose at most one of --trie-query-parallel, --trie-query-batch, and --trie-query-leaf-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
     die '--dynamic-root-split-variance requires --index-type isax'
 [[ -z $TRIE_LEAF_KMEANS || $INDEX_TYPE == trie ]] || die '--trie-leaf-kmeans requires --index-type trie'
@@ -284,6 +291,7 @@ run_one() {
     [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
     $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
     $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+    $TRIE_QUERY_LEAF_BATCH && command+=(--trie-query-leaf-batch)
     [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
@@ -415,6 +423,7 @@ run_query_suite() {
             [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
             $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
             $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+            $TRIE_QUERY_LEAF_BATCH && command+=(--trie-query-leaf-batch)
             [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
             $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
