@@ -1629,6 +1629,9 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves, int kn) {
+    /* Keep per-record stats off the normal path.  The profiled scanners do
+     * extra accounting for each candidate and are intentionally expensive;
+     * --profile-query-phases is for diagnostics, not benchmark timings. */
     messi_query_stats seed_stats = {0};
     messi_active_query_stats = profile_query_phases ? &seed_stats : NULL;
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);

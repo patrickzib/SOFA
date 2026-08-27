@@ -32,6 +32,12 @@
 #define NTHREADS 4
 int checkts = 0;
 float *MINDISTS;
+/*
+ * NULL in normal runs: record-level accounting is deliberately disabled on
+ * the hot scan path.  Enabling --profile-query-phases adds counter updates to
+ * every scanned record and can slow queries substantially; use it only for
+ * diagnostics.
+ */
 __thread messi_query_stats *messi_active_query_stats = NULL;
 
 void *compute_mindists_in(void *ptr) {

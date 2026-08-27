@@ -139,54 +139,36 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
     return distance;
 }
 #elif ADS_HAVE_AVX2
-static inline float horizontal_sum_avx2(__m256 value) {
-    __m128 sum = _mm_add_ps(_mm256_castps256_ps128(value), _mm256_extractf128_ps(value, 1));
-    sum = _mm_hadd_ps(sum, sum);
-    sum = _mm_hadd_ps(sum, sum);
-    return _mm_cvtss_f32(sum);
-}
-
-static inline __m256 squared_difference_avx2(__m256 left, __m256 right) {
-    const __m256 difference = _mm256_sub_ps(left, right);
-#if defined(__FMA__)
-    return _mm256_fmadd_ps(difference, difference, _mm256_setzero_ps());
-#else
-    return _mm256_mul_ps(difference, difference);
-#endif
-}
-
 float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) {
-    float distance = 0.0f;
+    float distance = 0;
     int i = 0;
-    const int original_size = size;
-    const int aligned = (((uintptr_t) t | (uintptr_t) s) & 31U) == 0;
+    float distancef[8];
+    int size2 = size;
 
-    /* Accumulate two vectors before reducing, so the BSF test is performed
-       every 16 values instead of every 8. */
-#define ED_AVX2_BLOCK(offset) do { \
-        const __m256 vt = aligned ? _mm256_load_ps(t + (offset)) : _mm256_loadu_ps(t + (offset)); \
-        const __m256 vs = aligned ? _mm256_load_ps(s + (offset)) : _mm256_loadu_ps(s + (offset)); \
-        sum = _mm256_add_ps(sum, squared_difference_avx2(vt, vs)); \
-    } while (0)
-    while (size >= 16 && distance < bound) {
-        __m256 sum = _mm256_setzero_ps();
-        ED_AVX2_BLOCK(i);
-        ED_AVX2_BLOCK(i + 8);
-        distance += horizontal_sum_avx2(sum);
-        i += 16;
-        size -= 16;
-    }
-    if (size >= 8 && distance < bound) {
-        __m256 sum = _mm256_setzero_ps();
-        ED_AVX2_BLOCK(i);
-        distance += horizontal_sum_avx2(sum);
-        i += 8;
+    __m256 v_t, v_s, v_d, distancev;
+    while (size >= 8 && distance < bound) {
+        const int aligned = (((uintptr_t) &t[i] | (uintptr_t) &s[i]) & 31U) == 0;
+        v_t = aligned ? _mm256_load_ps(&t[i]) : _mm256_loadu_ps(&t[i]);
+        v_s = aligned ? _mm256_load_ps(&s[i]) : _mm256_loadu_ps(&s[i]);
+
+        v_d = _mm256_sub_ps(v_t, v_s);
+#if defined(__FMA__)
+        distancev = _mm256_fmadd_ps(v_d, v_d, _mm256_setzero_ps());
+#else
+        v_d = _mm256_mul_ps(v_d, v_d);
+        distancev = v_d;
+#endif
         size -= 8;
+
+        i = i + 8;
+        distancev = _mm256_hadd_ps(distancev, distancev);
+        distancev = _mm256_hadd_ps(distancev, distancev);
+        _mm256_storeu_ps(distancef, distancev);
+        distance += distancef[0] + distancef[4];
     }
-#undef ED_AVX2_BLOCK
 
     // Remaining values, if length is not divisible by 8!
-    while (i < original_size && distance < bound) {
+    while (i < size2 && distance < bound) {
         distance += (t[i] - s[i]) * (t[i] - s[i]);
         i++;
     }

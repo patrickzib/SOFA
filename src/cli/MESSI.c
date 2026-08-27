@@ -438,6 +438,8 @@ int main(int argc, char **argv) {
                 break;
             case 1002:
                 profile_query_phases_requested = 1;
+                fprintf(stderr,
+                        "WARNING: --profile-query-phases enables per-record accounting and can substantially slow query execution; diagnostic use only.\n");
                 break;
             case 1003:
                 trie_query_batch = 1;
@@ -708,7 +710,7 @@ int main(int argc, char **argv) {
                 \t--trie-max-fanout 2|4|...\tMaximum dynamic trie fanout (default: 16)\n\
                 \t--trie-alphabet-budget-bits N\tAverage dynamic alphabet budget in bits (default: 3)\n\
                 \t--query-report-interval N\tPrint first, every Nth completed, and final query row (0=none; default: 10)\n\
-                \t--profile-query-phases\tRecord direct accumulated worker time for traversal, lower bounds, and exact distances\n\
+                \t--profile-query-phases\tRecord query phase timings/counters (diagnostic only; substantially slows queries)\n\
                 \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
                 \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
                 \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
@@ -1494,12 +1496,19 @@ int main(int argc, char **argv) {
                 snprintf(wall_time, sizeof(wall_time), "%.3f s", query_wall_seconds);
             fprintf(stderr, "=== Query summary ===\n"
                    "  queries          : %d\n"
-                   "  wall time        : %s (%.3f ms/query)\n"
-                   "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n"
+                   "  wall time        : %s (%.3f ms/query)\n",
+                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size);
+            if (profile_query_phases) {
+                fprintf(stderr,
+                       "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
+                       nodes, checked_node_percent, index_nodes);
+            } else {
+                fprintf(stderr,
+                       "  checked nodes    : not recorded (use --profile-query-phases; adds substantial overhead)\n");
+            }
+            fprintf(stderr,
                    "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
                    "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",
-                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size,
-                   nodes, checked_node_percent, index_nodes,
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
             if (index_type == MESSI_INDEX_TRIE) {
