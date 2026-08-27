@@ -207,15 +207,9 @@ static void update_node_result(query_result *best, float distance,
     }
 }
 
-static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
-                             sax_type *sax, ts_type *series,
-                             file_position_type position, query_result *best) {
-    /* This helper is the common record scan used by the iSAX approximate
-     * seed and the parallel MESSI refinement.  Keep the logical-work
-     * counters here so normal runs do not depend on optional phase profiling.
-     * Multiple MESSI workers can execute it concurrently. */
-    if (messi_active_query_stats != NULL) ++messi_active_query_stats->lower_bounds;
-    else ++LBDcalculationnumber;
+static void scan_node_record_untracked(isax_index *index, ts_type *query, ts_type *paa,
+                                       sax_type *sax, ts_type *series,
+                                       file_position_type position, query_result *best) {
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
                                            best->distance);
@@ -225,8 +219,23 @@ static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
     const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
                                      position < best->record_position;
     const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
-    if (messi_active_query_stats != NULL) ++messi_active_query_stats->exact_distances;
-    else ++RDcalculationnumber;
+    const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
+    update_node_result(best, distance, position);
+}
+
+static void scan_node_record_tracked(isax_index *index, ts_type *query, ts_type *paa,
+                                     sax_type *sax, ts_type *series,
+                                     file_position_type position, query_result *best,
+                                     messi_query_stats *stats) {
+    ++stats->lower_bounds;
+    const float lower = messi_minidist_raw(index, paa, sax,
+                                           index->settings->max_sax_cardinalities,
+                                           best->distance);
+    if (lower > best->distance) return;
+    const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
+                                     position < best->record_position;
+    const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
+    ++stats->exact_distances;
     const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
     update_node_result(best, distance, position);
 }
@@ -236,16 +245,30 @@ query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
                                             query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
-    for (int i = 0; i < buffer->full_buffer_size; ++i)
-        scan_node_record(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
-                         *buffer->full_position_buffer[i], &result);
-    for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
-        scan_node_record(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
-                         *buffer->tmp_full_position_buffer[i], &result);
-    for (int i = 0; i < buffer->partial_buffer_size; ++i)
-        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
-                         rawfile + *buffer->partial_position_buffer[i],
-                         *buffer->partial_position_buffer[i], &result);
+    messi_query_stats *stats = messi_active_query_stats;
+    if (stats == NULL) {
+        for (int i = 0; i < buffer->full_buffer_size; ++i)
+            scan_node_record_untracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
+                                       *buffer->full_position_buffer[i], &result);
+        for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
+            scan_node_record_untracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
+                                       *buffer->tmp_full_position_buffer[i], &result);
+        for (int i = 0; i < buffer->partial_buffer_size; ++i)
+            scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
+                                       rawfile + *buffer->partial_position_buffer[i],
+                                       *buffer->partial_position_buffer[i], &result);
+    } else {
+        for (int i = 0; i < buffer->full_buffer_size; ++i)
+            scan_node_record_tracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
+                                     *buffer->full_position_buffer[i], &result, stats);
+        for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
+            scan_node_record_tracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
+                                     *buffer->tmp_full_position_buffer[i], &result, stats);
+        for (int i = 0; i < buffer->partial_buffer_size; ++i)
+            scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
+                                     rawfile + *buffer->partial_position_buffer[i],
+                                     *buffer->partial_position_buffer[i], &result, stats);
+    }
     return result;
 }
 
@@ -254,10 +277,18 @@ query_result calculate_node_result2_inmemory(isax_index *index, isax_node *node,
                                              query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
-    for (int i = 0; i < buffer->partial_buffer_size; ++i)
-        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
-                         rawfile + *buffer->partial_position_buffer[i],
-                         *buffer->partial_position_buffer[i], &result);
+    messi_query_stats *stats = messi_active_query_stats;
+    if (stats == NULL) {
+        for (int i = 0; i < buffer->partial_buffer_size; ++i)
+            scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
+                                       rawfile + *buffer->partial_position_buffer[i],
+                                       *buffer->partial_position_buffer[i], &result);
+    } else {
+        for (int i = 0; i < buffer->partial_buffer_size; ++i)
+            scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
+                                     rawfile + *buffer->partial_position_buffer[i],
+                                     *buffer->partial_position_buffer[i], &result, stats);
+    }
     return result;
 }
 

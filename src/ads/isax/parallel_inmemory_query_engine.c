@@ -1630,7 +1630,7 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves, int kn) {
     messi_query_stats seed_stats = {0};
-    messi_active_query_stats = &seed_stats;
+    messi_active_query_stats = profile_query_phases ? &seed_stats : NULL;
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
     messi_active_query_stats = NULL;
 
@@ -1706,7 +1706,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].allqueuelabel = queuelabel;
         workerdata[i].allpq = allpq;
         workerdata[i].startqueuenumber = i % N_PQUEUE;
-        workerdata[i].query_stats = &worker_stats[i];
+        workerdata[i].query_stats = profile_query_phases ? &worker_stats[i] : NULL;
     }
 
     // parameterinitial();
@@ -2668,7 +2668,6 @@ void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *in
     /* One checked node is one index-node lower-bound evaluation.  Leaf
      * record scanning has separate lower-bound and exact-distance counters. */
     if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
-    else ++checked_nodes;
     // float distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(
         index, paa,
@@ -2704,7 +2703,6 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
     struct timeval lb_dist_time_start;
 
     if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
-    else ++checked_nodes;
     gettimeofday(&lb_dist_time_start, NULL);
     // distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(
