@@ -1,18 +1,16 @@
 import os
+import struct
 import numpy as np
 import pandas as pd
 
 import sys
 sys.path.append("../")
 
-def add_gaussian_noise(data, data_type, mean=0, std_dev=0.1):
+def add_gaussian_noise(data, mean=0, std_dev=0.1):
     noise = np.random.normal(0, np.std(data)* std_dev, size=len(data))
-    #print(noise)
-    #print(data.astype(np.float32))
-    #print(data.astype(np.float32) + noise)
-    return (data.astype(np.float64) + noise) #.astype(data_type)
+    return data.astype(np.float64) + noise
 
-def add_noise(input_file, length, data_type, noise_level=0.1):    
+def add_noise(input_file, dimensions, data_type, has_header, noise_level=0.1):
     # File paths
     output_file = input_file +"_noise_"+str(noise_level).replace(".","")
     input_file = path+"/"+input_file+".bin"
@@ -20,19 +18,32 @@ def add_noise(input_file, length, data_type, noise_level=0.1):
         
     try:
         with open(input_file, "rb") as f:
-            data = np.fromfile(f, dtype=data_type, count=1024*1024)            
+            if has_header:
+                header = f.read(8)
+                if len(header) != 8:
+                    raise ValueError(f"Input file '{input_file}' has no complete vector header.")
+                _, header_dimensions = struct.unpack("<II", header)
+                if header_dimensions != dimensions:
+                    raise ValueError(
+                        f"Input file '{input_file}' declares {header_dimensions} dimensions, "
+                        f"expected {dimensions}."
+                    )
+            data = np.fromfile(f, dtype=data_type, count=1024 * 1024)
     except FileNotFoundError:
         print(f"Input file '{input_file}' not found.")
         return
 
     
     # Add Gaussian noise
-    noisy_data = add_gaussian_noise(data, data_type, std_dev = noise_level)
-    noisy_data = np.ceil(noisy_data).astype(data_type)
-    # print (noisy_data, noisy_data.dtype)
-    # print (noisy_data, noisy_data.dtype)
+    noisy_data = add_gaussian_noise(data, std_dev=noise_level)
+    if np.issubdtype(data_type, np.integer):
+        limits = np.iinfo(data_type)
+        noisy_data = np.clip(np.rint(noisy_data), limits.min, limits.max).astype(data_type)
+    else:
+        noisy_data = noisy_data.astype(data_type)
     
     # Write noisy data to output file
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "wb") as f:
         noisy_data.tofile(f)
 
@@ -48,15 +59,17 @@ def add_noise(input_file, length, data_type, noise_level=0.1):
 # Server
 path = "."
 convert_files = {
-    # "turing_ANNS__head" : [100, np.int8]
-    "turingANNs" : [100, np.int8],
-    "text-to-image" : [200, np.int8],
-    "spacev1B" : [100, np.int8]
+    # Canonical Big ANN types: Turing-ANNS and Text-to-Image are float32;
+    # SPACEV is signed int8.  Keep generated queries binary-compatible with
+    # their source collection.
+    "turingANNs": (100, np.float32, True),
+    "text-to-image": (200, np.float32, True),
+    "spacev1B": (100, np.int8, False),
 }
 
 if __name__ == "__main__":
     for noise_level in [0.1, 1, 2, 5, 10]:
         for input_file in  convert_files:
-            length, file_type = convert_files[input_file]
-            print (input_file, length, file_type)                        
-            add_noise(input_file, length, file_type, noise_level)
+            dimensions, file_type, has_header = convert_files[input_file]
+            print(input_file, dimensions, file_type, "header=" + str(has_header))
+            add_noise(input_file, dimensions, file_type, has_header, noise_level)
