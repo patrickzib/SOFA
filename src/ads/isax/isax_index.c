@@ -2915,7 +2915,7 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  SIMD          : %s\n",
 #if defined(__AVX512F__)
-            settings->SIMD_flag ? "AVX-512 enabled" : "AVX-512 compiled in");
+            settings->SIMD_flag ? "AVX-512 enabled (may be slower; compare AVX2)" : "AVX-512 compiled in");
 #elif ADS_HAVE_AVX2
             settings->SIMD_flag ? "AVX2 enabled" : "AVX2 available (not requested)");
 #elif defined(__ARM_NEON) || defined(__ARM_NEON__)
