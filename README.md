@@ -32,10 +32,11 @@ directory, and copies the executable to `bin/MESSI`:
 ```
 
 `build_sonic.sh` is the equivalent site-specific helper for the Sonic cluster;
-edit its FFTW prefix if that installation changes. Pass `--enable-simd=no` to
-`configure` to disable AVX2 detection. Do not add AVX compiler flags manually:
-the configure step selects AVX2 when the compiler supports it, while ARM NEON
-uses its native implementation automatically.
+edit its FFTW prefix if that installation changes. It defaults to AVX2 because
+AVX-512 can downclock this workload; set `MESSI_SONIC_SIMD_FLAGS="-mavx512f"`
+to explicitly benchmark the AVX-512 path. Pass `--enable-simd=no` to
+`configure` to disable SIMD detection entirely. ARM NEON uses its native
+implementation automatically.
 
 Run `autoreconf -fi` before `configure` only when modifying Autotools inputs
 or when a clone does not include a usable generated `configure` script.

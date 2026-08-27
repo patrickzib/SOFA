@@ -17,9 +17,12 @@ export LIBS="-lfftw3f ${LIBS:-}"
 export LAPACK_LIBS="-L/usr/lib64 -l:libopenblas.so.0"
 export CBLAS_LIBS="$LAPACK_LIBS"
 
-# Optimization flags
-export CFLAGS="-O3 -DNDEBUG -march=native ${CFLAGS:-}"
-export CXXFLAGS="-O3 -DNDEBUG -march=native ${CXXFLAGS:-}"
+# Optimization flags.  AVX-512 can downclock this workload on Sonic and is
+# slower than AVX2 in practice, so AVX2 is the default.  Override with
+# MESSI_SONIC_SIMD_FLAGS="-mavx512f" when explicitly benchmarking AVX-512.
+SONIC_SIMD_FLAGS="${MESSI_SONIC_SIMD_FLAGS:--mavx2 -mno-avx512f}"
+export CFLAGS="-O3 -DNDEBUG -march=native ${CFLAGS:-} ${SONIC_SIMD_FLAGS}"
+export CXXFLAGS="-O3 -DNDEBUG -march=native ${CXXFLAGS:-} ${SONIC_SIMD_FLAGS}"
 
 make clean || true
 CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" LIBS="$LIBS" \
