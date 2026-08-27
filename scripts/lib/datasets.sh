@@ -167,7 +167,7 @@ load_dataset() {
 }
 
 active_datasets() {
-    printf '%s\n' bigann sald sift1b deep1b scedc astro
+    printf '%s\n' bigann sald sift1b deep1b scedc astro spacev1b turinganns
 }
 
 seisbench_datasets() {

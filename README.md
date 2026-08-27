@@ -157,7 +157,7 @@ For help, please type:
 Instruction for downloading the datasets is in the `datasets` folder. The size of the datasets is too large to provide a direct link.
 Some datasets must be downloaded, others generated from seisbench.
 
-## Table: Characteristics of the 17 datasets used
+## Table: Characteristics of benchmark datasets
 
 | Dataset Name | Series       | Series Length |
 |--------------|--------------|---------------|
@@ -176,7 +176,10 @@ Some datasets must be downloaded, others generated from seisbench.
 | **SALD** [url:SALD] | 100,000,000   | 128           |
 | **SCEDC** [center2013southern] | 100,000,000   | 256           |
 | **SIFT1b** [jegou2011searching] | 100,000,000   | 128           |
+| **SpaceV1B** | 100,000,000 | 100 |
 | **STEAD** [mousavi2019stanford] | 87,323,433    | 256           |
+| **Text-to-image** | 100,000,000 | 200 |
+| **TuringANNs** | 100,000,000 | 100 |
 | **TXED** [chen2024txed] | 35,851,641    | 256           |
 
 # Competitors

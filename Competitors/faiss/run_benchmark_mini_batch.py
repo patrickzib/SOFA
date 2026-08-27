@@ -33,11 +33,10 @@ datasets = {
     # scripts/lib/datasets.sh: the benchmark reads the configured 100M-record
     # prefix from each raw collection.
     "BIGANN": ["bigANN.bin", "bigANN_queries.bin", 100, 0, np.uint8],
-    "DEEP1B": ["deep1b.bin", "deep1b_queries.bin", 96, 0, np.float32],
-    "SIFT1B": ["sift1b.bin", "sift1b_queries.bin", 128, 0, np.float32],
-    "SPACEV1B": ["spacev1B.bin", "spacev1B_queries.bin", 100, 0, np.uint8],
-    "TEXTTOIMAGE": ["text-to-image.bin", "text-to-image_queries.bin", 200, 0, np.float32],
-    "TURINGANNS": ["turingANNs.bin", "turingANNs_queries.bin", 100, 0, np.uint8],
+    "DEEP1b": ["deep1b.bin", "deep1b_queries.bin", 96, 0, np.float32],
+    "SIFT1b": ["sift1b.bin", "sift1b_queries.bin", 128, 0, np.float32],
+    "spacev1b": ["spacev1B.bin", "spacev1B_queries.bin", 100, 0, np.uint8],
+    "turinganns": ["turingANNs.bin", "turingANNs_queries.bin", 100, 0, np.uint8],
 
     # Time-series and SeisBench datasets intentionally remain opt-in here.
     "ASTRO": ["astro.bin", "astro_queries.bin", 256, 0, np.float32],
@@ -45,7 +44,7 @@ datasets = {
     "SCEDC": ["SCEDC.bin", "SCEDC_queries.bin", 256, 0, np.float32],
 
     # SeisBench
-    "ETHZ": ["ETHZ.bin", "ETHZ_queries.bin", 256, 1, np.float32],
+    "ETHC": ["ETHZ.bin", "ETHZ_queries.bin", 256, 1, np.float32],
     "ISC_EHB_DepthPhases": ["ISC_EHB_DepthPhases.bin", "ISC_EHB_DepthPhases_queries.bin", 256, 1, np.float32],
     "LenDB": ["LenDB.bin", "LenDB_queries.bin", 256, 1, np.float32],
     "Iquique": ["Iquique.bin", "Iquique_queries.bin", 256, 1, np.float32],

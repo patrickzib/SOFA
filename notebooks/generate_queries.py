@@ -6,6 +6,8 @@ import pandas as pd
 import sys
 sys.path.append("../")
 
+QUERY_VALUE_BUDGET = 1024 * 1024
+
 def add_gaussian_noise(data, mean=0, std_dev=0.1):
     noise = np.random.normal(0, np.std(data)* std_dev, size=len(data))
     return data.astype(np.float64) + noise
@@ -28,10 +30,15 @@ def add_noise(input_file, dimensions, data_type, has_header, noise_level=0.1):
                         f"Input file '{input_file}' declares {header_dimensions} dimensions, "
                         f"expected {dimensions}."
                     )
-            data = np.fromfile(f, dtype=data_type, count=1024 * 1024)
+            value_count = (QUERY_VALUE_BUDGET // dimensions) * dimensions
+            data = np.fromfile(f, dtype=data_type, count=value_count)
     except FileNotFoundError:
         print(f"Input file '{input_file}' not found.")
         return
+
+    data = data[:(len(data) // dimensions) * dimensions]
+    if len(data) == 0:
+        raise ValueError(f"Input file '{input_file}' contains no complete vectors.")
 
     
     # Add Gaussian noise
