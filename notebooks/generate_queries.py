@@ -12,7 +12,7 @@ def add_gaussian_noise(data, mean=0, std_dev=0.1):
 
 def add_noise(input_file, dimensions, data_type, has_header, noise_level=0.1):
     # File paths
-    output_file = input_file +"_noise_"+str(noise_level).replace(".","")
+    output_file = input_file + "_noise_" + f"{noise_level:g}".replace(".", "")
     input_file = path+"/"+input_file+".bin"
     output_file = path+"/generated/"+output_file+".bin"
         
@@ -62,14 +62,13 @@ convert_files = {
     # Canonical Big ANN types: Turing-ANNS and Text-to-Image are float32;
     # SPACEV is signed int8.  Keep generated queries binary-compatible with
     # their source collection.
-    "turingANNs": (100, np.float32, True),
-    "text-to-image": (200, np.float32, True),
-    "spacev1B": (100, np.int8, False),
+    "turingANNs": (100, np.float32, True, (0.1, 0.25, 0.5)),
+    "text-to-image": (200, np.float32, True, (0.05, 0.1, 0.25)),
+    "spacev1B": (100, np.int8, False, (0.25, 0.5, 1.0)),
 }
 
 if __name__ == "__main__":
-    for noise_level in [0.1, 1, 2, 5, 10]:
-        for input_file in  convert_files:
-            dimensions, file_type, has_header = convert_files[input_file]
-            print(input_file, dimensions, file_type, "header=" + str(has_header))
+    for input_file, (dimensions, file_type, has_header, noise_levels) in convert_files.items():
+        print(input_file, dimensions, file_type, "header=" + str(has_header))
+        for noise_level in noise_levels:
             add_noise(input_file, dimensions, file_type, has_header, noise_level)
