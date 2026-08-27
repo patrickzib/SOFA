@@ -1498,14 +1498,9 @@ int main(int argc, char **argv) {
                    "  queries          : %d\n"
                    "  wall time        : %s (%.3f ms/query)\n",
                    queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size);
-            if (profile_query_phases) {
-                fprintf(stderr,
-                       "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
-                       nodes, checked_node_percent, index_nodes);
-            } else {
-                fprintf(stderr,
-                       "  checked nodes    : not recorded (use --profile-query-phases; adds substantial overhead)\n");
-            }
+            fprintf(stderr,
+                   "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
+                   nodes, checked_node_percent, index_nodes);
             fprintf(stderr,
                    "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
                    "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",

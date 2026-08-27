@@ -1629,11 +1629,10 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves, int kn) {
-    /* Keep per-record stats off the normal path.  The profiled scanners do
-     * extra accounting for each candidate and are intentionally expensive;
-     * --profile-query-phases is for diagnostics, not benchmark timings. */
+    /* Stats are worker-local and batched by leaf scanners.  This keeps the
+     * normal benchmark path free of global/atomic per-record accounting. */
     messi_query_stats seed_stats = {0};
-    messi_active_query_stats = profile_query_phases ? &seed_stats : NULL;
+    messi_active_query_stats = &seed_stats;
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
     messi_active_query_stats = NULL;
 
@@ -1709,7 +1708,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].allqueuelabel = queuelabel;
         workerdata[i].allpq = allpq;
         workerdata[i].startqueuenumber = i % N_PQUEUE;
-        workerdata[i].query_stats = profile_query_phases ? &worker_stats[i] : NULL;
+        workerdata[i].query_stats = &worker_stats[i];
     }
 
     // parameterinitial();
@@ -2104,6 +2103,9 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
                                                          unsigned long int *record_bound_time,
                                                          unsigned long int *exact_distance_time) {
     if (node->buffer == NULL) return bsf;
+    messi_query_stats *stats = messi_active_query_stats;
+    unsigned long exact_distances = 0;
+    if (stats != NULL) stats->lower_bounds += node->buffer->partial_buffer_size;
     for (int i = 0; i < node->buffer->partial_buffer_size; ++i) {
         struct timeval start, end;
         gettimeofday(&start, NULL);
@@ -2113,6 +2115,7 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
         *record_bound_time += (unsigned long int)
             ((end.tv_sec - start.tv_sec) * 1000000L + end.tv_usec - start.tv_usec);
         if (lower < bsf) {
+            ++exact_distances;
             gettimeofday(&start, NULL);
             float distance = ts_ed(query, rawfile + *node->buffer->partial_position_buffer[i],
                                    index->settings->timeseries_size, bsf);
@@ -2122,6 +2125,7 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
             if (distance < bsf) bsf = distance;
         }
     }
+    if (stats != NULL) stats->exact_distances += exact_distances;
     return bsf;
 }
 
