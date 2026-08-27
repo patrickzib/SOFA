@@ -1629,7 +1629,10 @@ exact_search_ParISnew_inmemory_workstealing(ts_type *ts, ts_type *paa, isax_inde
 
 query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, node_list *nodelist,
                                 float minimum_distance, int min_checked_leaves, int kn) {
+    messi_query_stats seed_stats = {0};
+    messi_active_query_stats = &seed_stats;
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
+    messi_active_query_stats = NULL;
 
     query_result bsf_result = approximate_result;
     int tight_bound = index->settings->tight_bound;
@@ -1637,6 +1640,9 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
     int node_counter = 0;
     // Early termination...
     if (approximate_result.distance == 0) {
+        checked_nodes += (int) seed_stats.checked_nodes;
+        LBDcalculationnumber += seed_stats.lower_bounds;
+        RDcalculationnumber += seed_stats.exact_distances;
         return approximate_result;
     }
     if (approximate_result.distance == FLT_MAX || min_checked_leaves > 1) {
@@ -1656,6 +1662,8 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
 
     pthread_t threadid[maxquerythread];
     MESSI_workerdata workerdata[maxquerythread];
+    messi_query_stats worker_stats[maxquerythread];
+    memset(worker_stats, 0, sizeof(worker_stats));
     pthread_mutex_t lock_queue = PTHREAD_MUTEX_INITIALIZER, lock_current_root_node = PTHREAD_MUTEX_INITIALIZER;
     pthread_rwlock_t lock_bsf = PTHREAD_RWLOCK_INITIALIZER;
     pthread_barrier_t lock_barrier;
@@ -1698,6 +1706,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
         workerdata[i].allqueuelabel = queuelabel;
         workerdata[i].allpq = allpq;
         workerdata[i].startqueuenumber = i % N_PQUEUE;
+        workerdata[i].query_stats = &worker_stats[i];
     }
 
     // parameterinitial();
@@ -1706,6 +1715,14 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
     }
     for (int i = 0; i < maxquerythread; i++) {
         pthread_join(threadid[i], NULL);
+    }
+    checked_nodes += (int) seed_stats.checked_nodes;
+    LBDcalculationnumber += seed_stats.lower_bounds;
+    RDcalculationnumber += seed_stats.exact_distances;
+    for (int i = 0; i < maxquerythread; ++i) {
+        checked_nodes += (int) worker_stats[i].checked_nodes;
+        LBDcalculationnumber += worker_stats[i].lower_bounds;
+        RDcalculationnumber += worker_stats[i].exact_distances;
     }
     if (profile_query_phases)
         total_tree_pass_time = (double) TOTAL_TREE_TRAVERSAL_TIME;
@@ -2106,6 +2123,7 @@ static float calculate_node_distance2_inmemory_profiled(isax_index *index, isax_
 }
 
 void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
+    messi_active_query_stats = ((MESSI_workerdata *) rfdata)->query_stats;
     isax_node *current_root_node;
     query_result *n;
     isax_index *index = ((MESSI_workerdata *) rfdata)->index;
@@ -2334,6 +2352,7 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         total_tree_traversal_time = worker_elapsed > direct ? worker_elapsed - direct : 0;
     }
     __sync_fetch_and_add(&TOTAL_TREE_TRAVERSAL_TIME,(int)total_tree_traversal_time);
+    messi_active_query_stats = NULL;
 }
 
 void *exact_search_worker_inmemory_hybridpqueue_workstealing(void *rfdata) {
@@ -2648,7 +2667,8 @@ void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *in
 
     /* One checked node is one index-node lower-bound evaluation.  Leaf
      * record scanning has separate lower-bound and exact-distance counters. */
-    COUNT_CHECKED_NODE()
+    if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
+    else ++checked_nodes;
     // float distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(
         index, paa,
@@ -2683,7 +2703,8 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
     struct timeval current_time;
     struct timeval lb_dist_time_start;
 
-    COUNT_CHECKED_NODE()
+    if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
+    else ++checked_nodes;
     gettimeofday(&lb_dist_time_start, NULL);
     // distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
     float distance = messi_minidist_range_raw(

@@ -24,6 +24,17 @@ typedef struct localStack {
     int bottom;
 }localStack;
 
+/* Each MESSI query worker owns one of these.  Keeping hot-path accounting
+ * local avoids cache-line contention between workers; the caller merges them
+ * after joining the worker threads. */
+typedef struct messi_query_stats {
+    unsigned long checked_nodes;
+    unsigned long lower_bounds;
+    unsigned long exact_distances;
+} messi_query_stats;
+
+extern __thread messi_query_stats *messi_active_query_stats;
+
 typedef struct MESSI_workerdata
 {
 	isax_node *current_root_node;
@@ -48,6 +59,7 @@ typedef struct MESSI_workerdata
 	int startqueuenumber;
 	int warpWind;
 	pqueue_bsf *pq_bsf;
+	messi_query_stats *query_stats;
 }MESSI_workerdata;
 
 float calculate_node_distance_inmemory_m (isax_index *index, isax_node *node, ts_type *query, ts_type *paa, float bsf);
