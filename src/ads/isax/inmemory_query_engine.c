@@ -199,10 +199,14 @@ query_result approximate_search_inmemory_pRecBuf(ts_type *ts, ts_type *paa, isax
 
 static int query_result_is_better(float distance, file_position_type position,
                                   const query_result *best) {
-    return distance < best->distance ||
-           (distance == best->distance &&
-            (best->record_position == QUERY_RESULT_NO_POSITION ||
-             position < best->record_position));
+    (void) position;
+    /*
+     * Keep the historical iSAX semantics: the first record found at the
+     * minimum distance wins.  In particular, do not force full-distance
+     * evaluations merely to make equal distances deterministic by record ID;
+     * doing so defeats ts_ed()'s bounded early abandon on large datasets.
+     */
+    return distance < best->distance;
 }
 
 static void update_node_result(query_result *best, float distance,
@@ -219,13 +223,9 @@ static void scan_node_record_untracked(isax_index *index, ts_type *query, ts_typ
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
                                            best->distance);
-    if (lower > best->distance) return;
-    /* An equal lower bound can still be the equal-distance record with the
-     * smaller sequential id.  Avoid a bounded early abandon in that case. */
-    const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
-                                     position < best->record_position;
-    const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
-    const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
+    if (lower >= best->distance) return;
+    const float distance = ts_ed(query, series, index->settings->timeseries_size,
+                                 best->distance);
     update_node_result(best, distance, position);
 }
 
@@ -237,12 +237,10 @@ static void scan_node_record_tracked(isax_index *index, ts_type *query, ts_type 
     const float lower = messi_minidist_raw(index, paa, sax,
                                            index->settings->max_sax_cardinalities,
                                            best->distance);
-    if (lower > best->distance) return;
-    const int needs_tie_resolution = best->record_position == QUERY_RESULT_NO_POSITION ||
-                                     position < best->record_position;
-    const float cap = (lower == best->distance || needs_tie_resolution) ? FLT_MAX : best->distance;
+    if (lower >= best->distance) return;
     ++stats->exact_distances;
-    const float distance = ts_ed(query, series, index->settings->timeseries_size, cap);
+    const float distance = ts_ed(query, series, index->settings->timeseries_size,
+                                 best->distance);
     update_node_result(best, distance, position);
 }
 

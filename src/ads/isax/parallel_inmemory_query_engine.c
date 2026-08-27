@@ -2224,26 +2224,18 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
         // If it is a leaf, check its real distance.
         if (n->node->is_leaf) {
             checks++;
-            query_result candidate;
-            if (profile_query_phases) {
-                /* Profiling retains its counters; the ID-aware scan below is
-                 * the authoritative result used by the public API. */
-                (void) calculate_node_distance2_inmemory_profiled(
-                    index, n->node, ts, paa, bsfdisntance,
-                    &total_record_lb_dist_calc_time, &total_real_dist_calc_time);
-            }
-            candidate = calculate_node_result2_inmemory(index, n->node, ts, paa, *bsf_result);
-            if (candidate.distance < bsfdisntance ||
-                (candidate.distance == bsfdisntance &&
-                 candidate.record_position < bsf_result->record_position)) {
+            float distance = profile_query_phases
+                             ? calculate_node_distance2_inmemory_profiled(
+                                   index, n->node, ts, paa, bsfdisntance,
+                                   &total_record_lb_dist_calc_time, &total_real_dist_calc_time)
+                             : calculate_node_result2_inmemory(index, n->node, ts, paa,
+                                                               *bsf_result).distance;
+            if (distance < bsfdisntance) {
                 pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
-                if (candidate.distance < bsf_result->distance ||
-                    (candidate.distance == bsf_result->distance &&
-                     candidate.record_position < bsf_result->record_position)) {
-                    bsf_result->distance = candidate.distance;
+                if (distance < bsf_result->distance) {
+                    bsf_result->distance = distance;
                     bsf_result->node = n->node;
-                    bsf_result->record_position = candidate.record_position;
-                    bsfdisntance = candidate.distance;
+                    bsfdisntance = distance;
                 }
                 pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
             }
@@ -2298,29 +2290,23 @@ void *exact_search_worker_inmemory_hybridpqueue(void *rfdata) {
                     // If it is a leaf, check its real distance.
                     if (n->node->is_leaf) {
                         checks++;
-                        query_result candidate;
-                        if (profile_query_phases) {
-                            (void) calculate_node_distance2_inmemory_profiled(
-                                index, n->node, ts, paa, bsf_result->distance,
-                                &total_record_lb_dist_calc_time, &total_real_dist_calc_time);
-                        }
-                        candidate = calculate_node_result2_inmemory(index, n->node, ts, paa,
-                                                                     *bsf_result);
+                        float distance = profile_query_phases
+                                         ? calculate_node_distance2_inmemory_profiled(
+                                               index, n->node, ts, paa, bsf_result->distance,
+                                               &total_record_lb_dist_calc_time,
+                                               &total_real_dist_calc_time)
+                                         : calculate_node_result2_inmemory(index, n->node, ts, paa,
+                                                                            *bsf_result).distance;
 
                         // the method itself runs in parallel, thus this would add a second level of parallelizm
                         // float distance = calculate_node_distance_inmemory_m(index, n->node, ts, paa, bsfdisntance);
 
-                        if (candidate.distance < bsfdisntance ||
-                            (candidate.distance == bsfdisntance &&
-                             candidate.record_position < bsf_result->record_position)) {
+                        if (distance < bsfdisntance) {
                             pthread_rwlock_wrlock(((MESSI_workerdata *) rfdata)->lock_bsf);
-                            if (candidate.distance < bsf_result->distance ||
-                                (candidate.distance == bsf_result->distance &&
-                                 candidate.record_position < bsf_result->record_position)) {
-                                bsf_result->distance = candidate.distance;
+                            if (distance < bsf_result->distance) {
+                                bsf_result->distance = distance;
                                 bsf_result->node = n->node;
-                                bsf_result->record_position = candidate.record_position;
-                                bsfdisntance = candidate.distance;
+                                bsfdisntance = distance;
                             }
                             pthread_rwlock_unlock(((MESSI_workerdata *) rfdata)->lock_bsf);
                         }
@@ -2521,7 +2507,7 @@ void insert_tree_node_m(float *paa, isax_node *node, isax_index *index, float bs
     float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
-    if (distance <= bsf) {
+    if (distance < bsf) {
         if (node->is_leaf) {
             query_result *mindist_result = malloc(sizeof(query_result));
             mindist_result->node = node;
@@ -2606,7 +2592,7 @@ void insert_tree_node_m_workstealing(float *paa, isax_node *node, isax_index *in
     float distance = minidist_paa_to_isax(paa, node->isax_values, node->isax_cardinalities, index->settings, 0);
     //COUNT_CAL_TIME_END
 
-    if (distance <= bsf) {
+    if (distance < bsf) {
         if (node->is_leaf) {
             query_result *mindist_result = malloc(sizeof(query_result));
             mindist_result->node = node;
