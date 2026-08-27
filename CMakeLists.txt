@@ -16,6 +16,7 @@ option(MESSI_REQUIRE_READLINE "Fail configure if readline is missing." ON)
 include(CTest)
 
 set(ADS_SOURCES
+  src/ads/build_progress.c
   src/ads/isax/isax_file_loaders.c
   src/ads/isax/isax_first_buffer_layer.c
   src/ads/isax/isax_index.c
@@ -176,6 +177,14 @@ if(BUILD_TESTING)
     target_link_libraries(test_trie_partitioned_bounds PRIVATE ${MATH_LIBRARY})
   endif()
   add_test(NAME trie_partitioned_bound_reference COMMAND test_trie_partitioned_bounds)
+
+  add_executable(test_build_progress scripts/tests/test_build_progress.c)
+  target_include_directories(test_build_progress PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_build_progress PRIVATE ads Threads::Threads)
+  add_test(NAME build_progress_output COMMAND test_build_progress)
 endif()
 
 add_executable(bench_ed_simd EXCLUDE_FROM_ALL scripts/bench_ed_simd.c)

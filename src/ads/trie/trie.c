@@ -11,6 +11,7 @@
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
 #include "ads/inmemory_index_engine.h"
+#include "ads/build_progress.h"
 
 #include <float.h>
 #include <math.h>
@@ -1049,28 +1050,34 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double build_start = messi_monotonic_seconds();
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
+    messi_build_progress build_progress;
+    messi_build_progress_init(&build_progress);
     const size_t values = (size_t) ts_num * index->settings->timeseries_size;
     rawfile = malloc(values * sizeof(*rawfile));
-    if (rawfile == NULL) { fclose(file); return FAILURE; }
+    if (rawfile == NULL) { fclose(file); messi_build_progress_abort(&build_progress); return FAILURE; }
     if (filetype_int) {
         /* Convert in bounded chunks so integer input does not require a
          * second dataset-sized allocation beside rawfile. */
         const size_t chunk_values = 1U << 20;
         file_type *input = malloc(chunk_values * sizeof(*input));
-        if (input == NULL) { fclose(file); free(rawfile); rawfile = NULL; return FAILURE; }
+        if (input == NULL) { fclose(file); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
         for (size_t offset = 0; offset < values; offset += chunk_values) {
             size_t count = values - offset < chunk_values ? values - offset : chunk_values;
             if (fread(input, sizeof(*input), count, file) != count) {
-                free(input); fclose(file); free(rawfile); rawfile = NULL; return FAILURE;
+                free(input); fclose(file); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE;
             }
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
 #endif
             for (size_t i = 0; i < count; ++i) rawfile[offset + i] = (ts_type) input[i];
+            messi_build_progress_update(&build_progress,
+                10.0 * (double) (offset + count) / (double) values);
         }
         free(input);
     } else if (fread(rawfile, sizeof(*rawfile), values, file) != values) {
-        fclose(file); free(rawfile); rawfile = NULL; return FAILURE;
+        fclose(file); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE;
+    } else {
+        messi_build_progress_update(&build_progress, 10.0);
     }
     fclose(file);
     double read_end = messi_monotonic_seconds();
@@ -1078,7 +1085,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     if (trie == NULL ||
         (trie->root = trie_node_create(index->settings->n_segments, NULL,
                                        (trie_dimension_mask) { 0, 0 })) == NULL) {
-        free(trie); free(rawfile); rawfile = NULL; return FAILURE;
+        free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE;
     }
     trie->dimensions = index->settings->n_segments;
     trie->split_dimensions = index->settings->trie_split_dimensions > 0
@@ -1097,11 +1104,12 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     trie->root->words = calloc((size_t) ts_num, sizeof(*trie->root->words));
     trie->root->positions = malloc((size_t) ts_num * sizeof(*trie->root->positions));
     if ((size_t) ts_num > SIZE_MAX / (size_t) trie->dimensions) {
-        trie_node_destroy(trie->root); free(trie); free(rawfile); rawfile = NULL; return FAILURE;
+        trie_node_destroy(trie->root); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE;
     }
     trie->word_arena = malloc((size_t) ts_num * (size_t) trie->dimensions * sizeof(*trie->word_arena));
     trie->root->capacity = trie->root->size = (int) ts_num;
     int failed = trie->root->words == NULL || trie->root->positions == NULL || trie->word_arena == NULL;
+    unsigned long transform_completed = 0;
 #if HAVE_CBLAS
     if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
         for (long first = 0; first < ts_num && !failed;
@@ -1121,6 +1129,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     {
         fftw_workspace fftw = {0};
         ts_type *transform = malloc(sizeof(*transform) * (size_t) trie->dimensions);
+        unsigned long transform_pending = 0;
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_init(&fftw, index->settings->timeseries_size);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
@@ -1141,6 +1150,13 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
                 trie->root->words[i] = word;
                 trie->root->positions[i] = (file_position_type) ((size_t) i * index->settings->timeseries_size);
             }
+            if (++transform_pending == 1024 || i + 1 == ts_num) {
+                unsigned long completed = __sync_add_and_fetch(&transform_completed,
+                                                                transform_pending);
+                messi_build_progress_update(&build_progress,
+                    10.0 + 45.0 * (double) completed / (double) ts_num);
+                transform_pending = 0;
+            }
         }
         free(transform);
         pthread_mutex_lock(&trie_fftw_plan_lock);
@@ -1148,8 +1164,9 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     }
-    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; return FAILURE; }
+    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
     double transform_end = messi_monotonic_seconds();
+    messi_build_progress_update(&build_progress, 55.0);
 
     /* Split the initially enormous root before entering the task region.  The
      * sampled splitter uses OpenMP worksharing itself; nested worksharing from
@@ -1158,6 +1175,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         int root_split = trie_split_root_sampled_parallel(trie, index, trie->root);
         if (root_split < 0) {
             trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
+            messi_build_progress_abort(&build_progress);
             return FAILURE;
         }
         if (root_split == 0) {
@@ -1168,6 +1186,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         for (long i = 0; i < ts_num; ++i)
             trie_node_update_mbb(trie->root, trie->root->words[i], trie->dimensions);
     }
+    messi_build_progress_update(&build_progress, 65.0);
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
 #pragma omp single
@@ -1184,6 +1203,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             }
         }
     }
+    messi_build_progress_update(&build_progress, 90.0);
     if (index->settings->trie_leaf_kmeans != 0) {
         const double clustering_start = messi_monotonic_seconds();
         float *centers = trie_build_bin_centers(index, trie->dimensions);
@@ -1212,6 +1232,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double split_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
+    messi_build_progress_finish(&build_progress);
     fprintf(stderr, ">>> trie build timing\n");
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
     fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);

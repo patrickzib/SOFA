@@ -775,6 +775,9 @@ void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isa
 void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype_int, int apply_znorm,
                             isax_index *index, int kn) {
     fprintf(stderr, ">>> Indexing: %s\n", ifilename);
+    messi_build_progress build_progress;
+    unsigned long progress_records_completed = 0;
+    unsigned long progress_flush_completed = 0;
     double build_start = messi_monotonic_seconds();
     if (kn <= 0) {
         fprintf(stderr, "warning: dynamic_index=%d is invalid; defaulting to 1\n", kn);
@@ -859,6 +862,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
                                                            index->settings->max_total_buffer_size +
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
+    messi_build_progress_init(&build_progress);
     // set the thread on decided cpu
     COUNT_OUTPUT_TIME_START
 
@@ -878,10 +882,17 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
         input_data[i].node_counter = &node_counter;
         input_data[i].lock_barrier1 = &lock_barrier1;
         input_data[i].kn = kn;
+        input_data[i].build_progress = &build_progress;
+        input_data[i].progress_records_completed = &progress_records_completed;
+        input_data[i].progress_flush_completed = &progress_flush_completed;
+        input_data[i].progress_total_records = (unsigned long) ts_num;
+        input_data[i].progress_total_flushes = 0;
     }
 
     input_data[maxquerythread - 1].start_number = (maxquerythread - 1) * (ts_num / maxquerythread);
     input_data[maxquerythread - 1].stop_number = ts_num;
+    for (i = 0; i < maxquerythread; i++)
+        input_data[i].progress_total_flushes = (unsigned long) index->fbl->number_of_buffers;
     for (i = 0; i < maxquerythread; i++) {
         pthread_create(&(threadid[i]), NULL, index_creation_pRecBuf_worker, (void *) &(input_data[i]));
     }
@@ -901,6 +912,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     COUNT_INDEXING_TIME_END
 
+    messi_build_progress_finish(&build_progress);
     fprintf(stderr,
             ">>> iSAX build timing: load%s=%.3fs transform+insert+flush=%.3fs total=%.3fs\n",
             apply_znorm ? "+znorm" : "", load_end - build_start,
@@ -1364,11 +1376,6 @@ void *indexbulkloadingworker_pRecBuf_inmemory(void *transferdata) {
     float *raw_file = ((buffer_data_inmemory *) transferdata)->ts;
 
     for (i = start_number; i < stop_number; i++) {
-#ifndef DEBUG
-#if VERBOSE_LEVEL == 2
-        printf("\r\x1b[32mLoading: \x1b[36m%d\x1b[0m",(i + 1));
-#endif
-#endif
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
         if (sax_from_ts(ts, sax, index->settings) == SUCCESS) {
@@ -1418,6 +1425,8 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
 
     unsigned long i = 0;
     float *raw_file = data->ts;
+    unsigned long progress_records_pending = 0;
+    unsigned long progress_flush_pending = 0;
 
     fftw_workspace fftw = {0};
     ts_type *coeff_scratch = NULL;
@@ -1446,11 +1455,6 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
     }
 
     for (i = start_number; i < stop_number; i++) {
-#ifndef DEBUG
-#if VERBOSE_LEVEL == 2
-        printf("\r\x1b[32mLoading: \x1b[36m%d\x1b[0m",(i + 1));
-#endif
-#endif
         memcpy(ts, &(raw_file[i * index->settings->timeseries_size]), sizeof(float) * index->settings->timeseries_size);
 
         gettimeofday(&transformation_time_start, NULL);
@@ -1485,6 +1489,13 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         } else {
             fprintf(stderr, "error: cannot insert record in index, since representation failed to be created\n");
         }
+        if (++progress_records_pending == 1024 || i + 1 == stop_number) {
+            unsigned long completed = __sync_add_and_fetch(data->progress_records_completed,
+                                                            progress_records_pending);
+            messi_build_progress_update(data->build_progress,
+                80.0 * (double) completed / (double) data->progress_total_records);
+            progress_records_pending = 0;
+        }
     }
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
@@ -1515,6 +1526,17 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         }
         parallel_fbl_soft_buffer *current_fbl_node = &((parallel_first_buffer_layer * )(index->fbl))->soft_buffers[j];
         if (!current_fbl_node->initialized) {
+            if (++progress_flush_pending == 64 ||
+                j + 1 == index->fbl->number_of_buffers) {
+                unsigned long completed = __sync_add_and_fetch(data->progress_flush_completed,
+                                                                progress_flush_pending);
+                if (data->progress_total_flushes != 0) {
+                    messi_build_progress_update(data->build_progress,
+                        80.0 + 20.0 * (double) completed /
+                                   (double) data->progress_total_flushes);
+                }
+                progress_flush_pending = 0;
+            }
             continue;
         }
 
@@ -1538,6 +1560,17 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
             // clear FBL records moved in LBL buffers
 
             // clear records read from files (free only prev sax buffers)
+        }
+        if (++progress_flush_pending == 64 ||
+            j + 1 == index->fbl->number_of_buffers) {
+            unsigned long completed = __sync_add_and_fetch(data->progress_flush_completed,
+                                                            progress_flush_pending);
+            if (data->progress_total_flushes != 0) {
+                messi_build_progress_update(data->build_progress,
+                    80.0 + 20.0 * (double) completed /
+                               (double) data->progress_total_flushes);
+            }
+            progress_flush_pending = 0;
         }
 
     }

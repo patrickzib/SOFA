@@ -16,6 +16,7 @@
 #include "pqueue.h"
 #include "isax_first_buffer_layer.h"
 #include "ads/isax_node_split.h"
+#include "ads/build_progress.h"
 
 void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index *index);
 void index_generate_inmemory_m(const char *ifilename, long int ts_num, isax_index *index);
@@ -78,6 +79,11 @@ typedef struct buffer_data_inmemory
 	int *nodeid;
 	unsigned long *shared_start_number;
 	int kn;
+	messi_build_progress *build_progress;
+	unsigned long *progress_records_completed;
+	unsigned long *progress_flush_completed;
+	unsigned long progress_total_records;
+	unsigned long progress_total_flushes;
 }buffer_data_inmemory;
 
 typedef struct transferfblinmemory
