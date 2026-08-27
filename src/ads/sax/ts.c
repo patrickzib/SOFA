@@ -106,32 +106,16 @@ float ts_euclidean_distance_SIMD(ts_type *t, ts_type *s, int size, float bound) 
     float distance = 0.0f;
     const int original_size = size;
     int i = 0;
-    const int aligned = (((uintptr_t) t | (uintptr_t) s) & 63U) == 0;
-
-    /* A 32-float interval amortizes the reduction while retaining bounded
-       early-abandon overshoot (at most 31 values). */
-#define ED_AVX512_BLOCK(offset) do { \
-        const __m512 vt = aligned ? _mm512_load_ps(t + (offset)) : _mm512_loadu_ps(t + (offset)); \
-        const __m512 vs = aligned ? _mm512_load_ps(s + (offset)) : _mm512_loadu_ps(s + (offset)); \
-        const __m512 diff = _mm512_sub_ps(vt, vs); \
-        sum = _mm512_add_ps(sum, _mm512_mul_ps(diff, diff)); \
-    } while (0)
-    while (size >= 32 && distance < bound) {
-        __m512 sum = _mm512_setzero_ps();
-        ED_AVX512_BLOCK(i);
-        ED_AVX512_BLOCK(i + 16);
-        distance += _mm512_reduce_add_ps(sum);
-        i += 32;
-        size -= 32;
-    }
-    if (size >= 16 && distance < bound) {
-        __m512 sum = _mm512_setzero_ps();
-        ED_AVX512_BLOCK(i);
-        distance += _mm512_reduce_add_ps(sum);
+    while (size >= 16 && distance < bound) {
+        const int aligned = (((uintptr_t) &t[i] | (uintptr_t) &s[i]) & 63U) == 0;
+        __m512 vt = aligned ? _mm512_load_ps(&t[i]) : _mm512_loadu_ps(&t[i]);
+        __m512 vs = aligned ? _mm512_load_ps(&s[i]) : _mm512_loadu_ps(&s[i]);
+        __m512 diff = _mm512_sub_ps(vt, vs);
+        __m512 squared = _mm512_mul_ps(diff, diff);
+        distance += _mm512_reduce_add_ps(squared);
         i += 16;
         size -= 16;
     }
-#undef ED_AVX512_BLOCK
     while (i < original_size && distance < bound) {
         distance += (t[i] - s[i]) * (t[i] - s[i]);
         ++i;
