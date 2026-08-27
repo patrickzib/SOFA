@@ -61,11 +61,11 @@ datasets = {
 # separate metadata keeps this competitor benchmark comparable to the runner
 # even for SeisBench datasets that contain fewer than 100M records.
 dataset_properties = {
-    "BIGANN": (100_000_000, True), "DEEP1B": (100_000_000, False),
-    "SIFT1B": (100_000_000, False), "SPACEV1B": (100_000_000, True),
-    "TEXTTOIMAGE": (100_000_000, True), "TURINGANNS": (100_000_000, True),
+    "BIGANN": (100_000_000, True), "DEEP1b": (100_000_000, False),
+    "SIFT1b": (100_000_000, False), "spacev1b": (100_000_000, True),
+    "TEXTTOIMAGE": (100_000_000, True), "turinganns": (100_000_000, True),
     "ASTRO": (100_000_000, False), "SALD": (100_000_000, False),
-    "SCEDC": (100_000_000, False), "ETHZ": (4_999_932, False),
+    "SCEDC": (100_000_000, False), "ETHC": (4_999_932, False),
     "ISC_EHB_DepthPhases": (100_000_000, False), "LenDB": (37_345_260, False),
     "Iquique": (578_853, False), "NEIC": (93_473_541, False),
     "OBS": (15_508_794, False), "OBST2024": (4_160_286, False),
@@ -125,7 +125,6 @@ def run_benchmark(all_threads, output_dir):
             mem_before = process.memory_info().rss
 
             index = faiss.IndexFlatL2(d)
-            index.parallel_mode = 0
             index.add(data)
 
             mem_after = process.memory_info().rss
