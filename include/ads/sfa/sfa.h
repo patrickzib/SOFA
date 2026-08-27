@@ -14,6 +14,7 @@
 #include <sys/types.h>
 #include "dft.h"
 #include <stdint.h>
+#include "ads/build_progress.h"
 
 enum response sfa_bins_init(isax_index *index);
 void sfa_free_bins(isax_index *index);
@@ -57,6 +58,9 @@ typedef struct bins_data_inmemory
     int filetype_int;
     int apply_znorm;
     enum response status;
+    messi_build_progress *sampling_progress;
+    unsigned long *samples_completed;
+    unsigned long total_samples;
 }bins_data_inmemory;
 
 typedef struct variance_coeff_index

@@ -9,9 +9,11 @@
 typedef struct messi_build_progress {
     pthread_mutex_t lock;
     int last_percent;
+    const char *label;
 } messi_build_progress;
 
 void messi_build_progress_init(messi_build_progress *progress);
+void messi_build_progress_init_labeled(messi_build_progress *progress, const char *label);
 void messi_build_progress_update(messi_build_progress *progress, double percent);
 void messi_build_progress_finish(messi_build_progress *progress);
 void messi_build_progress_abort(messi_build_progress *progress);

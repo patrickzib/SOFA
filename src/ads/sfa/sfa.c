@@ -109,6 +109,8 @@ enum response sfa_set_bins(
     }
 
     fprintf(stderr, ">>> Binning: %s\n", ifilename);
+    messi_build_progress sampling_progress;
+    unsigned long samples_completed = 0;
     COUNT_BINNING_TIME_START
     double binning_start = messi_monotonic_seconds();
 
@@ -131,6 +133,7 @@ enum response sfa_set_bins(
         free_dft_memory(index, n_coefficients, dft_mem_array);
         return FAILURE;
     }
+    messi_build_progress_init_labeled(&sampling_progress, "sampling");
 
     /*
      * Phase 1:
@@ -174,6 +177,9 @@ enum response sfa_set_bins(
         data->apply_znorm = apply_znorm;
         data->status = SUCCESS;
         data->fftw = fftw;
+        data->sampling_progress = &sampling_progress;
+        data->samples_completed = &samples_completed;
+        data->total_samples = sample_size;
     }
 
     /* Give any remainder to the last sampling worker. */
@@ -205,9 +211,11 @@ enum response sfa_set_bins(
             }
             free(input_data);
             free_dft_memory(index, n_coefficients, dft_mem_array);
+            messi_build_progress_abort(&sampling_progress);
             return FAILURE;
         }
     }
+    messi_build_progress_finish(&sampling_progress);
     double sampling_end = messi_monotonic_seconds();
 
     /*
@@ -464,6 +472,7 @@ void *set_bins_worker_dft(void *transferdata) {
     struct bins_data_inmemory *bins_data = (bins_data_inmemory *) transferdata;
 
     ts_type **dft_mem_array = bins_data->dft_mem_array;
+    unsigned long sampling_pending = 0;
 
     isax_index *index = ((bins_data_inmemory *) transferdata)->index;
     unsigned long start_number = bins_data->start_number;
@@ -594,6 +603,13 @@ void *set_bins_worker_dft(void *transferdata) {
             ts_type value = fftw->transform[j];
             dft_mem_array[j][i + (bins_data->workernumber * bins_data->records_offset)]
                     = value;
+        }
+        if (++sampling_pending == 128 || i + 1 == records) {
+            unsigned long completed = __sync_add_and_fetch(bins_data->samples_completed,
+                                                            sampling_pending);
+            messi_build_progress_update(bins_data->sampling_progress,
+                100.0 * (double) completed / (double) bins_data->total_samples);
+            sampling_pending = 0;
         }
 
         // skip elements for uniform sampling

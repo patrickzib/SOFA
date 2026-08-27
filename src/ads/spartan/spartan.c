@@ -15,6 +15,7 @@
 #include "ads/sax/ts.h"
 #include "ads/spartan/spartan.h"
 #include "ads/sfa/sfa.h"
+#include "ads/build_progress.h"
 typedef struct spartan_bins_data {
     isax_index *index;
     ts_type **coeff_mem_array;
@@ -84,7 +85,8 @@ void spartan_free_bins(isax_index *index) {
 static enum response spartan_collect_samples(isax_index *index, const char *ifilename,
                                              long int ts_num, int filetype_int,
                                              int apply_znorm, ts_type *samples,
-                                             unsigned int sample_size) {
+                                             unsigned int sample_size,
+                                             messi_build_progress *sampling_progress) {
     if (sample_size == 0) {
         return FAILURE;
     }
@@ -101,6 +103,7 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
     }
 
     unsigned int records = sample_size;
+    unsigned int sampling_pending = 0;
     if ((long int) records > ts_num) {
         records = (unsigned int) ts_num;
     }
@@ -164,6 +167,11 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                     memcpy(destination, float_block + offset, ts_length * sizeof(*destination));
                 }
                 ++sample;
+                if (++sampling_pending == 128 || sample == records) {
+                    messi_build_progress_update(sampling_progress,
+                        100.0 * (double) sample / (double) records);
+                    sampling_pending = 0;
+                }
             }
         }
         free(float_block);
@@ -182,6 +190,11 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                 for (unsigned long j = 0; j < ts_length; ++j) ts[j] = (ts_type) ts_orig1[j];
             } else if (fread(ts, sizeof(ts_type), ts_length, ifile) != ts_length) {
                 free(ts_orig1); free(positions); fclose(ifile); return FAILURE;
+            }
+            if (++sampling_pending == 128 || i + 1 == records) {
+                messi_build_progress_update(sampling_progress,
+                    100.0 * (double) (i + 1) / (double) records);
+                sampling_pending = 0;
             }
         }
     }
@@ -274,6 +287,7 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
     }
 
     fprintf(stderr, ">>> SPARTAN binning: %s\n", ifilename);
+    messi_build_progress sampling_progress;
     COUNT_BINNING_TIME_START
     double binning_start = messi_monotonic_seconds();
 
@@ -282,11 +296,15 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
         fprintf(stderr, "error: failed to allocate SPARTAN sample buffer.\n");
         return FAILURE;
     }
+    messi_build_progress_init_labeled(&sampling_progress, "sampling");
 
-    if (spartan_collect_samples(index, ifilename, ts_num, filetype_int, apply_znorm, samples, sample_size) != SUCCESS) {
+    if (spartan_collect_samples(index, ifilename, ts_num, filetype_int, apply_znorm,
+                                samples, sample_size, &sampling_progress) != SUCCESS) {
         free(samples);
+        messi_build_progress_abort(&sampling_progress);
         return FAILURE;
     }
+    messi_build_progress_finish(&sampling_progress);
     double sample_end = messi_monotonic_seconds();
 
     pca_free(index);

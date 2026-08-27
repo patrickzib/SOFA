@@ -81,6 +81,8 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
     }
 
     fprintf(stderr, ">>> PISA binning: %s\n", ifilename);
+    messi_build_progress sampling_progress;
+    unsigned long samples_completed = 0;
     COUNT_BINNING_TIME_START
     double binning_start = messi_monotonic_seconds();
 
@@ -104,6 +106,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
         free_dft_memory(index, fft_dim, dft_mem_array);
         return FAILURE;
     }
+    messi_build_progress_init_labeled(&sampling_progress, "sampling");
 
     fftw_workspace fftw = {0};
     const long sample_chunk = sample_size / worker_threads;
@@ -133,6 +136,9 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
         input_data[i].apply_znorm = apply_znorm;
         input_data[i].status = SUCCESS;
         input_data[i].fftw = fftw;
+        input_data[i].sampling_progress = &sampling_progress;
+        input_data[i].samples_completed = &samples_completed;
+        input_data[i].total_samples = sample_size;
     }
 
     input_data[worker_threads - 1].records =
@@ -160,9 +166,11 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
         if (input_data[i].status != SUCCESS) {
             free(input_data);
             free_dft_memory(index, fft_dim, dft_mem_array);
+            messi_build_progress_abort(&sampling_progress);
             return FAILURE;
         }
     }
+    messi_build_progress_finish(&sampling_progress);
     double sampling_end = messi_monotonic_seconds();
 
     ts_type *samples = calloc((size_t) sample_size * (size_t) fft_dim, sizeof(ts_type));
