@@ -20,17 +20,17 @@ int main(void) {
     dup2(saved_stderr, fileno(stderr));
     close(saved_stderr);
 
-    char output[256] = {0};
+    char output[1024] = {0};
     rewind(capture);
     size_t bytes = fread(output, 1, sizeof(output) - 1, capture);
     fclose(capture);
     if (bytes == 0) return 1;
-    if (strstr(output, "\r>> building index: \x1b[32m0%\x1b[0m") == NULL ||
-        strstr(output, "\r>> building index: \x1b[32m42%\x1b[0m") == NULL ||
-        strstr(output, "\r>> building index: \x1b[32m99%\x1b[0m") == NULL ||
-        strstr(output, "\r>> building index: \x1b[32m100%\x1b[0m\n") == NULL) return 1;
+    if (strstr(output, "\r>> building index: \x1b[32m0.00%\x1b[0m | elapsed") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m42.90%\x1b[0m | elapsed") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m99.90%\x1b[0m | elapsed") == NULL ||
+        strstr(output, "\r>> building index: \x1b[32m100.00%\x1b[0m | elapsed") == NULL) return 1;
 
-    const char *first = strstr(output, "\x1b[32m100%\x1b[0m\n");
+    const char *first = strstr(output, "\x1b[32m100.00%\x1b[0m | elapsed");
     return first != NULL &&
-           strstr(first + 1, "\x1b[32m100%\x1b[0m\n") == NULL ? 0 : 1;
+           strstr(first + 1, "\x1b[32m100.00%\x1b[0m | elapsed") == NULL ? 0 : 1;
 }
