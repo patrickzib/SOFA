@@ -1,0 +1,2 @@
+dataset_id,base_count,dimension,threads,preparation_seconds,reference_selection_seconds,grouping_seconds,structure_build_seconds,index_build_seconds,max_rss_kib,base_loading_included,source_conversion_included
+meier2019jgr,6361998,256,64,1.7963e-05,34.6080134,50.8630057,9.16742405,94.6540025,1247240,true,false

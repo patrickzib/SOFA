@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "neic",
+  "dimension": 256,
+  "sax_length": 16,
+  "base_count": 93473541,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-08-27T20:59:43Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 200,
+  "base_file": "/vol/tmp/schaefpa/seismic/NEIC.bin",
+  "query_file": "/vol/tmp/schaefpa/seismic/NEIC_queries.bin",
+  "index_dir": "/tmp/dids-index.1ec5aV/neic/dim-256-sax-16",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256", "--mode", "all", "--dataset-id", "neic", "--dimension", "256", "--base-file", "/vol/tmp/schaefpa/seismic/NEIC.bin", "--base-count", "93473541", "--query-file", "/vol/tmp/schaefpa/seismic/NEIC_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "200", "--ref-objects", "10000", "--leaf-size", "2000", "--read-buffer", "200000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.1ec5aV/neic/dim-256-sax-16", "--output-dir", "/vol/home-vol3/wbi/schaefpa/dids_results/dids/neic/threads-64"]
+}
