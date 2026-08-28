@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "globals.h"
+#include "ads/build_progress.h"
 #include "ads/spartan/pca.h"
 
 #if HAVE_CBLAS
