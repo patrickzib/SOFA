@@ -8,6 +8,7 @@ import tempfile
 import zipfile
 
 import sys
+from pathlib import Path
 
 sys.path.append("../")
 
@@ -225,15 +226,18 @@ def read_UCR_logs_vdb():
         all_files[key][config] = path + "/" + key
     return all_files
 
-def read_faiss_logs(log_type:str ="queries"):
-    # path = "logs/FAISS_mini_batch_logs"
-    path = "logs/FAISS_L2_logs_mini_batch"
+def read_faiss_logs(log_type="queries"):
+    path = Path("logs/FAISS_L2_logs_mini_batch/10")
     all_files = {}
-    for i, key in enumerate(np.sort(fnmatch.filter(os.listdir(path), log_type+"*.csv"))):
-        # print("Queries", i, key)
-        config = key.split("_")[-1].split(".")[0]
-        all_files[key] = {}
-        all_files[key][config] = path + "/" + key
+
+    for file in sorted(path.glob(f"{log_type}_*.csv")):
+        # queries_ASTRO_10.csv -> ASTRO, 10
+        parts = file.stem.split("_")
+        config = parts[-1]
+        dataset = "_".join(parts[1:-1]).upper()
+
+        all_files.setdefault(dataset, {})[config] = str(file)
+
     return all_files
 
 
