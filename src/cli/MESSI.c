@@ -7,7 +7,7 @@
 #define _GNU_SOURCE
 
 #define PRODUCT "----------------------------------------------\
-\nThis is the Adaptive Leaf iSAX index.\n\
+\nMESSI time-series index.\n\
 ----------------------------------------------\n\n"
 #ifdef VALUES
 #include <values.h>
@@ -322,6 +322,7 @@ int main(int argc, char **argv) {
     static int apply_znorm = 0;
     static int dynamic_index = 1;
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
+    static int root_split_variance_disabled = 0;
     static int node_split_criterion = 1;
     static messi_index_type index_type = MESSI_INDEX_ISAX;
     /* The trie mirrors iSAX's per-query worker scheduling by default. */
@@ -334,6 +335,14 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_kmeans = 0;
+    /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
+     * SOFA v2 adds the optional record-level extensions below. */
+    static int isax_node_mbr = 1;
+    static int isax_record_mbr_suffix_bound = 0;
+    static int isax_record_lb_table = 0;
+    static int isax_mbr_dimensions = 0;
+    static int isax_mbr_dimensions_specified = 0;
+    static int enable_sofa_v2 = 0;
     static int trie_fanout = 8;
     static int trie_fanout_specified = 0;
     static int trie_dynamic_alphabet = 0;
@@ -402,11 +411,12 @@ int main(int argc, char **argv) {
                 {"node-split-criterion",required_argument, 0,   'G'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
+                {"no-dynamic-root-split-variance", no_argument,  0, 1022},
                 {"index-type", required_argument, 0, 1000},
                 {"trie-query-parallel", no_argument, 0, 1001},
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
-                {"trie-query-leaf-batch", no_argument, 0, 1017},
+                {"trie-query-leaf-batch", no_argument, 0, 1023},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
@@ -417,6 +427,11 @@ int main(int argc, char **argv) {
                 {"trie-min-fanout", required_argument, 0, 1010},
                 {"trie-max-fanout", required_argument, 0, 1011},
                 {"trie-alphabet-budget-bits", required_argument, 0, 1012},
+                {"isax-node-mbr", no_argument, 0, 1017},
+                {"isax-record-mbr-suffix-bound", no_argument, 0, 1018},
+                {"isax-mbr-dimensions", required_argument, 0, 1019},
+                {"isax-record-lb-table", no_argument, 0, 1020},
+                {"enable-sofa-v2", no_argument, 0, 1021},
                 {"query-report-interval", required_argument, 0, 1006},
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
@@ -447,7 +462,7 @@ int main(int argc, char **argv) {
             case 1003:
                 trie_query_batch = 1;
                 break;
-            case 1017:
+            case 1023:
                 trie_query_leaf_batch = 1;
                 break;
             case 1004:
@@ -488,6 +503,27 @@ int main(int argc, char **argv) {
                 break;
             case 1014:
                 trie_leaf_kmeans = atoi(optarg);
+                break;
+            case 1017:
+                isax_node_mbr = 1;
+                break;
+            case 1018:
+                isax_record_mbr_suffix_bound = 1;
+                break;
+            case 1019:
+                isax_mbr_dimensions = atoi(optarg);
+                isax_mbr_dimensions_specified = 1;
+                break;
+            case 1020:
+                isax_record_lb_table = 1;
+                break;
+            case 1021:
+                enable_sofa_v2 = 1;
+                break;
+            case 1022:
+                root_split_variance_disabled = 1;
+                if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE)
+                    root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
                 break;
             case 'j':
                 serial_scan = 1;
@@ -683,80 +719,87 @@ int main(int argc, char **argv) {
 #ifdef BENCHMARK
                 printf(PRODUCT);
 #endif
-                printf("Usage:\n\
-                \t--dataset XX \t\t\tThe path to the dataset file\n\
-                \t--queries XX \t\t\tThe path to the queries file\n\
-                \t--dataset-size XX \t\tThe number of time series to load\n\
-                \t--queries-size XX \t\tThe number of queries to do\n\
-                \t--minimum-distance XX\t\tThe minimum distance we search (MAX if not set)\n\
-                \t--use-index  \t\t\tSpecifies that an input index will be used\n\
-                \t--index-path XX \t\tThe path of the output folder\n\
-                \t--timeseries-size XX\t\tThe size of each time series\n\
-                \t--sax-cardinality XX\t\tThe maximum sax cardinality in number of bits (power of two).\n\
-                \t--n-segments XX\t\tSymbolic dimensions (trie: 16--64; default: 16).\n\
-                \t--leaf-size XX\t\t\tThe maximum size of each leaf\n\
-                \t--min-leaf-size XX\t\tThe minimum size of each leaf\n\
-                \t--initial-lbl-size XX\t\tThe initial lbl buffer size for each buffer.\n\
-                \t--flush-limit XX\t\tThe limit of time series in memory at the same time\n\
-                \t--initial-fbl-size XX\t\tThe initial fbl buffer size for each buffer.\n\
-                \t--node-split-criterion XX\tSelect split decision (1=informed default, 2=simple, 3=maxvar, 4=maxbin)\n\
-                \t--dynamic-root-split-uniform XX\tUniform root split in bits per symbolic dimension\n\
-                \t--dynamic-root-split-variance\tUse all root-key bits, assigned by transform variance\n\
-                \t--index-type isax|trie\tIndex layout (default: isax)\n\
-                \t--trie-query-parallel\tParallelize each trie query across subtrees (default)\n\
-                \t--trie-query-batch\tBatch independent trie queries instead\n\
-                \t--trie-query-leaf-batch\tExperimental shared leaf-range scheduler for trie query batches\n\
-                \t--trie-mbr-dimensions XX\tTrie MBR dimensions (16--128; default: maximum available)\n\
-                \t--trie-split-dimensions XX\tTrie split-candidate dimensions (default: min(32, MBR dimensions))\n\
-                \t--trie-record-mbr-suffix-bound\tAdd non-record-dimension leaf-MBR contributions to trie record bounds (default for trie)\n\
-                \t--no-trie-record-mbr-suffix-bound\tDisable trie record-MBR suffix pruning\n\
-                \t--trie-leaf-kmeans K\tBuild K flat k-means MBR groups inside trie leaves (2--64; default: off)\n\
-                \t--trie-fanout 2|4|8\tTrie symbolic split fanout (default: 8)\n\
-                \t--trie-dynamic-alphabet\tUse one global variance-weighted alphabet allocation\n\
-                \t--trie-min-fanout 2|4|...\tMinimum dynamic trie fanout (default: 2)\n\
-                \t--trie-max-fanout 2|4|...\tMaximum dynamic trie fanout (default: 16)\n\
-                \t--trie-alphabet-budget-bits N\tAverage dynamic alphabet budget in bits (default: 3)\n\
-                \t--query-report-interval N\tPrint first, every Nth completed, and final query row (0=none; default: 10)\n\
-                \t--profile-query-phases\tRecord query phase timings/counters (diagnostic only; substantially slows queries)\n\
-                \t--complete-type XX\t\t0 for no complete, 1 for serial, 2 for leaf\n\
-                \t--total-loaded-leaves XX\tNumber of leaves to load at each fetch\n\
-                \t--min-checked-leaves XX\t\tNumber of leaves to check at minimum\n\
-                \t--tight-bound XX\t\tSet for tight bounds.\n\
-                \t--aggressive-check XX\t\tSet for aggressive check\n\
-                \t--serial\t\t\tSet for serial scan\n\
-                \t--knn\t\t\t\tSet for knn search\n\
-                \t--k-size\t\t\tSet k size of knn\n\
-                \t--topk\t\t\t\tSet for top k search\n\
-                \t--dtwwindowsize\t\t\tSet dtw window size\n\
-                \t--knn-label-set\t\t\tSet label set\n\
-                \t--queue-number\t\t\tset the number of priority queues\n\
-                \t--in-memory\t\t\tSet for in-memory search\n\
-                \t--function-type\t\t\tSet for query answering type\n\
-                \t\t\tin memory  only index creation: 0\n\
-                \t\t\tParIS-TS: 1\n\
-                \t\t\tParIS: 2\n\
-                \t\t\t\\MESSI-mq: 3\n\
-                \t\t\tMESSI+SFA: 4\n\
-                \t\t\tMESSI+SPARTAN: 5\n\
-                \t\t\tMESSI+PISA: 6\n\
-                \t--no-simd\t\t\tDisable SIMD even when AVX2 is available\n\
-                \t--sample-size\t\t\tSet sample size for MCB\n\
-                \t--sample-type\t\t\tSet for sampling strategy\n\
-                \t\t\tfirst-n-values sampling: 1\n\
-                \t\t\tuniform sampling: 2\n\
-                \t\t\trandom sampling: 3\n\
-                \t--sampling-seed\t\t\tSeed for random binning sampling (default: 1)\n\
-                \t--filetype-int\t\t\tSet if the input time series file is stored in int-type\n\
-                \t--apply-z-norm\t\t\tApply z-normalization to the data\n\
-                \t--is-norm\t\t\tSet for search with normalized input time series\n\
-                \t--sfa-n-coefficients\t\t\tSet number of coeff to choose highest-variance coeff (doubled for real & imag parts - must be between n-segments and timeseries-size)\n\
-                \t--histogram-type\t\t\tSet for binning strategy\n\
-                \t\t\tequi-depth splitting (default): 1\n\
-                \t\t\tequi-width splitting: 2\n\
-                \t--threads N|auto\t\tWorker threads (default: all CPUs available to this process)\n\
-                \t--numa auto|none|N\tCPU affinity: all available NUMA nodes, disabled, or first N nodes\n\
-                \t--help\n\n\
-                ");
+                printf("Usage: MESSI --dataset PATH --queries PATH [options]\n\n"
+                       "Benchmark options:\n"
+                       "\n"
+                       "Input and index construction:\n"
+                       "  --dataset PATH                 Base-series file\n"
+                       "  --queries PATH                 Query-series file\n"
+                       "  --dataset-size N               Number of base series\n"
+                       "  --queries-size N               Number of queries\n"
+                       "  --timeseries-size N            Values per series\n"
+                       "  --index-path PATH              Index output directory\n"
+                       "  --index-type isax|trie         Layout (default: isax)\n"
+                       "  --n-segments N                 Symbolic dimensions (default: 16; trie: 16--64)\n"
+                       "  --sax-cardinality N            SAX bits per dimension\n"
+                       "  --leaf-size N                  Maximum records per leaf\n"
+                       "  --min-leaf-size N              Minimum iSAX query-leaf occupancy\n"
+                       "  --node-split-criterion 1..4    informed (default), simple, maxvar, maxbin\n"
+                       "  --in-memory                    Build/query in-memory index\n"
+                       "\n"
+                       "Query execution:\n"
+                       "  --threads N|auto               Worker threads (default: available CPUs)\n"
+                       "  --queue-number N               Priority queues\n"
+                       "  --numa auto|none|N             CPU affinity policy\n"
+                       "  --tight-bound                  Enable tight iSAX leaf pruning\n"
+                       "  --aggressive-check             Enable aggressive pruning\n"
+                       "  --query-report-interval N      Progress rows (0 disables; default: 10)\n"
+                       "\n"
+                       "Transforms and binning:\n"
+                       "  --function-type N              0 build only; 1 ParIS-TS; 2 ParIS; 3 MESSI-SAX;\n"
+                       "                               4 SFA; 5 SPARTAN; 6 PISA\n"
+                       "  --sample-size N                Binning sample size\n"
+                       "  --sample-type 1|2|3            first values, uniform, or random\n"
+                       "  --sampling-seed N              Random sampling seed (default: 1)\n"
+                       "  --histogram-type 1|2           Equi-depth (default) or equi-width\n"
+                       "  --sfa-n-coefficients N         SFA candidate coefficients (even; n-segments..series length)\n"
+                       "  --filetype-int                 Read int input and convert to float\n"
+                       "  --apply-z-norm                 Z-normalize base and queries\n"
+                       "  --is-norm                      Input is already normalized (SFA ignores DC)\n"
+                       "\n"
+                       "iSAX options:\n"
+                       "  --dynamic-root-split-uniform N Uniform root bits per dimension\n"
+                       "  --dynamic-root-split-variance  Allocate root bits by learned variance\n"
+                       "  --no-dynamic-root-split-variance  Keep learned root split uniform\n"
+                       "  --enable-sofa-v2               Enable all optional iSAX SOFA v2 features\n"
+                       "  --isax-node-mbr                Node symbolic-MBR bounds (default)\n"
+                       "  --isax-record-mbr-suffix-bound Learned record-MBR suffix bounds\n"
+                       "  --isax-mbr-dimensions N        Extended MBR dimensions (default: 32)\n"
+                       "  --isax-record-lb-table         Query-local record symbol-LB table\n"
+                       "\n"
+                       "Trie options:\n"
+                       "  --trie-query-parallel          Parallelize each query (default)\n"
+                       "  --trie-query-batch             Batch independent queries\n"
+                       "  --trie-query-leaf-batch        Experimental shared leaf-range batch scheduler\n"
+                       "  --trie-mbr-dimensions N        MBR dimensions (16--128)\n"
+                       "  --trie-split-dimensions N      Split candidates (default: min(32, MBR dimensions))\n"
+                       "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
+                       "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
+                       "  --trie-leaf-kmeans K           Flat leaf MBR groups (2--64; off by default)\n"
+                       "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
+                       "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
+                       "  --trie-min-fanout N            Dynamic fanout lower bound\n"
+                       "  --trie-max-fanout N            Dynamic fanout upper bound\n"
+                       "  --trie-alphabet-budget-bits N  Dynamic average alphabet budget\n"
+                       "\n"
+                       "Expert / legacy options:\n"
+                       "\n"
+                       "  --use-index                    Open an existing index\n"
+                       "  --flush-limit N                Maximum buffered records\n"
+                       "  --initial-lbl-size N           Initial leaf-buffer size\n"
+                       "  --initial-fbl-size N           Initial first-buffer-layer size\n"
+                       "  --minimum-distance D           Initial best-so-far distance\n"
+                       "  --total-loaded-leaves N        Leaves loaded at each fetch\n"
+                       "  --min-checked-leaves N         Minimum leaves checked\n"
+                       "  --serial                       Serial scan\n"
+                       "  --knn --k-size N               Legacy labelled k-NN (requires --knn-label-set)\n"
+                       "  --topk                         Legacy top-k search\n"
+                       "  --dtwwindowsize N              DTW window\n"
+                       "  --knn-label-set PATH           Label set for legacy k-NN\n"
+                       "  --profile-query-phases         Detailed counters; substantially slows queries\n"
+                       "  --complete-type 0|1|2          Completion mode: none, serial, leaf\n"
+                       "  --no-simd                      Disable compiled SIMD kernels (scalar comparison)\n"
+                       "  --help                         Show this help\n");
                 return 0;
                 break;
             case 'a':
@@ -775,6 +818,27 @@ int main(int argc, char **argv) {
     }
     INIT_STATS();
     profile_query_phases = profile_query_phases_requested;
+    if (enable_sofa_v2) {
+        if (index_type != MESSI_INDEX_ISAX) {
+            fprintf(stderr, "error: --enable-sofa-v2 requires --index-type isax.\n");
+            return EXIT_FAILURE;
+        }
+        isax_node_mbr = 1;
+        /* SAX has no learned-coefficient suffix representation.  Keep the
+         * umbrella useful for mixed benchmark suites: it still enables its
+         * applicable node/table pieces, while learned methods get the full
+         * extended suffix path. */
+        if (function_type == 4 || function_type == 5 || function_type == 6)
+            isax_record_mbr_suffix_bound = 1;
+        isax_record_lb_table = 1;
+        if (!isax_mbr_dimensions_specified) isax_mbr_dimensions = 32;
+        if (!root_split_variance_disabled && root_split_mode == MESSI_ROOT_SPLIT_DEFAULT &&
+            (function_type == 4 || function_type == 5 || function_type == 6))
+            root_split_mode = MESSI_ROOT_SPLIT_VARIANCE;
+    }
+    /* A record suffix bound is meaningful only together with node MBRs. */
+    if (isax_record_mbr_suffix_bound) isax_node_mbr = 1;
+    if (isax_mbr_dimensions == 0) isax_mbr_dimensions = 32;
     if (query_report_interval_requested < 0) {
         fprintf(stderr, "error: query report interval must be zero or positive.\n");
         return EXIT_FAILURE;
@@ -851,6 +915,26 @@ int main(int argc, char **argv) {
     }
     if (trie_leaf_kmeans && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-leaf-kmeans requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (index_type != MESSI_INDEX_ISAX &&
+        (isax_node_mbr || isax_record_mbr_suffix_bound || isax_record_lb_table ||
+         isax_mbr_dimensions_specified || enable_sofa_v2)) {
+        fprintf(stderr, "error: iSAX SOFA v2 options require --index-type isax.\n");
+        return EXIT_FAILURE;
+    }
+    if ((isax_record_mbr_suffix_bound || isax_mbr_dimensions_specified) &&
+        (isax_mbr_dimensions < n_segments || isax_mbr_dimensions > time_series_size ||
+         (isax_mbr_dimensions & 1) != 0)) {
+        fprintf(stderr,
+                "error: iSAX MBR dimensions must be even and between n-segments (%d) and timeseries-size (%d).\n",
+                n_segments, time_series_size);
+        return EXIT_FAILURE;
+    }
+    if (isax_record_mbr_suffix_bound &&
+        function_type != 4 && function_type != 5 && function_type != 6) {
+        fprintf(stderr,
+                "error: --isax-record-mbr-suffix-bound requires learned SFA, SPARTAN, or PISA transforms.\n");
         return EXIT_FAILURE;
     }
     if (dynamic_index < 1 || dynamic_index > sax_cardinality) {
@@ -1182,6 +1266,10 @@ int main(int argc, char **argv) {
 
         index_settings->node_split_criterion = node_split_criterion;
         index_settings->index_type = index_type;
+        index_settings->isax_node_mbr = isax_node_mbr;
+        index_settings->isax_record_mbr_suffix_bound = isax_record_mbr_suffix_bound;
+        index_settings->isax_record_lb_table = isax_record_lb_table;
+        index_settings->isax_mbr_dimensions = isax_mbr_dimensions;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
@@ -1524,14 +1612,9 @@ int main(int argc, char **argv) {
                    "  queries          : %d\n"
                    "  wall time        : %s (%.3f ms/query)\n",
                    queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size);
-            if (profile_query_phases) {
-                fprintf(stderr,
-                       "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
-                       nodes, checked_node_percent, index_nodes);
-            } else {
-                fprintf(stderr,
-                       "  checked nodes    : not recorded (use --profile-query-phases; adds substantial overhead)\n");
-            }
+            fprintf(stderr,
+                   "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
+                   nodes, checked_node_percent, index_nodes);
             fprintf(stderr,
                    "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
                    "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",

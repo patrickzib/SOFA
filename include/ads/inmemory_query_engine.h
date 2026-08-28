@@ -41,4 +41,6 @@ query_result exact_search_inmemory (ts_type *ts, ts_type *paa, isax_index *index
 query_result exact_search_inmemory2 (ts_type *ts, ts_type *paa, isax_index *index,
                            float minimum_distance, int min_checked_leaves);
 void insert_tree_node(float *paa,isax_node *node,isax_index *index,float bsf,pqueue_t *pq);
+/* Reset the thread-local iSAX record-bound cache at the beginning of a query. */
+void isax_reset_record_lb_table(void);
 #endif

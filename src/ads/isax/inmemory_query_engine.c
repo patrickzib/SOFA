@@ -28,6 +28,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 
 #define NTHREADS 4
 int checkts = 0;
@@ -39,6 +40,30 @@ float *MINDISTS;
  * diagnostics.
  */
 __thread messi_query_stats *messi_active_query_stats = NULL;
+
+/* The table is query-local/TLS: it removes repeated bin-interval work from
+ * leaf scans without any cross-worker synchronization or persistent index
+ * memory.  It is only built for the explicit SOFA-v2 table option. */
+static __thread float isax_record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
+static __thread const isax_index *isax_record_lb_table_index = NULL;
+static __thread const ts_type *isax_record_lb_table_transform = NULL;
+static __thread int isax_record_lb_table_ready = 0;
+
+void isax_reset_record_lb_table(void) {
+    isax_record_lb_table_index = NULL;
+    isax_record_lb_table_transform = NULL;
+    isax_record_lb_table_ready = 0;
+}
+
+static void isax_prepare_record_lb_table(const isax_index *index, const ts_type *paa) {
+    if (index == isax_record_lb_table_index && paa == isax_record_lb_table_transform) return;
+    isax_record_lb_table_index = index;
+    isax_record_lb_table_transform = paa;
+    isax_record_lb_table_ready = index != NULL && index->settings != NULL &&
+        index->settings->isax_record_lb_table &&
+        messi_build_record_lb_table(index, paa, index->settings->n_segments,
+                                    isax_record_lb_table);
+}
 
 void *compute_mindists_in(void *ptr) {
     struct args_in *arguments = (struct args_in *) ptr;
@@ -213,26 +238,16 @@ static void update_node_result(query_result *best, float distance) {
     }
 }
 
-static void scan_node_record_untracked(isax_index *index, ts_type *query, ts_type *paa,
-                                       sax_type *sax, ts_type *series, query_result *best) {
-    const float lower = messi_minidist_raw(index, paa, sax,
-                                           index->settings->max_sax_cardinalities,
-                                           best->distance);
+static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
+                             sax_type *sax, ts_type *series, query_result *best,
+                             unsigned long *exact_distances) {
+    const float lower = isax_record_lb_table_ready
+        ? messi_record_lb_table_sum(isax_record_lb_table, sax, index->settings->n_segments,
+                                    best->distance, index->settings->SIMD_flag != 0)
+        : messi_minidist_raw(index, paa, sax, index->settings->max_sax_cardinalities,
+                             best->distance);
     if (lower >= best->distance) return;
-    const float distance = ts_ed(query, series, index->settings->timeseries_size,
-                                 best->distance);
-    update_node_result(best, distance);
-}
-
-static void scan_node_record_tracked(isax_index *index, ts_type *query, ts_type *paa,
-                                     sax_type *sax, ts_type *series,
-                                     query_result *best, messi_query_stats *stats) {
-    ++stats->lower_bounds;
-    const float lower = messi_minidist_raw(index, paa, sax,
-                                           index->settings->max_sax_cardinalities,
-                                           best->distance);
-    if (lower >= best->distance) return;
-    ++stats->exact_distances;
+    if (exact_distances != NULL) ++*exact_distances;
     const float distance = ts_ed(query, series, index->settings->timeseries_size,
                                  best->distance);
     update_node_result(best, distance);
@@ -243,30 +258,24 @@ query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
                                             query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
+    isax_prepare_record_lb_table(index, paa);
     messi_query_stats *stats = messi_active_query_stats;
-    if (stats == NULL) {
-        for (int i = 0; i < buffer->full_buffer_size; ++i)
-            scan_node_record_untracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
-                                       &result);
-        for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
-            scan_node_record_untracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
-                                       &result);
-        for (int i = 0; i < buffer->partial_buffer_size; ++i)
-            scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
-                                       rawfile + *buffer->partial_position_buffer[i],
-                                       &result);
-    } else {
-        for (int i = 0; i < buffer->full_buffer_size; ++i)
-            scan_node_record_tracked(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
-                                     &result, stats);
-        for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
-            scan_node_record_tracked(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
-                                     &result, stats);
-        for (int i = 0; i < buffer->partial_buffer_size; ++i)
-            scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
-                                     rawfile + *buffer->partial_position_buffer[i],
-                                     &result, stats);
-    }
+    unsigned long exact_distances = 0;
+    if (stats != NULL)
+        stats->lower_bounds += (unsigned long) buffer->full_buffer_size +
+                               (unsigned long) buffer->tmp_full_buffer_size +
+                               (unsigned long) buffer->partial_buffer_size;
+    for (int i = 0; i < buffer->full_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->full_sax_buffer[i], buffer->full_ts_buffer[i],
+                         &result, stats != NULL ? &exact_distances : NULL);
+    for (int i = 0; i < buffer->tmp_full_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->tmp_full_sax_buffer[i], buffer->tmp_full_ts_buffer[i],
+                         &result, stats != NULL ? &exact_distances : NULL);
+    for (int i = 0; i < buffer->partial_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
+                         rawfile + *buffer->partial_position_buffer[i], &result,
+                         stats != NULL ? &exact_distances : NULL);
+    if (stats != NULL) stats->exact_distances += exact_distances;
     return result;
 }
 
@@ -275,18 +284,15 @@ query_result calculate_node_result2_inmemory(isax_index *index, isax_node *node,
                                              query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
+    isax_prepare_record_lb_table(index, paa);
     messi_query_stats *stats = messi_active_query_stats;
-    if (stats == NULL) {
-        for (int i = 0; i < buffer->partial_buffer_size; ++i)
-            scan_node_record_untracked(index, query, paa, buffer->partial_sax_buffer[i],
-                                       rawfile + *buffer->partial_position_buffer[i],
-                                       &result);
-    } else {
-        for (int i = 0; i < buffer->partial_buffer_size; ++i)
-            scan_node_record_tracked(index, query, paa, buffer->partial_sax_buffer[i],
-                                     rawfile + *buffer->partial_position_buffer[i],
-                                     &result, stats);
-    }
+    unsigned long exact_distances = 0;
+    if (stats != NULL) stats->lower_bounds += buffer->partial_buffer_size;
+    for (int i = 0; i < buffer->partial_buffer_size; ++i)
+        scan_node_record(index, query, paa, buffer->partial_sax_buffer[i],
+                         rawfile + *buffer->partial_position_buffer[i], &result,
+                         stats != NULL ? &exact_distances : NULL);
+    if (stats != NULL) stats->exact_distances += exact_distances;
     return result;
 }
 

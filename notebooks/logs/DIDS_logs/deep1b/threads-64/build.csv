@@ -1,0 +1,2 @@
+dataset_id,base_count,dimension,threads,preparation_seconds,index_build_seconds,max_rss_kib,base_loading_included,source_conversion_included
+deep1b,100000000,96,64,1.7025e-05,4763.1673,406916,true,false

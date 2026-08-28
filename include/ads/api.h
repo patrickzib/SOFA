@@ -35,6 +35,10 @@ typedef struct {
     int index_type;
     unsigned int sampling_seed;
     int node_split_criterion;
+    char isax_node_mbr;
+    char isax_record_mbr_suffix_bound;
+    char isax_record_lb_table;
+    int isax_mbr_dimensions;
     int trie_bound_dimensions;
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;

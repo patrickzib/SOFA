@@ -1,0 +1,52 @@
+command: env OMP_NUM_THREADS=64 OMP_PROC_BIND=close OMP_PLACES=cores numactl --interleave=all /vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256 --mode all --dataset-id obst2024 --dimension 256 --base-file /vol/tmp/schaefpa/seismic/OBST2024.bin --base-count 4160286 --query-file /vol/tmp/schaefpa/seismic/OBST2024_queries.bin --query-count 100 --scalar-type float32 --base-header raw --query-header raw --preprocessing none --threads 64 --search exact --k 1 --approximate-nodes 200 --ref-objects 10000 --leaf-size 2000 --read-buffer 200000 --write-buffer 100 --index-dir /tmp/dids-index.eAG0zm/obst2024/dim-256-sax-16 --output-dir /vol/home-vol3/wbi/schaefpa/dids_results/dids/obst2024/threads-64 
+date_utc: 2026-08-27T21:11:01Z
+host: tonic
+Linux tonic 7.1.8-1-default #1 SMP PREEMPT_DYNAMIC Mon Aug 10 05:03:20 UTC 2026 (f1071af) x86_64 x86_64 x86_64 GNU/Linux
+Architektur:                             x86_64
+CPU Operationsmodus:                     32-bit, 64-bit
+Adressgrößen:                            46 bits physical, 57 bits virtual
+Byte-Reihenfolge:                        Little Endian
+CPU(s):                                  128
+Liste der Online-CPU(s):                 0-127
+Anbieterkennung:                         GenuineIntel
+Modellname:                              Intel(R) Xeon(R) Platinum 8358 CPU @ 2.60GHz
+Prozessorfamilie:                        6
+Modell:                                  106
+Thread(s) pro Kern:                      2
+Kern(e) pro Sockel:                      32
+Sockel:                                  2
+Stepping:                                6
+Microcode-Version:                       0xd000421
+Skalierung der CPU(s):                   24%
+Maximale Taktfrequenz der CPU:           3400,0000
+Minimale Taktfrequenz der CPU:           800,0000
+BogoMIPS:                                5200,00
+Markierungen:                            fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 intel_ppin ssbd mba ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a avx512f avx512dq rdseed adx smap avx512ifma clflushopt clwb intel_pt avx512cd sha_ni avx512bw avx512vl xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local split_lock_detect wbnoinvd dtherm ida arat pln pts hwp hwp_act_window hwp_epp hwp_pkg_req vnmi avx512vbmi umip pku ospke avx512_vbmi2 gfni vaes vpclmulqdq avx512_vnni avx512_bitalg avx512_vpopcntdq la57 rdpid fsrm md_clear pconfig flush_l1d arch_capabilities
+Virtualisierung:                         VT-x
+L1d Cache:                               3 MiB (64 Instanzen)
+L1i Cache:                               2 MiB (64 Instanzen)
+L2 Cache:                                80 MiB (64 Instanzen)
+L3 Cache:                                96 MiB (2 Instanzen)
+NUMA-Knoten:                             2
+NUMA-Knoten0 CPU(s):                     0-126:2
+NUMA-Knoten1 CPU(s):                     1-127:2
+Schwachstelle Gather data sampling:      Mitigation; Microcode
+Schwachstelle Ghostwrite:                Not affected
+Schwachstelle Indirect target selection: Mitigation; Aligned branch/return thunks
+Schwachstelle Itlb multihit:             Not affected
+Schwachstelle L1tf:                      Not affected
+Schwachstelle Mds:                       Not affected
+Schwachstelle Meltdown:                  Not affected
+Schwachstelle Mmio stale data:           Mitigation; Clear CPU buffers; SMT vulnerable
+Schwachstelle Old microcode:             Not affected
+Schwachstelle Reg file data sampling:    Not affected
+Schwachstelle Retbleed:                  Not affected
+Schwachstelle Spec rstack overflow:      Not affected
+Schwachstelle Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Schwachstelle Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Schwachstelle Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI SW loop, KVM SW loop
+Schwachstelle Srbds:                     Not affected
+Schwachstelle Tsa:                       Not affected
+Schwachstelle Tsx async abort:           Not affected
+Schwachstelle Vmscape:                   Not affected
+Usage: dids_benchmark --mode build|query|all --dataset-id ID --dimension N

@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "sift1b",
+  "dimension": 128,
+  "sax_length": 16,
+  "base_count": 100000000,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-08-27T14:45:25Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 200,
+  "base_file": "/vol/tmp/schaefpa/messi_datasets/sift1b.bin",
+  "query_file": "/vol/tmp/schaefpa/messi_datasets/sift1b_queries.bin",
+  "index_dir": "/tmp/dids-index.kZwgLc/sift1b/dim-128-sax-16",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_128", "--mode", "all", "--dataset-id", "sift1b", "--dimension", "128", "--base-file", "/vol/tmp/schaefpa/messi_datasets/sift1b.bin", "--base-count", "100000000", "--query-file", "/vol/tmp/schaefpa/messi_datasets/sift1b_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "200", "--ref-objects", "10000", "--leaf-size", "2000", "--read-buffer", "10000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.kZwgLc/sift1b/dim-128-sax-16", "--output-dir", "/vol/home-vol3/wbi/schaefpa/dids_results/dids/sift1b/threads-64"]
+}

@@ -1,0 +1,2 @@
+dataset_id,base_count,dimension,threads,preparation_seconds,reference_selection_seconds,grouping_seconds,structure_build_seconds,index_build_seconds,max_rss_kib,base_loading_included,source_conversion_included
+spacev1b,100000000,100,64,51.6645015,124.885872,696.320157,139.560546,960.814591,618008,true,false
