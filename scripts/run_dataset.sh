@@ -26,6 +26,12 @@ Options:
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: isax (default) or trie
+  --enable-sofa-v2          Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
+  --isax-node-mbr           Enable iSAX node MBR bounds
+  --isax-record-mbr-suffix-bound
+                            Enable learned iSAX record-MBR suffix bounds
+  --isax-mbr-dims N         Extended iSAX MBR dimensions (default: 32)
+  --isax-record-lb-table    Use query-local iSAX record lower-bound tables
   --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
   --n-segments N            Trie record-prefix lower-bound dimensions (default: 16; range: 16--64;
                             alias: --trie-record-lb-dims)
@@ -187,6 +193,12 @@ PROFILE_QUERY_PHASES=false
 QUERY_REPORT_INTERVAL=
 # Resolved after parsing because the default depends on --index-type.
 DYNAMIC_ROOT_SPLIT_VARIANCE=
+DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
+ENABLE_SOFA_V2=false
+ISAX_NODE_MBR=false
+ISAX_RECORD_MBR_SUFFIX_BOUND=false
+ISAX_MBR_DIMS=
+ISAX_RECORD_LB_TABLE=false
 TIGHT_BOUND=true
 DRY_RUN=${MESSI_DRY_RUN:-false}
 MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
@@ -219,6 +231,11 @@ while [[ $# -gt 0 ]]; do
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
+        --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
+        --isax-record-mbr-suffix-bound) ISAX_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --isax-mbr-dims|--isax-mbr-dimensions) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_MBR_DIMS=$2; shift 2 ;;
+        --isax-record-lb-table) ISAX_RECORD_LB_TABLE=true; shift ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
@@ -234,8 +251,8 @@ while [[ $# -gt 0 ]]; do
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
-        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
-        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
+        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
+        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --tight-bound) TIGHT_BOUND=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
@@ -393,6 +410,14 @@ COMMON_ARGS+=(
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--n-segments "$TRIE_RECORD_LB_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
+if [[ $INDEX_TYPE == isax ]]; then
+    $ENABLE_SOFA_V2 && COMMON_ARGS+=(--enable-sofa-v2)
+    $ISAX_NODE_MBR && COMMON_ARGS+=(--isax-node-mbr)
+    $ISAX_RECORD_MBR_SUFFIX_BOUND && COMMON_ARGS+=(--isax-record-mbr-suffix-bound)
+    [[ -n $ISAX_MBR_DIMS ]] && COMMON_ARGS+=(--isax-mbr-dimensions "$ISAX_MBR_DIMS")
+    $ISAX_RECORD_LB_TABLE && COMMON_ARGS+=(--isax-record-lb-table)
+fi
+[[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && COMMON_ARGS+=(--no-dynamic-root-split-variance)
 if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && COMMON_ARGS+=(--no-trie-record-mbr-suffix-bound)

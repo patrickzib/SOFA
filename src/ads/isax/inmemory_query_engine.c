@@ -28,6 +28,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
 #include "ads/calc_utils.h"
+#include "ads/lower_bound_simd.h"
 
 #define NTHREADS 4
 int checkts = 0;
@@ -39,6 +40,30 @@ float *MINDISTS;
  * diagnostics.
  */
 __thread messi_query_stats *messi_active_query_stats = NULL;
+
+/* The table is query-local/TLS: it removes repeated bin-interval work from
+ * leaf scans without any cross-worker synchronization or persistent index
+ * memory.  It is only built for the explicit SOFA-v2 table option. */
+static __thread float isax_record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
+static __thread const isax_index *isax_record_lb_table_index = NULL;
+static __thread const ts_type *isax_record_lb_table_transform = NULL;
+static __thread int isax_record_lb_table_ready = 0;
+
+void isax_reset_record_lb_table(void) {
+    isax_record_lb_table_index = NULL;
+    isax_record_lb_table_transform = NULL;
+    isax_record_lb_table_ready = 0;
+}
+
+static void isax_prepare_record_lb_table(const isax_index *index, const ts_type *paa) {
+    if (index == isax_record_lb_table_index && paa == isax_record_lb_table_transform) return;
+    isax_record_lb_table_index = index;
+    isax_record_lb_table_transform = paa;
+    isax_record_lb_table_ready = index != NULL && index->settings != NULL &&
+        index->settings->isax_record_lb_table &&
+        messi_build_record_lb_table(index, paa, index->settings->n_segments,
+                                    isax_record_lb_table);
+}
 
 void *compute_mindists_in(void *ptr) {
     struct args_in *arguments = (struct args_in *) ptr;
@@ -216,9 +241,11 @@ static void update_node_result(query_result *best, float distance) {
 static void scan_node_record(isax_index *index, ts_type *query, ts_type *paa,
                              sax_type *sax, ts_type *series, query_result *best,
                              unsigned long *exact_distances) {
-    const float lower = messi_minidist_raw(index, paa, sax,
-                                           index->settings->max_sax_cardinalities,
-                                           best->distance);
+    const float lower = isax_record_lb_table_ready
+        ? messi_record_lb_table_sum(isax_record_lb_table, sax, index->settings->n_segments,
+                                    best->distance, index->settings->SIMD_flag != 0)
+        : messi_minidist_raw(index, paa, sax, index->settings->max_sax_cardinalities,
+                             best->distance);
     if (lower >= best->distance) return;
     if (exact_distances != NULL) ++*exact_distances;
     const float distance = ts_ed(query, series, index->settings->timeseries_size,
@@ -231,6 +258,7 @@ query_result calculate_node_result_inmemory(isax_index *index, isax_node *node,
                                             query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
+    isax_prepare_record_lb_table(index, paa);
     messi_query_stats *stats = messi_active_query_stats;
     unsigned long exact_distances = 0;
     if (stats != NULL)
@@ -256,6 +284,7 @@ query_result calculate_node_result2_inmemory(isax_index *index, isax_node *node,
                                              query_result result) {
     if (node == NULL || node->buffer == NULL) return result;
     isax_node_buffer *buffer = node->buffer;
+    isax_prepare_record_lb_table(index, paa);
     messi_query_stats *stats = messi_active_query_stats;
     unsigned long exact_distances = 0;
     if (stats != NULL) stats->lower_bounds += buffer->partial_buffer_size;
