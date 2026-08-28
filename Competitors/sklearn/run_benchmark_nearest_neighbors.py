@@ -74,6 +74,10 @@ def z_normalize_rows(values, rows_per_batch=8192):
         block /= stddev[:, None]
 
 
+def report(message):
+    print(message, flush=True)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark scikit-learn NearestNeighbors.")
     parser.add_argument("--data-root", default=os.environ.get("MESSI_DATA_ROOT", NORMAL_PATH))
@@ -95,28 +99,43 @@ def parse_args():
 
 
 def run_dataset(dataset, args):
-    from sklearn.neighbors import NearestNeighbors
-
     data_file, query_file, dimensions, is_seisbench, dtype = DATASETS[dataset]
     root = Path(args.seisbench_root if is_seisbench else args.data_root)
     data_path, query_path = root / data_file, root / query_file
     missing = [str(path) for path in (data_path, query_path) if not path.is_file()]
     if missing:
-        print(f"Skipping {dataset}: missing " + ", ".join(missing))
+        report(f"Skipping {dataset}: missing " + ", ".join(missing))
         return
     configured_count, apply_znorm = DATASET_PROPERTIES[dataset]
-    data = read_vectors(data_path, dimensions, dtype, args.record_count or configured_count)
+    requested_records = args.record_count or configured_count
+    report(f"\n=== {dataset} ===")
+    report("  loading scikit-learn")
+    from sklearn.neighbors import NearestNeighbors
+
+    report(f"  loading base: {data_path} ({requested_records:,} records, {dimensions} dimensions)")
+    load_started = time.perf_counter()
+    data = read_vectors(data_path, dimensions, dtype, requested_records)
+    report(f"  base loaded: {data.shape[0]:,} records, {data.nbytes / 1024 ** 2:.1f} MiB "
+           f"in {time.perf_counter() - load_started:.2f} s")
+    report(f"  loading queries: {query_path} ({args.query_count:,} records)")
+    query_load_started = time.perf_counter()
     queries = read_vectors(query_path, dimensions, dtype, args.query_count)
+    report(f"  queries loaded: {queries.shape[0]:,} records in "
+           f"{time.perf_counter() - query_load_started:.2f} s")
     if apply_znorm:
+        report("  z-normalizing base and queries")
+        normalize_started = time.perf_counter()
         z_normalize_rows(data)
         z_normalize_rows(queries)
+        report(f"  normalization complete in {time.perf_counter() - normalize_started:.2f} s")
     if args.k > len(data):
         raise ValueError(f"{dataset}: --k ({args.k}) exceeds {len(data)} loaded records")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"Running {dataset}: data={data.shape}, queries={queries.shape}")
+    report(f"  ready: data={data.shape}, queries={queries.shape}, output={output_dir}")
     for threads in args.threads:
+        report(f"  threads={threads}: fitting NearestNeighbors (algorithm=auto)")
         build_started = time.perf_counter()
         index = NearestNeighbors(
             n_neighbors=args.k, algorithm="auto", metric="euclidean", n_jobs=threads
@@ -125,6 +144,8 @@ def run_dataset(dataset, args):
         # NearestNeighbors retains a reference to this float32 data matrix.
         storage_mib = data.nbytes / 1024 ** 2
 
+        report(f"  threads={threads}: fit complete in {build_ms:.2f} ms; "
+               f"backend={getattr(index, '_fit_method', 'unknown')}; querying {len(queries):,} vectors")
         query_started = time.perf_counter()
         distances, indices = index.kneighbors(queries, return_distance=True)
         query_ms = (time.perf_counter() - query_started) * 1000
@@ -135,9 +156,8 @@ def run_dataset(dataset, args):
                    header="index creation time in ms, index storage in MiB", fmt="%s")
         np.savetxt(output_dir / ("queries_" + suffix), rows, delimiter=",",
                    header="query,time in ms,distance, total", fmt="%s")
-        print(f"  threads={threads}: {query_ms:.2f} ms total; "
-              f"{len(queries) / (query_ms / 1000):.2f} queries/s; "
-              f"backend={getattr(index, '_fit_method', 'unknown')}")
+        report(f"  threads={threads}: {query_ms:.2f} ms total; "
+               f"{len(queries) / (query_ms / 1000):.2f} queries/s; results written to {output_dir}")
 
 
 def main():
