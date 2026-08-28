@@ -1631,6 +1631,7 @@ query_result exact_search_MESSI(ts_type *ts, ts_type *paa, isax_index *index, no
                                 float minimum_distance, int min_checked_leaves, int kn) {
     /* Stats are worker-local and batched by leaf scanners.  This keeps the
      * normal benchmark path free of global/atomic per-record accounting. */
+    isax_reset_record_lb_table();
     messi_query_stats seed_stats = {0};
     messi_active_query_stats = &seed_stats;
     query_result approximate_result = approximate_search_inmemory_pRecBuf(ts, paa, index, kn);
@@ -2655,17 +2656,22 @@ insert_tree_node_m_hybridpqueue_workstealing(float *paa, isax_node *node, isax_i
 }
 
 
+static float isax_node_lower_bound(float *paa, isax_node *node, isax_index *index, float bsf) {
+    if (index->settings->isax_node_mbr && node->mbb_sax_valid &&
+        node->mbb_sax_min != NULL && node->mbb_sax_max != NULL) {
+        return messi_minidist_range_raw(index, paa, node->mbb_sax_min, node->mbb_sax_max,
+                                        index->settings->max_sax_cardinalities, bsf);
+    }
+    return messi_minidist_raw(index, paa, node->isax_values, node->isax_cardinalities, bsf);
+}
+
 void insert_tree_node_m_hybridpqueue(float *paa, isax_node *node, isax_index *index, float bsf, pqueue_t **pq,
                                      pthread_mutex_t *lock_queue, int *tnumber) {
 
     /* One checked node is one index-node lower-bound evaluation.  Leaf
      * record scanning has separate lower-bound and exact-distance counters. */
     if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
-    // float distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
-    float distance = messi_minidist_range_raw(
-        index, paa,
-        node->mbb_sax_min, node->mbb_sax_max,
-        index->settings->max_sax_cardinalities, bsf);
+    float distance = isax_node_lower_bound(paa, node, index, bsf);
 
     //__sync_fetch_and_add(&LBDcalculationnumber,1);
     //COUNT_CAL_TIME_END
@@ -2697,11 +2703,7 @@ void insert_tree_node_m_hybridpqueue_time(float *paa, isax_node *node, isax_inde
 
     if (messi_active_query_stats != NULL) ++messi_active_query_stats->checked_nodes;
     gettimeofday(&lb_dist_time_start, NULL);
-    // distance = messi_minidist(index, paa, node->isax_values, node->isax_cardinalities, bsf);
-    float distance = messi_minidist_range_raw(
-            index, paa,
-            node->mbb_sax_min, node->mbb_sax_max,
-            index->settings->max_sax_cardinalities, bsf);
+    float distance = isax_node_lower_bound(paa, node, index, bsf);
 
     gettimeofday(&current_time, NULL);
     *time_lb += ((int) (current_time.tv_sec * 1000000 + (current_time.tv_usec)) -

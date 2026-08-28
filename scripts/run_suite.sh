@@ -20,6 +20,12 @@ Options:
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
   --index-type TYPE       Index layout: isax (default) or trie
+  --enable-sofa-v2        Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
+  --isax-node-mbr         Enable iSAX node MBR bounds
+  --isax-record-mbr-suffix-bound
+                          Enable learned iSAX record-MBR suffix bounds
+  --isax-mbr-dims N       Extended iSAX MBR dimensions (default: 32)
+  --isax-record-lb-table  Use query-local iSAX record lower-bound tables
   --queue-number N        Fixed queue count (default: same as each --threads value)
   --numa MODE             auto (default), none, or number of NUMA nodes
   --dataset-file PATH     Override the dataset path for every selected run
@@ -123,6 +129,12 @@ TRIE_QUERY_BATCH=false
 QUERY_REPORT_INTERVAL=
 PROFILE_QUERY_PHASES=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=
+DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
+ENABLE_SOFA_V2=false
+ISAX_NODE_MBR=false
+ISAX_RECORD_MBR_SUFFIX_BOUND=false
+ISAX_MBR_DIMS=
+ISAX_RECORD_LB_TABLE=false
 TIGHT_BOUND=true
 MESSI_EXECUTABLE=
 DATA_ROOT=
@@ -141,6 +153,11 @@ while [[ $# -gt 0 ]]; do
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
+        --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
+        --isax-record-mbr-suffix-bound) ISAX_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
+        --isax-mbr-dims|--isax-mbr-dimensions) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_MBR_DIMS=$2; shift 2 ;;
+        --isax-record-lb-table) ISAX_RECORD_LB_TABLE=true; shift ;;
         --queue-number) [[ $# -ge 2 ]] || die "$1 requires a value"; QUEUE_NUMBER=$2; shift 2 ;;
         --numa) [[ $# -ge 2 ]] || die "$1 requires a value"; NUMA_MODE=$2; shift 2 ;;
         --dataset-file) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_FILE=$2; shift 2 ;;
@@ -168,8 +185,8 @@ while [[ $# -gt 0 ]]; do
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
-        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; shift ;;
-        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; shift ;;
+        --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
+        --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --tight-bound) TIGHT_BOUND=true; shift ;;
         --no-tight-bound) TIGHT_BOUND=false; shift ;;
         --binary) [[ $# -ge 2 ]] || die "$1 requires a value"; MESSI_EXECUTABLE=$2; shift 2 ;;
@@ -287,8 +304,13 @@ run_one() {
     [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
-    [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
+    [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
     if [[ $INDEX_TYPE == isax ]]; then
+        $ENABLE_SOFA_V2 && command+=(--enable-sofa-v2)
+        $ISAX_NODE_MBR && command+=(--isax-node-mbr)
+        $ISAX_RECORD_MBR_SUFFIX_BOUND && command+=(--isax-record-mbr-suffix-bound)
+        [[ -n $ISAX_MBR_DIMS ]] && command+=(--isax-mbr-dimensions "$ISAX_MBR_DIMS")
+        $ISAX_RECORD_LB_TABLE && command+=(--isax-record-lb-table)
         $TIGHT_BOUND && command+=(--tight-bound)
         [[ $TIGHT_BOUND == false ]] && command+=(--no-tight-bound)
     fi
@@ -418,9 +440,14 @@ run_query_suite() {
             [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
             $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
-            [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
+            [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods")
             if [[ $INDEX_TYPE == isax ]]; then
+                $ENABLE_SOFA_V2 && command+=(--enable-sofa-v2)
+                $ISAX_NODE_MBR && command+=(--isax-node-mbr)
+                $ISAX_RECORD_MBR_SUFFIX_BOUND && command+=(--isax-record-mbr-suffix-bound)
+                [[ -n $ISAX_MBR_DIMS ]] && command+=(--isax-mbr-dimensions "$ISAX_MBR_DIMS")
+                $ISAX_RECORD_LB_TABLE && command+=(--isax-record-lb-table)
                 $TIGHT_BOUND && command+=(--tight-bound)
                 [[ $TIGHT_BOUND == false ]] && command+=(--no-tight-bound)
             fi

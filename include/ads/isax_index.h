@@ -85,6 +85,12 @@ typedef struct {
     int n_coefficients;
     int node_split_criterion;
     messi_index_type index_type;
+    /* Optional iSAX SOFA v2 bounds.  The primary iSAX word/tree always
+     * remains n_segments wide; MBR suffix dimensions live in a sidecar. */
+    char isax_node_mbr;
+    char isax_record_mbr_suffix_bound;
+    char isax_record_lb_table;
+    int isax_mbr_dimensions;
     /* Trie-only: public --n-segments remains the lower-bound dimensionality,
      * while the trie may materialize a wider symbolic word for splitting. */
     int trie_bound_dimensions;
@@ -118,6 +124,10 @@ typedef struct {
     FILE *sax_file;
     sax_type *sax_cache;
     unsigned long sax_cache_size;
+    /* One byte per enabled suffix dimension and record.  This is allocated
+     * only for SOFA v2 suffix MBRs, never for the default iSAX path. */
+    sax_type *mbr_suffix_sax_cache;
+    unsigned long mbr_suffix_sax_cache_size;
 
     unsigned long long allocated_memory;
     unsigned long root_nodes;

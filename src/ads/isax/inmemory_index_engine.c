@@ -73,7 +73,7 @@ void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index 
                    sizeof(sax_type) * index->settings->n_segments);
             isax_fbl_index_insert_inmemory(index, sax, pos);
             ts_loaded++;
-        } else {
+        } else if (index->settings->isax_node_mbr) {
             fprintf(stderr, "error: cannot insert record in index, since sax representation\
                     failed to be created");
         }
@@ -961,7 +961,7 @@ void *indexbulkloadingworker_inmemory(void *transferdata) {
                                                 ((buffer_data_inmemory *) transferdata)->lock_cbl,
                                                 ((buffer_data_inmemory *) transferdata)->lock_firstnode,
                                                 ((buffer_data_inmemory *) transferdata)->lock_index);
-        } else {
+        } else if (index->settings->isax_node_mbr) {
             fprintf(stderr, "error: cannot insert record in index, since sax representation\
                     failed to be created");
         }
@@ -2085,9 +2085,9 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
 
     // Traverse tree
     while (!node->is_leaf) {
-        if (record->sax != NULL) {
+        if (index->settings->isax_node_mbr && record->sax != NULL) {
             isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
-        } else {
+        } else if (index->settings->isax_node_mbr) {
             fprintf(stderr, "debug: missing sax for MBR update.\n");
         }
         int location = index->settings->sax_bit_cardinality - 1 -
@@ -2115,10 +2115,10 @@ isax_node *add_record_to_node_inmemory(isax_index *index,
     add_to_node_buffer(node->buffer, record, index->settings->n_segments,
                        index->settings->timeseries_size);
     node->leaf_size++;
-    if (record->sax != NULL) {
+    if (index->settings->isax_node_mbr && record->sax != NULL) {
         isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
     }
-    else {
+    else if (index->settings->isax_node_mbr) {
         fprintf(stderr, "debug: missing sax for MBR update.\n");
     }
 

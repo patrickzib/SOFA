@@ -244,6 +244,10 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
+    settings->isax_node_mbr = 0;
+    settings->isax_record_mbr_suffix_bound = 0;
+    settings->isax_record_lb_table = 0;
+    settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_kmeans = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
@@ -748,9 +752,9 @@ isax_node * add_record_to_node(isax_index *index,
 
     // Traverse tree
     while (!node->is_leaf) {
-        if (record->sax != NULL) {
+        if (index->settings->isax_node_mbr && record->sax != NULL) {
             isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
-        } else {
+        } else if (index->settings->isax_node_mbr) {
             fprintf(stderr, "debug: missing sax for MBR update.\n");
         }
         int location = index->settings->sax_bit_cardinality - 1 -
@@ -779,9 +783,9 @@ isax_node * add_record_to_node(isax_index *index,
     add_to_node_buffer(node->buffer, record, index->settings->n_segments,
                        index->settings->timeseries_size);
     node->leaf_size++;
-    if (record->sax != NULL) {
+    if (index->settings->isax_node_mbr && record->sax != NULL) {
         isax_node_mbb_sax_update(node, record->sax, index->settings->n_segments);
-    } else {
+    } else if (index->settings->isax_node_mbr) {
         fprintf(stderr, "debug: missing sax for MBR update.\n");
     }
     return node;
@@ -2878,6 +2882,20 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         }
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
+    if (settings->index_type == MESSI_INDEX_ISAX) {
+        if (settings->isax_node_mbr || settings->isax_record_mbr_suffix_bound ||
+            settings->isax_record_lb_table) {
+            fprintf(stderr, "  SOFA v2      : node MBR=%s, record suffix=%s, record-LB table=%s",
+                    settings->isax_node_mbr ? "on" : "off",
+                    settings->isax_record_mbr_suffix_bound ? "on" : "off",
+                    settings->isax_record_lb_table ? "on" : "off");
+            if (settings->isax_record_mbr_suffix_bound)
+                fprintf(stderr, ", MBR dimensions=%d", settings->isax_mbr_dimensions);
+            fprintf(stderr, "\n");
+        } else {
+            fprintf(stderr, "  SOFA v2      : disabled (use --enable-sofa-v2 or individual iSAX flags)\n");
+        }
+    }
     char max_leaf_size[32], min_leaf_size[32], sample_size[32];
     fprintf(stderr, "  leaf capacity : %s (minimum %s)\n",
             format_compact_count((unsigned long long) settings->max_leaf_size, max_leaf_size),
