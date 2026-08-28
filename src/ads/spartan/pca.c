@@ -227,6 +227,35 @@ enum response pca_fit(
     return SUCCESS;
 }
 
+void pca_report_projection_backend(int workers, unsigned int rows) {
+    static int reported_projection_mode = 0;
+    if (reported_projection_mode) return;
+
+    messi_build_progress_begin_diagnostic();
+#if HAVE_CBLAS
+#if HAVE_OPENBLAS_CONFIG
+    const char *openblas_config = openblas_get_config();
+    const int parallel_sgemm = openblas_config != NULL &&
+        strstr(openblas_config, "SINGLE_THREADED") != NULL && workers > 1 && rows > 1;
+    if (parallel_sgemm) {
+        fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS is single-threaded, using %d OpenMP workers\n",
+                workers < (int) rows ? workers : (int) rows);
+    } else if (openblas_config != NULL) {
+        fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS threaded (%s)\n",
+                openblas_config);
+    } else {
+        fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
+    }
+#else
+    fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
+#endif
+#else
+    fprintf(stderr, ">>> PCA projection: scalar fallback (CBLAS not compiled)\n");
+#endif
+    messi_build_progress_end_diagnostic();
+    reported_projection_mode = 1;
+}
+
 enum response pca_project_batch(const isax_index *index, const ts_type *input,
                                 unsigned int rows, ts_type *output, int workers) {
     if (index == NULL || input == NULL || output == NULL || rows == 0 ||
@@ -239,6 +268,8 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
     const int output_dim = index->settings->n_segments;
     const int components = index->pca_components_count;
     if (components > output_dim) return FAILURE;
+
+    pca_report_projection_backend(workers, rows);
 
 #if HAVE_CBLAS
     memset(output, 0, sizeof(*output) * (size_t) rows * output_dim);
@@ -272,36 +303,12 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
                     input, input_dim, index->pca_components, input_dim,
                     0.0f, output, output_dim);
     }
-    static int reported_projection_mode = 0;
-    if (!reported_projection_mode) {
-        messi_build_progress_begin_diagnostic();
-#if HAVE_OPENBLAS_CONFIG
-        if (parallel_sgemm) {
-            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS is single-threaded, using %d OpenMP workers\n",
-                    workers < (int) rows ? workers : (int) rows);
-        } else if (openblas_config != NULL) {
-            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS threaded (%s)\n",
-                    openblas_config);
-        } else {
-            fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
-        }
-#else
-        fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
-#endif
-        messi_build_progress_end_diagnostic();
-        reported_projection_mode = 1;
-    }
     for (unsigned int row = 0; row < rows; ++row) {
         ts_type *projected = output + (size_t) row * output_dim;
         for (int k = 0; k < components; ++k) projected[k] += (ts_type) index->pca_bias[k];
     }
     return SUCCESS;
 #else
-    static int reported_scalar_mode = 0;
-    if (!reported_scalar_mode) {
-        fprintf(stderr, ">>> PCA projection: scalar fallback (CBLAS not compiled)\n");
-        reported_scalar_mode = 1;
-    }
     for (unsigned int row = 0; row < rows; ++row) {
         if (pca_from_ts(index, input + (size_t) row * input_dim,
                         output + (size_t) row * output_dim) != SUCCESS)

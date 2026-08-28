@@ -431,6 +431,8 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
             sample_end - binning_start, pca_end - sample_end,
             projection_end - pca_end, bins_end - projection_end,
             bins_end - binning_start);
+    /* Emit this during setup, not in the middle of index-build progress. */
+    pca_report_projection_backend(maxquerythread > 0 ? maxquerythread : 1, ts_num);
     fprintf(stderr, ">>> Finished SPARTAN binning\n");
     return SUCCESS;
 }
