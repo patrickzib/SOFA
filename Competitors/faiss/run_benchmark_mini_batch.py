@@ -2,8 +2,6 @@ import argparse
 import os
 import time
 
-import psutil
-
 import numpy as np
 
 def read(fp, dim, data_type=np.float32, count=100):
@@ -121,17 +119,20 @@ def run_benchmark(all_threads, output_dir):
             faiss.omp_set_num_threads(threads)
             print(f"\t{dataset},{threads}\tBuilding indices...")
             tic = time.time_ns()
-            process = psutil.Process(os.getpid())
-            mem_before = process.memory_info().rss
 
             index = faiss.IndexFlatL2(d)
             index.add(data)
 
-            mem_after = process.memory_info().rss
             index_time = (time.time_ns() - tic) / 1e6
-            memory_used = (mem_after - mem_before) / 1048576
+            # IndexFlatL2 stores an owned float32 copy of every vector.  This
+            # is the index's actual payload size, unlike RSS deltas, which can
+            # be zero or negative when a previous index is freed or allocator
+            # pages are reused between benchmark configurations.
+            memory_used = (
+                index.ntotal * index.d * np.dtype(np.float32).itemsize
+            ) / (1024 ** 2)
             print(f"\tRuntime: {index_time} ms")
-            print(f"\tMemory: {memory_used} MB (rough estimate)")
+            print(f"\tIndex storage: {memory_used:.2f} MiB (float32 payload)")
             index_creation = [[index_time, memory_used]]
 
             results = []
@@ -152,7 +153,7 @@ def run_benchmark(all_threads, output_dir):
 
             suffix = f"{dataset}_{threads}.csv"
             np.savetxt(os.path.join(output_dir, "index_" + suffix), index_creation,
-                       delimiter=",", header="index creation time in ms, memory in MB", fmt="%s")
+                       delimiter=",", header="index creation time in ms, index storage in MiB", fmt="%s")
             np.savetxt(os.path.join(output_dir, "queries_" + suffix), results,
                        delimiter=",", header="query,time in ms,distance, total", fmt="%s")
 
