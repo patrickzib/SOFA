@@ -370,9 +370,9 @@ static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
     }
 }
 
-#define TRIE_LEAF_KMEANS_MIN_SIZE 4096
-#define TRIE_LEAF_KMEANS_TRAIN_SIZE 2048
-#define TRIE_LEAF_KMEANS_MAX_ITERATIONS 10
+#define TRIE_LEAF_IVF_MIN_SIZE 4096
+#define TRIE_LEAF_IVF_TRAIN_SIZE 2048
+#define TRIE_LEAF_IVF_MAX_ITERATIONS 10
 
 static double trie_cluster_distance(const sax_type *word, const float *centroid,
                                     const float *centers, int dimensions, int alphabet) {
@@ -387,8 +387,8 @@ static double trie_cluster_distance(const sax_type *word, const float *centroid,
 static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
                              int cluster_count, const float *centers) {
     const int size = node->size;
-    if (size < TRIE_LEAF_KMEANS_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
-    const int train_size = size < TRIE_LEAF_KMEANS_TRAIN_SIZE ? size : TRIE_LEAF_KMEANS_TRAIN_SIZE;
+    if (size < TRIE_LEAF_IVF_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
+    const int train_size = size < TRIE_LEAF_IVF_TRAIN_SIZE ? size : TRIE_LEAF_IVF_TRAIN_SIZE;
     float *centroids = calloc((size_t) cluster_count * dimensions, sizeof(*centroids));
     float *sums = calloc((size_t) cluster_count * dimensions, sizeof(*sums));
     int *assignments = malloc((size_t) size * sizeof(*assignments));
@@ -404,7 +404,7 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
     }
     for (int i = 0; i < size; ++i) assignments[i] = -1;
 
-    for (int iteration = 0; iteration < TRIE_LEAF_KMEANS_MAX_ITERATIONS; ++iteration) {
+    for (int iteration = 0; iteration < TRIE_LEAF_IVF_MAX_ITERATIONS; ++iteration) {
         memset(sums, 0, (size_t) cluster_count * dimensions * sizeof(*sums));
         memset(counts, 0, (size_t) cluster_count * sizeof(*counts));
         int changed = 0;
@@ -512,7 +512,7 @@ typedef struct {
 
 /* The tree is already immutable at this point. First collect eligible leaves
  * on one thread, then let workers cluster independent leaves without sharing
- * k-means scratch state or modifying common tree counters. */
+ * per-leaf scratch state or modifying common tree counters. */
 static int trie_collect_cluster_leaves(symbolic_trie_node *node,
                                        trie_cluster_leaf_list *leaves) {
     if (node == NULL) return 1;
@@ -521,7 +521,7 @@ static int trie_collect_cluster_leaves(symbolic_trie_node *node,
             if (!trie_collect_cluster_leaves(node->children[i], leaves)) return 0;
         return 1;
     }
-    if (node->size < TRIE_LEAF_KMEANS_MIN_SIZE) return 1;
+    if (node->size < TRIE_LEAF_IVF_MIN_SIZE) return 1;
     if (leaves->size == leaves->capacity) {
         size_t capacity = leaves->capacity == 0 ? 128 : leaves->capacity * 2;
         if (capacity > SIZE_MAX / sizeof(*leaves->items)) return 0;
@@ -558,7 +558,7 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
         for (size_t i = 0; i < leaves.size; ++i) {
             symbolic_trie_node *node = leaves.items[i];
             if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
-                                   index->settings->trie_leaf_kmeans, centers)) {
+                                   index->settings->trie_leaf_ivf, centers)) {
                 failed = 1;
                 continue;
             }
@@ -572,7 +572,7 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
     for (size_t i = 0; i < leaves.size; ++i) {
         symbolic_trie_node *node = leaves.items[i];
         if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
-                               index->settings->trie_leaf_kmeans, centers)) {
+                               index->settings->trie_leaf_ivf, centers)) {
             failed = 1;
             continue;
         }
@@ -1204,17 +1204,17 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         }
     }
     messi_build_progress_update(&build_progress, 90.0);
-    if (index->settings->trie_leaf_kmeans != 0) {
+    if (index->settings->trie_leaf_ivf != 0) {
         const double clustering_start = messi_monotonic_seconds();
         float *centers = trie_build_bin_centers(index, trie->dimensions);
         int clustering_workers = 1;
         size_t eligible_leaves = 0;
         if (centers == NULL || !trie_cluster_leaves_parallel(trie, index, centers,
                                                               &clustering_workers, &eligible_leaves)) {
-            fprintf(stderr, "warning: unable to build some trie leaf k-means directories; affected leaves use plain scans.\n");
+            fprintf(stderr, "warning: unable to build some trie leaf IVF directories; affected leaves use plain scans.\n");
         }
         free(centers);
-        fprintf(stderr, ">>> trie leaf k-means timing\n");
+        fprintf(stderr, ">>> trie leaf IVF timing\n");
         fprintf(stderr, "    eligible leaves  : %zu\n", eligible_leaves);
         fprintf(stderr, "    workers          : %d\n", clustering_workers);
         fprintf(stderr, "    clustered leaves : %lu\n", trie->clustered_leaves);

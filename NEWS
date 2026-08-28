@@ -19,7 +19,7 @@ Symbolic trie
   the record prefix with its symbolic bound; it can be disabled with
   `--no-trie-record-mbr-suffix-bound`.
 - Added an optional post-build, flat k-means directory inside large SFA, PISA,
-  and SPARTAN trie leaves (`--trie-leaf-kmeans K`).  Cluster MBR bounds prune
+  and SPARTAN trie leaves (`--trie-leaf-ivf K`).  Cluster MBR bounds prune
   groups before their records are scanned, without changing the main trie or
   using raw-space centroid/radius bounds; eligible leaves are clustered in
   parallel during construction.
@@ -97,7 +97,7 @@ Python API
 
 - Aligned `Index` defaults with the benchmark runners: iSAX tight-bound
   pruning and trie record-MBR suffix pruning are enabled, while variance-based
-  iSAX root splitting and trie leaf k-means remain opt-in.
+  iSAX root splitting and trie leaf IVF remain opt-in.
 - Added `dynamic_root_split_variance` to the native and Python APIs, with
   validation for iSAX SFA, SPARTAN, and PISA only.  Default SFA coefficient
   pools are capped at 64 dimensions for iSAX and widen automatically to the

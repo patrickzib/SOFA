@@ -333,7 +333,7 @@ int main(int argc, char **argv) {
     static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
-    static int trie_leaf_kmeans = 0;
+    static int trie_leaf_ivf = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
@@ -420,7 +420,7 @@ int main(int argc, char **argv) {
                 {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
-                {"trie-leaf-kmeans", required_argument, 0, 1014},
+                {"trie-leaf-ivf", required_argument, 0, 1014},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -497,7 +497,7 @@ int main(int argc, char **argv) {
                 trie_record_mbr_suffix_bound_specified = 1;
                 break;
             case 1014:
-                trie_leaf_kmeans = atoi(optarg);
+                trie_leaf_ivf = atoi(optarg);
                 break;
             case 1017:
                 isax_node_mbr = 1;
@@ -770,7 +770,7 @@ int main(int argc, char **argv) {
                        "  --trie-split-dimensions N      Split candidates (default: min(32, MBR dimensions))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
-                       "  --trie-leaf-kmeans K           Flat leaf MBR groups (2--64; off by default)\n"
+                       "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -862,10 +862,10 @@ int main(int argc, char **argv) {
                     n_segments, time_series_size < 128 ? time_series_size : 128);
             return EXIT_FAILURE;
         }
-        if (trie_leaf_kmeans != 0 &&
-            (trie_leaf_kmeans < 2 || trie_leaf_kmeans > 64 ||
+        if (trie_leaf_ivf != 0 &&
+            (trie_leaf_ivf < 2 || trie_leaf_ivf > 64 ||
              (function_type != 4 && function_type != 5 && function_type != 6))) {
-            fprintf(stderr, "error: --trie-leaf-kmeans requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
+            fprintf(stderr, "error: --trie-leaf-ivf requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
             return EXIT_FAILURE;
         }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
@@ -896,8 +896,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
-    if (trie_leaf_kmeans && index_type != MESSI_INDEX_TRIE) {
-        fprintf(stderr, "error: --trie-leaf-kmeans requires --index-type trie.\n");
+    if (trie_leaf_ivf && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-leaf-ivf requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (index_type != MESSI_INDEX_ISAX &&
@@ -1255,7 +1255,7 @@ int main(int argc, char **argv) {
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
-        index_settings->trie_leaf_kmeans = trie_leaf_kmeans;
+        index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);

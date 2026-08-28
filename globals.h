@@ -183,7 +183,7 @@ extern int query_report_interval;
         unsigned long int RDcalculationnumber;
         unsigned long int LBDcalculationnumber_all;
         unsigned long int RDcalculationnumber_all;
-        /* Trie leaf k-means diagnostics; separate from record lower-bound
+        /* Trie leaf IVF diagnostics; separate from record lower-bound
          * counts because a pruned cluster skips many record checks. */
         unsigned long int trie_cluster_bounds;
         unsigned long int trie_cluster_pruned;

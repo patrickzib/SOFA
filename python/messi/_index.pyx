@@ -69,7 +69,7 @@ cdef class Index:
                   int trie_record_lb_dimensions=0,
                   int trie_split_dimensions=0,
                   bint trie_record_mbr_suffix_bound=True,
-                  int trie_leaf_kmeans=0,
+                  int trie_leaf_ivf=0,
                   int trie_fanout=8,
                   bint trie_dynamic_alphabet=False,
                   int trie_min_fanout=2,
@@ -123,8 +123,8 @@ cdef class Index:
                 trie_split_dimensions = min(32, transform_dim)
             if trie_split_dimensions < 1 or trie_split_dimensions > transform_dim:
                 raise ValueError("trie_split_dimensions must be between 1 and trie_mbr_dimensions")
-            if trie_leaf_kmeans and (trie_leaf_kmeans < 2 or trie_leaf_kmeans > 64 or function_type not in (4, 5, 6)):
-                raise ValueError("trie_leaf_kmeans requires SFA, SPARTAN, or PISA and a value between 2 and 64")
+            if trie_leaf_ivf and (trie_leaf_ivf < 2 or trie_leaf_ivf > 64 or function_type not in (4, 5, 6)):
+                raise ValueError("trie_leaf_ivf requires SFA, SPARTAN, or PISA and a value between 2 and 64")
             if trie_dynamic_alphabet:
                 if trie_fanout != 8:
                     raise ValueError("trie_fanout cannot be combined with trie_dynamic_alphabet")
@@ -196,7 +196,7 @@ cdef class Index:
         params.trie_bound_dimensions = record_lb_dim
         params.trie_split_dimensions = trie_split_dimensions
         params.trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound
-        params.trie_leaf_kmeans = trie_leaf_kmeans
+        params.trie_leaf_ivf = trie_leaf_ivf
         params.trie_fanout = trie_fanout
         params.trie_dynamic_alphabet = trie_dynamic_alphabet
         params.trie_min_fanout = trie_min_fanout
@@ -219,7 +219,7 @@ cdef class Index:
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
                         "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
-                        "trie_leaf_kmeans": trie_leaf_kmeans,
+                        "trie_leaf_ivf": trie_leaf_ivf,
                         "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,
                         "queue_count": queue_count or max_query_threads,

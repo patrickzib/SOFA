@@ -110,13 +110,13 @@ assert_contains "$OUTPUT" '--no-trie-record-mbr-suffix-bound'
 pass 'trie record-MBR suffix pruning is enabled by default and can be disabled'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
-    --trie-leaf-kmeans 16 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-leaf-kmeans 16'
+    --trie-leaf-ivf 16 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
-    --trie-leaf-kmeans 16 --dry-run >/dev/null 2>&1; then
-    fail 'runner accepted trie leaf k-means for iSAX'
+    --trie-leaf-ivf 16 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie leaf IVF for iSAX'
 fi
-pass 'trie leaf k-means is forwarded and scoped to trie'
+pass 'trie leaf IVF is forwarded and scoped to trie'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
@@ -256,9 +256,9 @@ assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
 pass 'suite forwards the trie record/MBR suffix bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
-    --trie-leaf-kmeans 16 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-leaf-kmeans 16'
-pass 'suite forwards trie leaf k-means'
+    --trie-leaf-ivf 16 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+pass 'suite forwards trie leaf IVF'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

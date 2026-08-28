@@ -124,7 +124,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
     settings->trie_bound_dimensions = params->trie_bound_dimensions;
     settings->trie_split_dimensions = params->trie_split_dimensions;
     settings->trie_record_mbr_suffix_bound = params->trie_record_mbr_suffix_bound;
-    settings->trie_leaf_kmeans = params->trie_leaf_kmeans;
+    settings->trie_leaf_ivf = params->trie_leaf_ivf;
     settings->trie_fanout = params->trie_fanout == 0 ? 8 : params->trie_fanout;
     settings->trie_dynamic_alphabet = params->trie_dynamic_alphabet;
     settings->trie_min_bits = fanout_to_bits(params->trie_min_fanout == 0
