@@ -273,6 +273,7 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
     }
     static int reported_projection_mode = 0;
     if (!reported_projection_mode) {
+        messi_build_progress_begin_diagnostic();
 #if HAVE_OPENBLAS_CONFIG
         if (parallel_sgemm) {
             fprintf(stderr, ">>> PCA projection: CBLAS SGEMM; OpenBLAS is single-threaded, using %d OpenMP workers\n",
@@ -286,6 +287,7 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
 #else
         fprintf(stderr, ">>> PCA projection: CBLAS SGEMM\n");
 #endif
+        messi_build_progress_end_diagnostic();
         reported_projection_mode = 1;
     }
     for (unsigned int row = 0; row < rows; ++row) {

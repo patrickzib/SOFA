@@ -19,4 +19,10 @@ void messi_build_progress_update(messi_build_progress *progress, double percent)
 void messi_build_progress_finish(messi_build_progress *progress);
 void messi_build_progress_abort(messi_build_progress *progress);
 
+/* Bracket an unrelated diagnostic written to stderr.  This safely terminates
+ * any live carriage-return progress line so diagnostics never get appended to
+ * it.  Call end_diagnostic() immediately after the diagnostic is complete. */
+void messi_build_progress_begin_diagnostic(void);
+void messi_build_progress_end_diagnostic(void);
+
 #endif
