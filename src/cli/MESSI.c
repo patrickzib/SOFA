@@ -334,7 +334,9 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_kmeans = 0;
-    static int isax_node_mbr = 0;
+    /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
+     * SOFA v2 adds the optional record-level extensions below. */
+    static int isax_node_mbr = 1;
     static int isax_record_mbr_suffix_bound = 0;
     static int isax_record_lb_table = 0;
     static int isax_mbr_dimensions = 0;
@@ -756,12 +758,12 @@ int main(int argc, char **argv) {
                        "  --apply-z-norm                 Z-normalize base and queries\n"
                        "  --is-norm                      Input is already normalized\n"
                        "  --no-simd                      Disable compiled SIMD kernels\n\n"
-                       "iSAX root splits and SOFA v2 (all opt-in):\n"
+                       "iSAX root splits and SOFA v2 extensions:\n"
                        "  --dynamic-root-split-uniform N Uniform root bits per dimension\n"
                        "  --dynamic-root-split-variance  Allocate root bits by learned variance\n"
                        "  --no-dynamic-root-split-variance  Keep learned root split uniform\n"
                        "  --enable-sofa-v2               Enable all optional iSAX SOFA v2 features\n"
-                       "  --isax-node-mbr                Node symbolic-MBR bounds\n"
+                       "  --isax-node-mbr                Node symbolic-MBR bounds (default)\n"
                        "  --isax-record-mbr-suffix-bound Learned record-MBR suffix bounds\n"
                        "  --isax-mbr-dimensions N        Extended MBR dimensions (default: 32)\n"
                        "  --isax-record-lb-table         Query-local record symbol-LB table\n\n"

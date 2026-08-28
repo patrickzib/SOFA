@@ -115,7 +115,8 @@ messi_index *messi_index_create(const messi_index_params *params) {
     settings->sampling_seed = params->sampling_seed == 0 ? 1 : params->sampling_seed;
     settings->node_split_criterion = params->node_split_criterion == 0
                                         ? 1 : params->node_split_criterion;
-    settings->isax_node_mbr = params->isax_node_mbr;
+    /* Match the CLI/default constructor: node MBRs remain enabled for iSAX. */
+    settings->isax_node_mbr = 1;
     settings->isax_record_mbr_suffix_bound = params->isax_record_mbr_suffix_bound;
     settings->isax_record_lb_table = params->isax_record_lb_table;
     settings->isax_mbr_dimensions = params->isax_mbr_dimensions == 0

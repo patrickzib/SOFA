@@ -244,7 +244,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
-    settings->isax_node_mbr = 0;
+    /* Node MBRs predate SOFA v2 and remain the normal iSAX baseline. */
+    settings->isax_node_mbr = 1;
     settings->isax_record_mbr_suffix_bound = 0;
     settings->isax_record_lb_table = 0;
     settings->isax_mbr_dimensions = n_segments;
@@ -2883,17 +2884,15 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
-        if (settings->isax_node_mbr || settings->isax_record_mbr_suffix_bound ||
-            settings->isax_record_lb_table) {
-            fprintf(stderr, "  SOFA v2      : node MBR=%s, record suffix=%s, record-LB table=%s",
-                    settings->isax_node_mbr ? "on" : "off",
+        fprintf(stderr, "  iSAX bounds  : node MBR=%s\n",
+                settings->isax_node_mbr ? "on" : "off");
+        if (settings->isax_record_mbr_suffix_bound || settings->isax_record_lb_table) {
+            fprintf(stderr, "  SOFA v2      : record suffix=%s, record-LB table=%s",
                     settings->isax_record_mbr_suffix_bound ? "on" : "off",
                     settings->isax_record_lb_table ? "on" : "off");
             if (settings->isax_record_mbr_suffix_bound)
                 fprintf(stderr, ", MBR dimensions=%d", settings->isax_mbr_dimensions);
             fprintf(stderr, "\n");
-        } else {
-            fprintf(stderr, "  SOFA v2      : disabled (use --enable-sofa-v2 or individual iSAX flags)\n");
         }
     }
     char max_leaf_size[32], min_leaf_size[32], sample_size[32];
