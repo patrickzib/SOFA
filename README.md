@@ -96,10 +96,10 @@ node MBRs and enable the record-MBR suffix contribution by default.
 | iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
 | Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
-| Trie leaf k-means groups | Off; use `--trie-leaf-kmeans K` | Off; use `--trie-leaf-kmeans K` | Off; pass `trie_leaf_kmeans=K` |
+| Trie leaf IVF groups | Off; use `--trie-leaf-ivf K` | Off; use `--trie-leaf-ivf K` | Off; pass `trie_leaf_ivf=K` |
 
 Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
-leaf k-means is valid only for learned trie transforms (SFA, SPARTAN, and
+leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and
 PISA), with `K` from 2 to 64.
 
 # Scripts
