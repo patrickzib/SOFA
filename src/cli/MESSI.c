@@ -338,6 +338,7 @@ int main(int argc, char **argv) {
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
+    static int isax_node_mbr_specified = 0;
     static int isax_record_mbr_suffix_bound = 0;
     static int isax_record_lb_table = 0;
     static int isax_mbr_dimensions = 0;
@@ -506,6 +507,7 @@ int main(int argc, char **argv) {
                 break;
             case 1017:
                 isax_node_mbr = 1;
+                isax_node_mbr_specified = 1;
                 break;
             case 1018:
                 isax_record_mbr_suffix_bound = 1;
@@ -918,7 +920,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (index_type != MESSI_INDEX_ISAX &&
-        (isax_node_mbr || isax_record_mbr_suffix_bound || isax_record_lb_table ||
+        (isax_node_mbr_specified || isax_record_mbr_suffix_bound || isax_record_lb_table ||
          isax_mbr_dimensions_specified || enable_sofa_v2)) {
         fprintf(stderr, "error: iSAX SOFA v2 options require --index-type isax.\n");
         return EXIT_FAILURE;
