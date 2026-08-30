@@ -1465,6 +1465,9 @@ typedef struct {
     int size;
     int capacity;
     pthread_mutex_t lock;
+    pthread_cond_t available;
+    unsigned long outstanding;
+    int failed;
 } trie_leaf_queue;
 
 static void trie_leaf_queue_sift_down(trie_leaf_work *items, int size, int position) {
@@ -1503,6 +1506,81 @@ static int trie_leaf_queue_push(trie_leaf_queue *queue, trie_leaf_work item,
     pthread_mutex_unlock(&queue->lock);
     if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
     return ok;
+}
+
+/* Leaf-list work can recursively create range tasks.  outstanding counts both
+ * queued and currently executing tasks, so an empty heap is terminal only
+ * when outstanding reaches zero. */
+static int trie_leaf_queue_submit(trie_leaf_queue *queue, trie_leaf_work item,
+                                  trie_query_stats *stats) {
+    unsigned long long start = profile_query_phases && stats != NULL
+                                   ? trie_monotonic_microseconds() : 0;
+    int ok = 1;
+    pthread_mutex_lock(&queue->lock);
+    if (queue->size == queue->capacity) {
+        int capacity = queue->capacity == 0 ? 128 : queue->capacity * 2;
+        trie_leaf_work *items = realloc(queue->items, (size_t) capacity * sizeof(*items));
+        if (items == NULL) ok = 0;
+        else { queue->items = items; queue->capacity = capacity; }
+    }
+    if (ok) {
+        int position = queue->size++;
+        queue->items[position] = item;
+        while (position > 0) {
+            int parent = (position - 1) / 2;
+            if (queue->items[parent].lower_bound <= queue->items[position].lower_bound) break;
+            trie_leaf_work tmp = queue->items[parent]; queue->items[parent] = queue->items[position];
+            queue->items[position] = tmp; position = parent;
+        }
+        ++queue->outstanding;
+        pthread_cond_signal(&queue->available);
+    } else {
+        queue->failed = 1;
+        pthread_cond_broadcast(&queue->available);
+    }
+    pthread_mutex_unlock(&queue->lock);
+    if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
+    return ok;
+}
+
+static int trie_leaf_queue_take(trie_leaf_queue *queue, trie_leaf_work *item,
+                                trie_query_stats *stats) {
+    unsigned long long queue_start = profile_query_phases && stats != NULL
+                                        ? trie_monotonic_microseconds() : 0;
+    pthread_mutex_lock(&queue->lock);
+    if (queue_start != 0) {
+        stats->queue_microseconds += trie_monotonic_microseconds() - queue_start;
+        queue_start = 0;
+    }
+    while (queue->size == 0 && queue->outstanding != 0 && !queue->failed) {
+        const unsigned long long wait_start = profile_query_phases && stats != NULL
+                                                  ? trie_monotonic_microseconds() : 0;
+        pthread_cond_wait(&queue->available, &queue->lock);
+        if (wait_start != 0)
+            stats->synchronization_microseconds += trie_monotonic_microseconds() - wait_start;
+    }
+    if (queue->failed || queue->outstanding == 0) {
+        pthread_mutex_unlock(&queue->lock);
+        return 0;
+    }
+    queue_start = profile_query_phases && stats != NULL ? trie_monotonic_microseconds() : 0;
+    *item = queue->items[0];
+    queue->items[0] = queue->items[--queue->size];
+    trie_leaf_queue_sift_down(queue->items, queue->size, 0);
+    pthread_mutex_unlock(&queue->lock);
+    if (queue_start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - queue_start;
+    return 1;
+}
+
+static void trie_leaf_queue_complete(trie_leaf_queue *queue, trie_query_stats *stats) {
+    unsigned long long start = profile_query_phases && stats != NULL
+                                   ? trie_monotonic_microseconds() : 0;
+    pthread_mutex_lock(&queue->lock);
+    if (queue->outstanding != 0) --queue->outstanding;
+    if (queue->outstanding == 0) pthread_cond_broadcast(&queue->available);
+    else if (queue->size != 0) pthread_cond_signal(&queue->available);
+    pthread_mutex_unlock(&queue->lock);
+    if (start != 0) stats->queue_microseconds += trie_monotonic_microseconds() - start;
 }
 
 static int trie_leaf_queue_pop(trie_leaf_queue *queue, trie_leaf_work *item,
@@ -1580,8 +1658,12 @@ static int trie_leaf_list_enqueue_chunks(isax_index *index, const trie_leaf_work
             const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                 node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
                 node->cluster_max_words + (size_t) cluster * index->trie->dimensions, scratch);
-            if (!trie_leaf_queue_push(queue, (trie_leaf_work) {node, bound, group->offset,
-                                                                group->size, suffix}, stats)) return 0;
+            for (int offset = 0; offset < group->size; offset += TRIE_LEAF_LIST_CHUNK_RECORDS) {
+                const int size = group->size - offset < TRIE_LEAF_LIST_CHUNK_RECORDS
+                                     ? group->size - offset : TRIE_LEAF_LIST_CHUNK_RECORDS;
+                if (!trie_leaf_queue_submit(queue, (trie_leaf_work) {
+                        node, bound, group->offset + offset, size, suffix}, stats)) return 0;
+            }
         }
         return 1;
     }
@@ -1590,8 +1672,8 @@ static int trie_leaf_list_enqueue_chunks(isax_index *index, const trie_leaf_work
     for (int offset = 0; offset < node->size; offset += TRIE_LEAF_LIST_CHUNK_RECORDS) {
         const int size = node->size - offset < TRIE_LEAF_LIST_CHUNK_RECORDS
                              ? node->size - offset : TRIE_LEAF_LIST_CHUNK_RECORDS;
-        if (!trie_leaf_queue_push(queue, (trie_leaf_work) {node, work->lower_bound,
-                                                            offset, size, suffix}, stats)) return 0;
+        if (!trie_leaf_queue_submit(queue, (trie_leaf_work) {node, work->lower_bound,
+                                                              offset, size, suffix}, stats)) return 0;
     }
     return 1;
 }
@@ -1612,21 +1694,16 @@ static float trie_leaf_list_parallel_search(isax_index *index, const ts_type *qu
         free(leaves); free(worker_stats); free(worker_scratch);
         return trie_leaf_list_serial_search(index, query, transform, bsf, result_stats, result_position);
     }
+    const unsigned long long enumeration_start = profile_query_phases
+                                                     ? trie_monotonic_microseconds() : 0;
     unsigned long leaf_count = 0;
     for (const symbolic_trie_node *leaf = index->trie->leaf_head; leaf != NULL; leaf = leaf->next_leaf)
         leaves[leaf_count++] = leaf;
+    if (enumeration_start != 0)
+        worker_stats[0].frontier_microseconds +=
+            trie_monotonic_microseconds() - enumeration_start;
     pthread_mutex_init(&queue.lock, NULL);
-    int failed = 0;
-#pragma omp parallel for num_threads(workers) schedule(static)
-    for (unsigned long i = 0; i < leaf_count; ++i) {
-        trie_query_stats *stats = &worker_stats[omp_get_thread_num()];
-        const symbolic_trie_node *leaf = leaves[i];
-        ++stats->checked_nodes;
-        const float lower = trie_lower_bound(index->trie, index, transform, leaf->min_word,
-                                             leaf->max_word, index->trie->dimensions, bsf, stats);
-        if (lower <= bsf && !trie_leaf_queue_push(&queue, (trie_leaf_work) {leaf, lower, 0, 0, 0.0f}, stats))
-            __atomic_store_n(&failed, 1, __ATOMIC_RELAXED);
-    }
+    pthread_cond_init(&queue.available, NULL);
     pthread_rwlock_t bsf_lock = PTHREAD_RWLOCK_INITIALIZER;
     float shared_bsf = bsf;
     file_position_type shared_position = result_position == NULL ? QUERY_RESULT_NO_POSITION : *result_position;
@@ -1635,15 +1712,47 @@ static float trie_leaf_list_parallel_search(isax_index *index, const ts_type *qu
         const int worker = omp_get_thread_num();
         trie_query_stats *stats = &worker_stats[worker];
         trie_query_scratch *scratch = &worker_scratch[worker];
+        const unsigned long long worker_start = profile_query_phases
+                                                    ? trie_monotonic_microseconds() : 0;
+        const unsigned long long setup_start = profile_query_phases
+                                                   ? trie_monotonic_microseconds() : 0;
+        const unsigned long long setup_mbr_before = stats->mbr_bound_microseconds;
+        const unsigned long long setup_queue_before = stats->queue_microseconds;
         trie_prepare_record_lb_table(index->trie, index, transform, scratch);
+#pragma omp for schedule(static) nowait
+        for (unsigned long i = 0; i < leaf_count; ++i) {
+            const symbolic_trie_node *leaf = leaves[i];
+            ++stats->checked_nodes;
+            const float lower = trie_lower_bound(index->trie, index, transform, leaf->min_word,
+                                                 leaf->max_word, index->trie->dimensions, bsf, stats);
+            if (lower <= bsf)
+                (void) trie_leaf_queue_submit(&queue,
+                    (trie_leaf_work) {leaf, lower, 0, 0, 0.0f}, stats);
+        }
+        if (setup_start != 0) {
+            const unsigned long long elapsed = trie_monotonic_microseconds() - setup_start;
+            const unsigned long long direct =
+                (stats->mbr_bound_microseconds - setup_mbr_before) +
+                (stats->queue_microseconds - setup_queue_before);
+            stats->frontier_microseconds += elapsed > direct ? elapsed - direct : 0;
+        }
+        const unsigned long long barrier_start = profile_query_phases
+                                                     ? trie_monotonic_microseconds() : 0;
+#pragma omp barrier
+        if (barrier_start != 0)
+            stats->synchronization_microseconds += trie_monotonic_microseconds() - barrier_start;
         trie_leaf_work work;
-        while (!__atomic_load_n(&failed, __ATOMIC_RELAXED) && trie_leaf_queue_pop(&queue, &work, stats)) {
+        while (trie_leaf_queue_take(&queue, &work, stats)) {
             float current_bsf;
             pthread_rwlock_rdlock(&bsf_lock); current_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
-            if (work.lower_bound > current_bsf) continue;
+            if (work.lower_bound > current_bsf) {
+                trie_leaf_queue_complete(&queue, stats);
+                continue;
+            }
             if (work.count == 0 && work.node->size > TRIE_LEAF_LIST_CHUNK_RECORDS) {
-                if (!trie_leaf_list_enqueue_chunks(index, &work, transform, current_bsf, &queue, stats, scratch))
-                    __atomic_store_n(&failed, 1, __ATOMIC_RELAXED);
+                (void) trie_leaf_list_enqueue_chunks(index, &work, transform, current_bsf,
+                                                     &queue, stats, scratch);
+                trie_leaf_queue_complete(&queue, stats);
                 continue;
             }
             file_position_type position;
@@ -1657,6 +1766,18 @@ static float trie_leaf_list_parallel_search(isax_index *index, const ts_type *qu
                 if (distance < shared_bsf) { shared_bsf = distance; shared_position = position; }
                 pthread_rwlock_unlock(&bsf_lock);
             }
+            trie_leaf_queue_complete(&queue, stats);
+        }
+        if (worker_start != 0) {
+            const unsigned long long elapsed = trie_monotonic_microseconds() - worker_start;
+            const unsigned long long classified = stats->mbr_bound_microseconds +
+                stats->record_bound_microseconds + stats->exact_distance_microseconds +
+                stats->frontier_microseconds + stats->queue_microseconds +
+                stats->candidate_heap_microseconds + stats->synchronization_microseconds;
+            if (elapsed > classified) stats->synchronization_microseconds += elapsed - classified;
+            stats->traversal_microseconds = stats->frontier_microseconds +
+                stats->queue_microseconds + stats->candidate_heap_microseconds +
+                stats->synchronization_microseconds;
         }
     }
     if (result_stats != NULL) {
@@ -1669,8 +1790,11 @@ static float trie_leaf_list_parallel_search(isax_index *index, const ts_type *qu
             result_stats->mbr_bound_microseconds += worker_stats[i].mbr_bound_microseconds;
             result_stats->record_bound_microseconds += worker_stats[i].record_bound_microseconds;
             result_stats->exact_distance_microseconds += worker_stats[i].exact_distance_microseconds;
+            result_stats->traversal_microseconds += worker_stats[i].traversal_microseconds;
+            result_stats->frontier_microseconds += worker_stats[i].frontier_microseconds;
             result_stats->queue_microseconds += worker_stats[i].queue_microseconds;
             result_stats->candidate_heap_microseconds += worker_stats[i].candidate_heap_microseconds;
+            result_stats->synchronization_microseconds += worker_stats[i].synchronization_microseconds;
             result_stats->cluster_bounds += worker_stats[i].cluster_bounds;
             result_stats->cluster_pruned += worker_stats[i].cluster_pruned;
             result_stats->cluster_records_pruned += worker_stats[i].cluster_records_pruned;
@@ -1678,7 +1802,9 @@ static float trie_leaf_list_parallel_search(isax_index *index, const ts_type *qu
     }
     for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
     free(leaves); free(worker_stats); free(worker_scratch); free(queue.items);
-    pthread_mutex_destroy(&queue.lock); pthread_rwlock_destroy(&bsf_lock);
+    const int failed = queue.failed;
+    pthread_cond_destroy(&queue.available); pthread_mutex_destroy(&queue.lock);
+    pthread_rwlock_destroy(&bsf_lock);
     if (!failed) { if (result_position != NULL) *result_position = shared_position; return shared_bsf; }
     return trie_leaf_list_serial_search(index, query, transform, shared_bsf, result_stats, result_position);
 #endif

@@ -54,6 +54,8 @@ Options:
                           Average dynamic alphabet budget in bits (default: 3)
   --trie-query-parallel   Parallelize each trie query
   --trie-query-batch      Batch independent trie queries
+  --trie-query-engine MODE
+                          traversal (default) or leaf-list
   --query-report-interval N
                           Print query progress every N queries (0 disables it)
   --profile-query-phases  Measure traversal, lower-bound, and exact work
@@ -126,6 +128,7 @@ TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
+TRIE_QUERY_ENGINE=traversal
 QUERY_REPORT_INTERVAL=
 PROFILE_QUERY_PHASES=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=
@@ -183,6 +186,7 @@ while [[ $# -gt 0 ]]; do
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --trie-query-engine) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_QUERY_ENGINE=$2; shift 2 ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
@@ -226,6 +230,12 @@ esac
     die '--trie-query-batch requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || \
     die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $TRIE_QUERY_ENGINE == traversal || $TRIE_QUERY_ENGINE == leaf-list ]] || \
+    die '--trie-query-engine must be traversal or leaf-list'
+[[ $TRIE_QUERY_ENGINE == traversal || $INDEX_TYPE == trie ]] || \
+    die '--trie-query-engine leaf-list requires --index-type trie'
+[[ $TRIE_QUERY_ENGINE == traversal || $TRIE_QUERY_BATCH == false ]] || \
+    die '--trie-query-engine leaf-list cannot be combined with --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
     die '--dynamic-root-split-variance requires --index-type isax'
 [[ -z $TRIE_LEAF_IVF || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
@@ -301,6 +311,7 @@ run_one() {
     [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
     $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
     $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+    [[ $TRIE_QUERY_ENGINE == leaf-list ]] && command+=(--trie-query-engine leaf-list)
     [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
@@ -437,6 +448,7 @@ run_query_suite() {
             [[ -n $MIN_LEAF_SIZE ]] && command+=(--min-leaf-size "$MIN_LEAF_SIZE")
             $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
             $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
+            [[ $TRIE_QUERY_ENGINE == leaf-list ]] && command+=(--trie-query-engine leaf-list)
             [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
             $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)

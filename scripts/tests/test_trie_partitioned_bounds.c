@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
+#include "ads/api.h"
 #include "ads/calc_utils.h"
 #include "ads/lower_bound_simd.h"
 #include "ads/spartan/pca.h"
@@ -13,6 +15,8 @@
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
 
 static unsigned int state = 1;
+
+extern int maxquerythread;
 
 static unsigned int next_random(void) {
     state = state * 1664525U + 1013904223U;
@@ -23,6 +27,84 @@ static sax_type linear_spartan_symbol(const ts_type *boundaries, int count, ts_t
     int symbol = 0;
     while (symbol < count && value >= boundaries[symbol]) ++symbol;
     return (sax_type) symbol;
+}
+
+static int test_parallel_leaf_list_ivf_ranges(void) {
+    enum { RECORDS = 5000, LENGTH = 16, QUERY_RECORD = 4321 };
+    char path[] = "/tmp/messi-leaf-list-XXXXXX";
+    int fd = mkstemp(path);
+    if (fd < 0) return 0;
+    FILE *file = fdopen(fd, "wb");
+    float *dataset = malloc((size_t) RECORDS * LENGTH * sizeof(*dataset));
+    if (file == NULL || dataset == NULL) {
+        if (file != NULL) fclose(file); else close(fd);
+        free(dataset); unlink(path); return 0;
+    }
+    for (int record = 0; record < RECORDS; ++record)
+        for (int dimension = 0; dimension < LENGTH; ++dimension)
+            dataset[(size_t) record * LENGTH + dimension] =
+                (float) record * 0.001f + (float) dimension * 0.01f +
+                sinf((float) (record * 17 + dimension * 13)) * 0.0001f;
+    if (fwrite(dataset, sizeof(*dataset), (size_t) RECORDS * LENGTH, file) !=
+            (size_t) RECORDS * LENGTH || fclose(file) != 0) {
+        free(dataset); unlink(path); return 0;
+    }
+
+    messi_index_params params;
+    memset(&params, 0, sizeof(params));
+    params.root_directory = "/tmp";
+    params.timeseries_size = LENGTH;
+    params.n_segments = 8;
+    params.sax_bit_cardinality = 8;
+    params.max_leaf_size = 10000;
+    params.min_leaf_size = 1;
+    params.initial_leaf_buffer_size = 10000;
+    params.max_total_buffer_size = 1000000;
+    params.initial_fbl_buffer_size = 100;
+    params.total_loaded_leaves = 1;
+    params.tight_bound = 1;
+    params.function_type = 4;
+    params.sample_size = 1000;
+    params.is_norm = 1;
+    params.histogram_type = 2;
+    params.sample_type = 1;
+    params.n_coefficients = 8;
+    params.max_query_threads = 8;
+    params.queue_count = 8;
+    params.index_type = MESSI_INDEX_TRIE;
+    params.sampling_seed = 1;
+    params.node_split_criterion = 1;
+    params.trie_bound_dimensions = 8;
+    params.trie_split_dimensions = 8;
+    params.trie_record_mbr_suffix_bound = 1;
+    params.trie_query_engine = MESSI_TRIE_QUERY_LEAF_LIST;
+    params.trie_leaf_ivf = 2;
+    params.trie_fanout = 8;
+
+    messi_index *trie = messi_index_create(&params);
+    if (trie == NULL || messi_index_add_file(trie, path, RECORDS, 0) != 0) {
+        messi_index_destroy(trie); free(dataset); unlink(path); return 0;
+    }
+    float serial_distance, parallel_distance;
+    long serial_label, parallel_label;
+    maxquerythread = 1;
+    int serial_status = messi_index_search(trie, dataset + (size_t) QUERY_RECORD * LENGTH,
+                                            1, LENGTH, 1, &serial_distance, &serial_label, 0);
+    maxquerythread = 8;
+    int parallel_status = messi_index_search(trie, dataset + (size_t) QUERY_RECORD * LENGTH,
+                                              1, LENGTH, 1, &parallel_distance, &parallel_label, 0);
+    messi_index_destroy(trie);
+    free(dataset);
+    unlink(path);
+    if (serial_status != 0 || parallel_status != 0 || serial_label != QUERY_RECORD ||
+        parallel_label != QUERY_RECORD || serial_distance != 0.0f || parallel_distance != 0.0f) {
+        fprintf(stderr,
+                "leaf-list IVF range mismatch: serial=(%g,%ld,%d) parallel=(%g,%ld,%d)\n",
+                serial_distance, serial_label, serial_status,
+                parallel_distance, parallel_label, parallel_status);
+        return 0;
+    }
+    return 1;
 }
 
 int main(void) {
@@ -231,5 +313,6 @@ int main(void) {
     pca_free(&index);
     for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
     free(index.bins);
+    if (!test_parallel_leaf_list_ivf_ranges()) return 1;
     return 0;
 }

@@ -1621,9 +1621,12 @@ int main(int argc, char **argv) {
             if (index_type == MESSI_INDEX_TRIE) {
                 const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
                     ? "prefix + MBR suffix" : "symbolic record bound";
+                const char *mbr_pruning_name =
+                    idx->settings->trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST
+                        ? "leaf MBRs" : "node MBRs";
                 fprintf(stderr, "  pruning breakdown:\n"
                        "    %-20s : %.2f%% indexed series skipped before leaf scanning\n",
-                       "node MBRs", node_mbr_percent);
+                       mbr_pruning_name, node_mbr_percent);
                 if (trie_cluster_bounds_all != 0) {
                     const double cluster_prune_percent =
                         100.0 * (double) trie_cluster_pruned_all / trie_cluster_bounds_all;
@@ -1642,18 +1645,26 @@ int main(int argc, char **argv) {
                        "total", total_pruned_percent);
             }
             if (profile_query_phases) {
+                const char *mbr_phase_name = index_type == MESSI_INDEX_TRIE &&
+                    idx->settings->trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST
+                        ? "leaf MBR bounds" : "node MBR bounds";
                 fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"
-                       "    node MBR bounds  : %.3f\n"
+                       "    %-17s: %.3f\n"
                        "    record bounds    : %.3f\n"
                        "    exact distances  : %.3f\n",
+                       mbr_phase_name,
                        total_mbr_dist_calc_time_all / (1000.0 * queries_size),
                        total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
                        total_real_dist_calc_time_all / (1000.0 * queries_size));
                 if (index_type == MESSI_INDEX_TRIE) {
-                    fprintf(stderr, "    frontier traversal: %.3f\n"
+                    const char *setup_phase_name =
+                        idx->settings->trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST
+                            ? "leaf-list setup" : "frontier traversal";
+                    fprintf(stderr, "    %-18s: %.3f\n"
                            "    queue locks/pops : %.3f\n"
                            "    candidate heap   : %.3f\n"
                            "    synchronization/wait: %.3f\n",
+                           setup_phase_name,
                            total_trie_frontier_time_all / (1000.0 * queries_size),
                            total_trie_queue_time_all / (1000.0 * queries_size),
                            total_trie_heap_time_all / (1000.0 * queries_size),

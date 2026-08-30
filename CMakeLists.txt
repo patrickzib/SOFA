@@ -167,12 +167,22 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME ed_simd_scalar_reference COMMAND test_ed_simd)
 
-  add_executable(test_trie_partitioned_bounds scripts/tests/test_trie_partitioned_bounds.c)
+  add_executable(test_trie_partitioned_bounds
+    scripts/tests/test_trie_partitioned_bounds.c
+    src/ads/api.c
+  )
+  target_compile_options(test_trie_partitioned_bounds PRIVATE -fcommon)
   target_include_directories(test_trie_partitioned_bounds PRIVATE
     ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include
   )
   target_link_libraries(test_trie_partitioned_bounds PRIVATE ads)
+  if(MESSI_FFTW_TARGET)
+    target_link_libraries(test_trie_partitioned_bounds PRIVATE ${MESSI_FFTW_TARGET})
+  endif()
+  if(MESSI_ENABLE_OPENMP AND OpenMP_C_FOUND)
+    target_link_libraries(test_trie_partitioned_bounds PRIVATE OpenMP::OpenMP_C)
+  endif()
   if(MATH_LIBRARY)
     target_link_libraries(test_trie_partitioned_bounds PRIVATE ${MATH_LIBRARY})
   endif()
