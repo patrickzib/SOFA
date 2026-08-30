@@ -5,16 +5,36 @@ FFTW_PREFIX="/vol/home-vol3/wbi/schaefpa/fftw-3.3.10-install"
 FFTW_LIBDIR="$FFTW_PREFIX/lib64"
 [[ -d "$FFTW_LIBDIR" ]] || FFTW_LIBDIR="$FFTW_PREFIX/lib"
 
+# Sonic's system OpenBLAS is built with GNU Fortran.  When this script is run
+# from Conda, its linker does not automatically search the active compiler's
+# libgfortran directory for OpenBLAS's transitive dependency.  Ask that
+# compiler for the path instead of hard-coding a Conda version.  The override
+# supports site-specific installations.
+GFORTRAN_LIBDIR="${MESSI_GFORTRAN_LIBDIR:-}"
+if [[ -z "$GFORTRAN_LIBDIR" ]]; then
+    GFORTRAN_LIBRARY="$("${CC:-gcc}" -print-file-name=libgfortran.so)"
+    if [[ "$GFORTRAN_LIBRARY" == "libgfortran.so" || ! -f "$GFORTRAN_LIBRARY" ]]; then
+        printf 'error: could not locate libgfortran for %s; set MESSI_GFORTRAN_LIBDIR explicitly\n' \
+            "${CC:-gcc}" >&2
+        exit 1
+    fi
+    GFORTRAN_LIBDIR="$(dirname "$GFORTRAN_LIBRARY")"
+fi
+[[ -d "$GFORTRAN_LIBDIR" ]] || {
+    printf 'error: MESSI_GFORTRAN_LIBDIR is not a directory: %s\n' "$GFORTRAN_LIBDIR" >&2
+    exit 1
+}
+
 # Sanity check
 test -f "$FFTW_PREFIX/include/fftw3.h"
 
 # Standard autoconf vars
 export CPPFLAGS="-I$FFTW_PREFIX/include ${CPPFLAGS:-}"
-export LDFLAGS="-L$FFTW_LIBDIR ${LDFLAGS:-}"
+export LDFLAGS="-L$FFTW_LIBDIR -L$GFORTRAN_LIBDIR -Wl,-rpath,$GFORTRAN_LIBDIR -Wl,-rpath-link,$GFORTRAN_LIBDIR ${LDFLAGS:-}"
 export LIBS="-lfftw3f ${LIBS:-}"
 
 # OpenBLAS provides LAPACK and the optional CBLAS batch-projection path.
-export LAPACK_LIBS="-L/usr/lib64 -l:libopenblas.so.0"
+export LAPACK_LIBS="-L/usr/lib64 -l:libopenblas.so.0 -lgfortran"
 export CBLAS_LIBS="$LAPACK_LIBS"
 
 # Optimization flags.  AVX-512 can downclock this workload on Sonic and is
