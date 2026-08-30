@@ -69,6 +69,7 @@ cdef class Index:
                   int trie_record_lb_dimensions=0,
                   int trie_split_dimensions=0,
                   bint trie_record_mbr_suffix_bound=True,
+                  trie_query_engine="traversal",
                   int trie_leaf_ivf=0,
                   int trie_fanout=8,
                   bint trie_dynamic_alphabet=False,
@@ -84,6 +85,7 @@ cdef class Index:
         cdef int transform_dim
         cdef int record_lb_dim
         cdef int resolved_sfa_n_coefficients
+        cdef int resolved_trie_query_engine = 0
         cdef object layout_name
         cdef object transform_name
 
@@ -113,6 +115,12 @@ cdef class Index:
             raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), or 6 (PISA)")
 
         if index_type == MESSI_INDEX_TRIE:
+            if trie_query_engine == "traversal":
+                resolved_trie_query_engine = 0
+            elif trie_query_engine in ("leaf-list", "leaf_list"):
+                resolved_trie_query_engine = 1
+            else:
+                raise ValueError("trie_query_engine must be 'traversal' or 'leaf-list'")
             record_lb_dim = trie_record_lb_dimensions or n_segments
             if record_lb_dim < 16 or record_lb_dim > 64:
                 raise ValueError("trie_record_lb_dimensions (or n_segments) must be between 16 and 64")
@@ -196,6 +204,7 @@ cdef class Index:
         params.trie_bound_dimensions = record_lb_dim
         params.trie_split_dimensions = trie_split_dimensions
         params.trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound
+        params.trie_query_engine = resolved_trie_query_engine
         params.trie_leaf_ivf = trie_leaf_ivf
         params.trie_fanout = trie_fanout
         params.trie_dynamic_alphabet = trie_dynamic_alphabet
@@ -219,6 +228,7 @@ cdef class Index:
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
                         "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
+                        "trie_query_engine": trie_query_engine if index_type == MESSI_INDEX_TRIE else None,
                         "trie_leaf_ivf": trie_leaf_ivf,
                         "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,

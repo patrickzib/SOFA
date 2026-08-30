@@ -253,6 +253,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
+    settings->trie_query_engine = MESSI_TRIE_QUERY_TRAVERSAL;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2972,7 +2973,12 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s%s\n",
+        fprintf(stderr, "  query engine  : %s\n",
+                settings->trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST
+                    ? "leaf-list best-first" : "recursive traversal");
+        fprintf(stderr, "  query bounds  : %s + symbolic record bounds%s%s\n",
+                settings->trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST
+                    ? "leaf MBRs" : "node MBRs",
                 settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "",
                 settings->trie_leaf_ivf ? " + leaf IVF MBRs" : "");
         if (settings->trie_leaf_ivf)

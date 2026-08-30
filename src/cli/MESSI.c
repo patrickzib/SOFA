@@ -333,6 +333,7 @@ int main(int argc, char **argv) {
     static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
+    static messi_trie_query_engine trie_query_engine = MESSI_TRIE_QUERY_TRAVERSAL;
     static int trie_leaf_ivf = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
@@ -416,6 +417,7 @@ int main(int argc, char **argv) {
                 {"trie-query-parallel", no_argument, 0, 1001},
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
+                {"trie-query-engine", required_argument, 0, 1023},
                 {"trie-mbr-dimensions", required_argument, 0, 1004},
                 {"trie-split-dimensions", required_argument, 0, 1015},
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
@@ -459,6 +461,16 @@ int main(int argc, char **argv) {
                 break;
             case 1003:
                 trie_query_batch = 1;
+                break;
+            case 1023:
+                if (strcmp(optarg, "traversal") == 0)
+                    trie_query_engine = MESSI_TRIE_QUERY_TRAVERSAL;
+                else if (strcmp(optarg, "leaf-list") == 0)
+                    trie_query_engine = MESSI_TRIE_QUERY_LEAF_LIST;
+                else {
+                    fprintf(stderr, "error: --trie-query-engine must be traversal or leaf-list.\n");
+                    return EXIT_FAILURE;
+                }
                 break;
             case 1004:
                 trie_mbr_dimensions = atoi(optarg);
@@ -766,6 +778,7 @@ int main(int argc, char **argv) {
                        "Trie options:\n"
                        "  --trie-query-parallel          Parallelize each query (default)\n"
                        "  --trie-query-batch             Batch independent queries\n"
+                       "  --trie-query-engine MODE       traversal (default) or leaf-list\n"
                        "  --trie-mbr-dimensions N        MBR dimensions (16--128)\n"
                        "  --trie-split-dimensions N      Split candidates (default: min(32, MBR dimensions))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
@@ -894,6 +907,14 @@ int main(int argc, char **argv) {
     }
     if (trie_record_mbr_suffix_bound && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_query_engine != MESSI_TRIE_QUERY_TRAVERSAL && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-query-engine requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_query_engine == MESSI_TRIE_QUERY_LEAF_LIST && trie_query_batch) {
+        fprintf(stderr, "error: --trie-query-engine leaf-list does not yet support --trie-query-batch.\n");
         return EXIT_FAILURE;
     }
     if (trie_leaf_ivf && index_type != MESSI_INDEX_TRIE) {
@@ -1255,6 +1276,7 @@ int main(int argc, char **argv) {
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
+        index_settings->trie_query_engine = trie_query_engine;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;

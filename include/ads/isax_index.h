@@ -32,6 +32,11 @@ typedef enum {
     MESSI_INDEX_TRIE = 1
 } messi_index_type;
 
+typedef enum {
+    MESSI_TRIE_QUERY_TRAVERSAL = 0,
+    MESSI_TRIE_QUERY_LEAF_LIST = 1
+} messi_trie_query_engine;
+
 
 typedef struct {
     char new_index;
@@ -98,6 +103,7 @@ typedef struct {
      * split.  MBRs always retain the full symbolic word. */
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
+    messi_trie_query_engine trie_query_engine;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;

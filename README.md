@@ -102,6 +102,12 @@ Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
 leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and
 PISA), with `K` from 2 to 64.
 
+Trie queries use recursive traversal by default. Use
+`--trie-query-engine leaf-list` to benchmark the alternative terminal-leaf
+best-first engine. It evaluates every leaf MBR, refines leaves in bound order,
+and splits large leaves into 2 K-record work items (or leaf-IVF groups) for
+per-query parallelism. It is not available with batch queries.
+
 # Scripts
 
 See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.

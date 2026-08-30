@@ -53,6 +53,7 @@ Options:
                             Disable variance-assigned root bits for learned iSAX methods
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
+  --trie-query-engine MODE  traversal (default) or leaf-list
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
@@ -179,6 +180,7 @@ METHODS_OVERRIDE=
 INDEX_TYPE=isax
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
+TRIE_QUERY_ENGINE=traversal
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
@@ -238,6 +240,7 @@ while [[ $# -gt 0 ]]; do
         --isax-record-lb-table) ISAX_RECORD_LB_TABLE=true; shift ;;
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
+        --trie-query-engine) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_QUERY_ENGINE=$2; shift 2 ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
@@ -296,6 +299,9 @@ fi
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $TRIE_QUERY_ENGINE == traversal || $TRIE_QUERY_ENGINE == leaf-list ]] || die '--trie-query-engine must be traversal or leaf-list'
+[[ $TRIE_QUERY_ENGINE == traversal || $INDEX_TYPE == trie ]] || die '--trie-query-engine leaf-list requires --index-type trie'
+[[ $TRIE_QUERY_ENGINE == traversal || $TRIE_QUERY_BATCH == false ]] || die '--trie-query-engine leaf-list cannot be combined with --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == false || $INDEX_TYPE == isax ]] || die '--dynamic-root-split-variance requires --index-type isax'
 
 QUERY_SIZE=${QUERY_SIZE_OVERRIDE:-100}
@@ -439,6 +445,7 @@ fi
 if [[ $TRIE_QUERY_BATCH == true ]]; then
     COMMON_ARGS+=(--trie-query-batch)
 fi
+[[ $TRIE_QUERY_ENGINE == leaf-list ]] && COMMON_ARGS+=(--trie-query-engine leaf-list)
 if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)
 fi
