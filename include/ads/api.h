@@ -29,6 +29,8 @@ typedef struct {
     int histogram_type;
     int sample_type;
     int n_coefficients;
+    double sffa_order;
+    char sffa_auto_order;
     int filetype_int;
     int max_query_threads;
     int queue_count;
@@ -62,6 +64,7 @@ int messi_index_pca_transform(messi_index *index,
                               size_t dim,
                               float *out,
                               size_t out_dim);
+double messi_index_sffa_order(const messi_index *index);
 
 #ifdef __cplusplus
 }

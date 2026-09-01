@@ -19,6 +19,7 @@ COMMON_LDFLAGS = [flag for flag in (FFTW_LIBS + " " + LAPACK_LIBS).split() if fl
 
 sources = [
     "src/ads/api.c",
+    "src/ads/build_progress.c",
     "src/ads/isax/isax_file_loaders.c",
     "src/ads/isax/isax_first_buffer_layer.c",
     "src/ads/isax/isax_index.c",
@@ -39,6 +40,8 @@ sources = [
     "src/ads/isax/inmemory_topk_engine.c",
     "src/ads/sfa/dft.c",
     "src/ads/sfa/sfa.c",
+    "src/ads/sffa/frft.c",
+    "src/ads/sffa/sffa.c",
     "src/ads/spartan/pca.c",
     "src/ads/spartan/spartan.c",
     "src/ads/pisa/pisa.c",

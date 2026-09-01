@@ -20,6 +20,8 @@ cdef extern from "ads/api.h":
         int histogram_type
         int sample_type
         int n_coefficients
+        double sffa_order
+        char sffa_auto_order
         int filetype_int
         int max_query_threads
         int queue_count
@@ -54,3 +56,4 @@ cdef extern from "ads/api.h":
                                   size_t dim,
                                   float *out,
                                   size_t out_dim)
+    double messi_index_sffa_order(const messi_index *index)

@@ -52,6 +52,7 @@
 #include "ads/sfa/sfa.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/sffa/sffa.h"
 #include "ads/trie/trie.h"
 #include "include/ads/isax_file_loaders.h"
 //#define PROGRESS_CALCULATE_THREAD_NUMBER 4
@@ -361,6 +362,8 @@ int main(int argc, char **argv) {
     int topk = 0;
     int dtwwindowsize = 0;
     int sample_size = 1000;
+    double sffa_order = 1.0;
+    int sffa_auto_order = 0;
 
     time_t time_now;
 
@@ -434,6 +437,7 @@ int main(int argc, char **argv) {
                 {"query-report-interval", required_argument, 0, 1006},
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
+                {"sffa-order",          required_argument, 0, 1023},
                 {NULL,                  0,                 NULL, 0}
         };
 
@@ -520,6 +524,15 @@ int main(int argc, char **argv) {
                 root_split_variance_disabled = 1;
                 if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE)
                     root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
+                break;
+            case 1023:
+                if (strcmp(optarg, "auto") == 0) {
+                    sffa_auto_order = 1;
+                } else {
+                    sffa_order = strtod(optarg, NULL);
+                    sffa_auto_order = 0;
+                    if (!isfinite(sffa_order)) { fprintf(stderr, "error: --sffa-order must be a finite number or 'auto'.\n"); return EXIT_FAILURE; }
+                }
                 break;
             case 'j':
                 serial_scan = 1;
@@ -743,12 +756,13 @@ int main(int argc, char **argv) {
                        "\n"
                        "Transforms and binning:\n"
                        "  --function-type N              0 build only; 1 ParIS-TS; 2 ParIS; 3 MESSI-SAX;\n"
-                       "                               4 SFA; 5 SPARTAN; 6 PISA\n"
+                       "                               4 SFA; 5 SPARTAN; 6 PISA; 7 SFFA\n"
                        "  --sample-size N                Binning sample size\n"
                        "  --sample-type 1|2|3            first values, uniform, or random\n"
                        "  --sampling-seed N              Random sampling seed (default: 1)\n"
                        "  --histogram-type 1|2           Equi-depth (default) or equi-width\n"
                        "  --sfa-n-coefficients N         SFA candidate coefficients (even; n-segments..series length)\n"
+                       "  --sffa-order P|auto            SFFA order (0 identity, 1 DFT; auto selects held-out tightness)\n"
                        "  --filetype-int                 Read int input and convert to float\n"
                        "  --apply-z-norm                 Z-normalize base and queries\n"
                        "  --is-norm                      Input is already normalized (SFA ignores DC)\n"
@@ -823,12 +837,12 @@ int main(int argc, char **argv) {
          * umbrella useful for mixed benchmark suites: it still enables its
          * applicable node/table pieces, while learned methods get the full
          * extended suffix path. */
-        if (function_type == 4 || function_type == 5 || function_type == 6)
+        if (function_type == 4 || function_type == 5 || function_type == 6 || function_type == 7)
             isax_record_mbr_suffix_bound = 1;
         isax_record_lb_table = 1;
         if (!isax_mbr_dimensions_specified) isax_mbr_dimensions = 32;
         if (!root_split_variance_disabled && root_split_mode == MESSI_ROOT_SPLIT_DEFAULT &&
-            (function_type == 4 || function_type == 5 || function_type == 6))
+            (function_type == 4 || function_type == 5 || function_type == 6 || function_type == 7))
             root_split_mode = MESSI_ROOT_SPLIT_VARIANCE;
     }
     /* A record suffix bound is meaningful only together with node MBRs. */
@@ -842,8 +856,8 @@ int main(int argc, char **argv) {
 
     if (index_type == MESSI_INDEX_TRIE) {
         if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
-        if (function_type < 3 || function_type > 6) {
-            fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
+        if (function_type < 3 || function_type > 7) {
+            fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), 6 (PISA), and 7 (SFFA).\n");
             return EXIT_FAILURE;
         }
         if (root_split_mode != MESSI_ROOT_SPLIT_DEFAULT) {
@@ -864,8 +878,8 @@ int main(int argc, char **argv) {
         }
         if (trie_leaf_ivf != 0 &&
             (trie_leaf_ivf < 2 || trie_leaf_ivf > 64 ||
-             (function_type != 4 && function_type != 5 && function_type != 6))) {
-            fprintf(stderr, "error: --trie-leaf-ivf requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
+             (function_type != 4 && function_type != 5 && function_type != 6 && function_type != 7))) {
+            fprintf(stderr, "error: --trie-leaf-ivf requires a learned transform and K between 2 and 64.\n");
             return EXIT_FAILURE;
         }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
@@ -915,7 +929,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (isax_record_mbr_suffix_bound &&
-        function_type != 4 && function_type != 5 && function_type != 6) {
+        function_type != 4 && function_type != 5 && function_type != 6 && function_type != 7) {
         fprintf(stderr,
                 "error: --isax-record-mbr-suffix-bound requires learned SFA, SPARTAN, or PISA transforms.\n");
         return EXIT_FAILURE;
@@ -926,8 +940,8 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (root_split_mode == MESSI_ROOT_SPLIT_VARIANCE &&
-        function_type != 4 && function_type != 5 && function_type != 6) {
-        fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
+        function_type != 4 && function_type != 5 && function_type != 6 && function_type != 7) {
+        fprintf(stderr, "error: --dynamic-root-split-variance is supported by learned transforms.\n");
         return EXIT_FAILURE;
     }
     if (!clamp_query_count_to_file(queries, time_series_size, &queries_size)) {
@@ -1211,7 +1225,7 @@ int main(int argc, char **argv) {
                 function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
                 sample_type);
 
-        if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5 || function_type == 6)) {
+        if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5 || function_type == 6 || function_type == 7)) {
             fprintf(stderr, "warning: function_type %d requires in-memory mode; enabling --inmemory.\n",
                     function_type);
             inmemory_flag = 1;
@@ -1247,6 +1261,8 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->sffa_order = sffa_order;
+        index_settings->sffa_auto_order = sffa_auto_order;
         index_settings->index_type = index_type;
         index_settings->isax_node_mbr = isax_node_mbr;
         index_settings->isax_record_mbr_suffix_bound = isax_record_mbr_suffix_bound;
@@ -1437,6 +1453,36 @@ int main(int argc, char **argv) {
                 if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+            query_wall_seconds = monotonic_seconds() - query_wall_start;
+            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+
+        } else if (inmemory_flag && function_type == 7) {
+            if (sffa_bins_init(idx) != SUCCESS ||
+                sffa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+                              apply_znorm) != SUCCESS) {
+                fprintf(stderr, "error: SFFA bin preparation failed; aborting index creation.\n");
+                return EXIT_FAILURE;
+            }
+            if (index_type == MESSI_INDEX_TRIE) {
+                if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
+                    fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
+                }
+            } else {
+                index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            }
+            if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
+            INIT_INDEX_STATS_FILE(logfile_index);
+            INIT_SAVE_FILE(logfile_query);
+            double query_wall_start = monotonic_seconds();
+            if (index_type == MESSI_INDEX_TRIE) {
+                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+                        (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS)
+                    return EXIT_FAILURE;
+            } else {
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance,
+                                                   min_checked_leaves, filetype_int, apply_znorm,
+                                                   dynamic_index, &exact_search_MESSI);
+            }
             query_wall_seconds = monotonic_seconds() - query_wall_start;
             fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
@@ -1695,6 +1741,9 @@ int main(int argc, char **argv) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else if (function_type == 6) {
                 pisa_free_bins(idx);
+                isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
+            } else if (function_type == 7) {
+                sffa_free_bins(idx);
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);
             } else if (function_type == 3) {
                 isax_index_pRecBuf_destroy(idx, NULL, maxquerythread);

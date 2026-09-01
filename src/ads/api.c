@@ -4,10 +4,12 @@
 #include "ads/parallel_query_engine.h"
 #include "ads/parallel_inmemory_query_engine.h"
 #include "ads/sax/ts.h"
+#include "ads/calc_utils.h"
 #include "ads/sfa/sfa.h"
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/sffa/sffa.h"
 #include "ads/trie/trie.h"
 #include <stdlib.h>
 #include <float.h>
@@ -15,6 +17,7 @@
 #include <limits.h>
 #include <unistd.h>
 #include <string.h>
+#include <math.h>
 
 /* The CLI owns this global in executable builds.  The standalone API links
  * query engines directly, so it provides the same default independently. */
@@ -43,6 +46,8 @@ static enum response prepare_spartan_bins_if_needed(isax_index *index, const cha
 static void finalize_spartan_bins_if_needed(isax_index *index);
 static enum response prepare_pisa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
 static void finalize_pisa_bins_if_needed(isax_index *index);
+static enum response prepare_sffa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int);
+static void finalize_sffa_bins_if_needed(isax_index *index);
 
 static messi_index *messi_alloc(void) {
     messi_index *idx = (messi_index *) calloc(1, sizeof(messi_index));
@@ -113,6 +118,13 @@ messi_index *messi_index_create(const messi_index_params *params) {
     }
 
     settings->sampling_seed = params->sampling_seed == 0 ? 1 : params->sampling_seed;
+    settings->sffa_order = params->sffa_order;
+    settings->sffa_auto_order = params->sffa_auto_order;
+    if (!isfinite(settings->sffa_order)) {
+        free(settings);
+        free(wrapper);
+        return NULL;
+    }
     settings->node_split_criterion = params->node_split_criterion == 0
                                         ? 1 : params->node_split_criterion;
     /* Match the CLI/default constructor: node MBRs remain enabled for iSAX. */
@@ -175,6 +187,10 @@ void messi_index_destroy(messi_index *index) {
             index->index->settings->function_type == 6) {
             pisa_free_bins(index->index);
         }
+        if (index->index->settings && index->index->bins != NULL &&
+            index->index->settings->function_type == 7) {
+            sffa_free_bins(index->index);
+        }
         if (index->built && index->index->settings &&
             index->index->settings->index_type == MESSI_INDEX_TRIE) {
             symbolic_trie_destroy(index->index);
@@ -197,7 +213,8 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num, int 
     int apply_znorm = index->index->settings ? !index->index->settings->is_norm : 0;
     if (prepare_sfa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS ||
         prepare_spartan_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS ||
-        prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS) {
+        prepare_pisa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS ||
+        prepare_sffa_bins_if_needed(index->index, path, ts_num, index->filetype_int) != SUCCESS) {
         return -3;
     }
     enum response build_result;
@@ -213,13 +230,23 @@ int messi_index_add_file(messi_index *index, const char *path, long ts_num, int 
         finalize_sfa_bins_if_needed(index->index);
         finalize_spartan_bins_if_needed(index->index);
         finalize_pisa_bins_if_needed(index->index);
+        finalize_sffa_bins_if_needed(index->index);
         return -4;
     }
     finalize_sfa_bins_if_needed(index->index);
     finalize_spartan_bins_if_needed(index->index);
     finalize_pisa_bins_if_needed(index->index);
+    finalize_sffa_bins_if_needed(index->index);
     index->built = 1;
     return 0;
+}
+
+double messi_index_sffa_order(const messi_index *index) {
+    if (index == NULL || index->index == NULL || index->index->settings == NULL ||
+        index->index->settings->function_type != MESSI_TRANSFORM_SFFA) {
+        return NAN;
+    }
+    return index->index->settings->sffa_order;
 }
 
 int messi_index_search(messi_index *index,
@@ -238,18 +265,33 @@ int messi_index_search(messi_index *index,
     }
 
     ts_type *paa_buffer = malloc(sizeof(ts_type) * index->index->settings->n_segments);
+    ts_type *normalized_query = NULL;
+    if (paa_buffer == NULL) return -3;
+    if (!index->index->settings->is_norm) {
+        normalized_query = malloc(sizeof(*normalized_query) * dim);
+        if (normalized_query == NULL) { free(paa_buffer); return -3; }
+    }
 
     fftw_workspace fftw = {0};
+    sffa_workspace sffa = {0};
 
     unsigned long ts_length = index->index->settings->timeseries_size;
     if (index->index->settings->function_type == 4 || index->index->settings->function_type == 6) {
         fftw_workspace_init(&fftw, ts_length);
+    }
+    if (index->index->settings->function_type == 7) {
+        sffa_workspace_init(&sffa, ts_length);
     }
 
     for (size_t i = 0; i < nq; ++i) {
         node_list nlist = {.nlist = NULL, .node_amount = 0};
         populate_root_nodes(index->index, &nlist);
         ts_type *ts = (ts_type *) (queries + i * dim);
+        if (normalized_query != NULL) {
+            memcpy(normalized_query, ts, sizeof(*normalized_query) * dim);
+            znorm(normalized_query, (int) dim);
+            ts = normalized_query;
+        }
 
         if (index->index->settings->function_type == 4) {
             //SFA: parse ts and make fft representation
@@ -260,6 +302,7 @@ int messi_index_search(messi_index *index,
                             &fftw) != SUCCESS) {
                 free(nlist.nlist);
                 fftw_workspace_destroy(&fftw);
+                free(normalized_query);
                 free(paa_buffer);
                 return -5;
             }
@@ -271,6 +314,15 @@ int messi_index_search(messi_index *index,
             if (pisa_pca_from_ts(index->index, ts, paa_buffer, &fftw) != SUCCESS) {
                 free(nlist.nlist);
                 fftw_workspace_destroy(&fftw);
+                free(normalized_query);
+                free(paa_buffer);
+                return -5;
+            }
+        } else if (index->index->settings->function_type == 7) {
+            if (sffa_project(index->index, ts, paa_buffer, &sffa) != SUCCESS) {
+                free(nlist.nlist);
+                sffa_workspace_destroy(&sffa);
+                free(normalized_query);
                 free(paa_buffer);
                 return -5;
             }
@@ -284,7 +336,7 @@ int messi_index_search(messi_index *index,
             res = symbolic_trie_exact_search(index->index, ts, paa_buffer, FLT_MAX);
         } else {
             res = exact_search_MESSI(
-                (ts_type *) (queries + i * dim), paa_buffer, index->index,
+                ts, paa_buffer, index->index,
                 &nlist, FLT_MAX, -1, dynamic_index);
         }
         distances[i] = res.distance;
@@ -298,6 +350,8 @@ int messi_index_search(messi_index *index,
     if (index->index->settings->function_type == 4 || index->index->settings->function_type == 6) {
         fftw_workspace_destroy(&fftw);
     }
+    if (index->index->settings->function_type == 7) sffa_workspace_destroy(&sffa);
+    free(normalized_query);
     free(paa_buffer);
     return 0;
 }
@@ -423,4 +477,18 @@ static void finalize_pisa_bins_if_needed(isax_index *index) {
     for (int i = 0; i < n_segments; i++) {
         memcpy(&index->binsv[i * slice], index->bins[i], sizeof(ts_type) * slice);
     }
+}
+
+static enum response prepare_sffa_bins_if_needed(isax_index *index, const char *path, long ts_num, int filetype_int) {
+    if (index == NULL || index->settings->function_type != 7) return SUCCESS;
+    if (sffa_bins_init(index) != SUCCESS) {
+        fprintf(stderr, "error: failed to initialize SFFA bins.\n");
+        return FAILURE;
+    }
+    return sffa_set_bins(index, path, ts_num, maxquerythread, filetype_int, !index->settings->is_norm);
+}
+
+static void finalize_sffa_bins_if_needed(isax_index *index) {
+    (void) index;
+    /* SFFA's bin rows alias its contiguous binsv allocation. */
 }

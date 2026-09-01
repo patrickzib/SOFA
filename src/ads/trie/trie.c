@@ -10,6 +10,7 @@
 #include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/sffa/sffa.h"
 #include "ads/inmemory_index_engine.h"
 #include "ads/build_progress.h"
 
@@ -898,7 +899,8 @@ static int trie_split_root_sampled_parallel(struct symbolic_trie_index *trie,
 }
 
 static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax_type *word,
-                                       ts_type *transform, fftw_workspace *fftw) {
+                                       ts_type *transform, fftw_workspace *fftw,
+                                       sffa_workspace *sffa) {
     int d = index->settings->n_segments;
     if (index->settings->function_type == 3) {
         if (paa_from_ts((ts_type *) ts, transform, index->settings) != SUCCESS) return FAILURE;
@@ -914,6 +916,9 @@ static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax
     } else if (index->settings->function_type == 6) {
         if (pisa_pca_from_ts(index, ts, transform, fftw) != SUCCESS) return FAILURE;
         sfa_from_fft(index, transform, word);
+    } else if (index->settings->function_type == 7) {
+        if (sffa_project(index, ts, transform, sffa) != SUCCESS) return FAILURE;
+        sffa_from_values(index, transform, word);
     } else return FAILURE;
     return SUCCESS;
 }
@@ -1128,10 +1133,13 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 #endif
     {
         fftw_workspace fftw = {0};
+        sffa_workspace sffa = {0};
         ts_type *transform = malloc(sizeof(*transform) * (size_t) trie->dimensions);
         unsigned long transform_pending = 0;
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_init(&fftw, index->settings->timeseries_size);
+        if (index->settings->function_type == 7)
+            sffa_workspace_init(&sffa, index->settings->timeseries_size);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
 #ifdef _OPENMP
 #pragma omp for schedule(static)
@@ -1141,7 +1149,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             ts_type *ts = rawfile + (size_t) i * index->settings->timeseries_size;
             if (apply_znorm) znorm(ts, index->settings->timeseries_size);
             sax_type *word = trie->word_arena + (size_t) i * trie->dimensions;
-            if (transform == NULL || trie_word_from_ts(index, ts, word, transform, &fftw) != SUCCESS) {
+            if (transform == NULL || trie_word_from_ts(index, ts, word, transform, &fftw, &sffa) != SUCCESS) {
 #ifdef _OPENMP
 #pragma omp atomic write
 #endif
@@ -1161,6 +1169,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         free(transform);
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_destroy(&fftw);
+        sffa_workspace_destroy(&sffa);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     }
@@ -1682,6 +1691,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     sax_type *word = malloc((size_t) index->settings->n_segments);
     trie_query_scratch scratch = {0};
     fftw_workspace fftw = {0}; fftw_workspace_init(&fftw, ts_length);
+    sffa_workspace sffa = {0}; if (index->settings->function_type == 7) sffa_workspace_init(&sffa, ts_length);
     if (query == NULL || (filetype_int && query_int == NULL) || transform == NULL || word == NULL) {
         fclose(file); free(query); free(query_int); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
     }
@@ -1699,7 +1709,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
         unsigned long long query_start = trie_monotonic_microseconds();
-        if (trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
+        if (trie_word_from_ts(index, query, word, transform, &fftw, &sffa) != SUCCESS) {
             fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
@@ -1761,7 +1771,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         }
     }
     fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
-    fftw_workspace_destroy(&fftw); return SUCCESS;
+    fftw_workspace_destroy(&fftw); sffa_workspace_destroy(&sffa); return SUCCESS;
 }
 
 enum response symbolic_trie_query_file_batch(isax_index *index, const char *path, int query_count,
@@ -1799,11 +1809,13 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
 #endif
     {
         fftw_workspace fftw = {0};
+        sffa_workspace sffa = {0};
         ts_type *transform = malloc((size_t) dimensions * sizeof(*transform));
         sax_type *word = malloc((size_t) dimensions);
         trie_query_scratch scratch = {0};
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_init(&fftw, length);
+        if (index->settings->function_type == 7) sffa_workspace_init(&sffa, length);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
 #ifdef _OPENMP
 #pragma omp for schedule(dynamic, 1)
@@ -1812,7 +1824,7 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
             ts_type *query = queries + (size_t) i * length;
             unsigned long long query_start = trie_monotonic_microseconds();
             if (apply_znorm) znorm(query, length);
-            if (transform == NULL || word == NULL || trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
+            if (transform == NULL || word == NULL || trie_word_from_ts(index, query, word, transform, &fftw, &sffa) != SUCCESS) {
 #ifdef _OPENMP
 #pragma omp atomic write
 #endif
@@ -1843,6 +1855,7 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
         free(transform); free(word); free(scratch.candidates);
         pthread_mutex_lock(&trie_fftw_plan_lock);
         fftw_workspace_destroy(&fftw);
+        sffa_workspace_destroy(&sffa);
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     if (!failed) {

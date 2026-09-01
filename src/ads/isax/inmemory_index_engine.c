@@ -25,6 +25,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/spartan/spartan.h"
 #include "ads/pisa/pisa.h"
+#include "ads/sffa/sffa.h"
 
 
 void index_generate_inmemory(const char *ifilename, long int ts_num, isax_index *index) {
@@ -1429,6 +1430,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
     unsigned long progress_flush_pending = 0;
 
     fftw_workspace fftw = {0};
+    sffa_workspace sffa = {0};
     ts_type *coeff_scratch = NULL;
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
@@ -1438,7 +1440,12 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
         fftw_workspace_init(&fftw, ts_length);
         pthread_mutex_unlock(data->lock_fft_plan);
     }
-    if (index->settings->function_type == 5 || index->settings->function_type == 6) {
+    if (index->settings->function_type == 7) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        sffa_workspace_init(&sffa, index->settings->timeseries_size);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+    if (index->settings->function_type == 5 || index->settings->function_type == 6 || index->settings->function_type == 7) {
         coeff_scratch = malloc(sizeof(ts_type) * index->settings->n_segments);
         if (coeff_scratch == NULL) {
             fprintf(stderr, "error: cannot allocate transformation scratch buffer\n");
@@ -1465,6 +1472,8 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
             success = spartan_from_ts(index, ts, sax, coeff_scratch);
         } else if (index->settings->function_type == 6) {
             success = pisa_from_ts(index, ts, sax, &fftw, coeff_scratch);
+        } else if (index->settings->function_type == 7) {
+            success = sffa_from_ts(index, ts, sax, &sffa, coeff_scratch);
         } else {
             success = sax_from_ts(ts, sax, index->settings);
         }
@@ -1501,6 +1510,11 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         pthread_mutex_lock(data->lock_fft_plan);
         fftw_workspace_destroy(&fftw);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+    if (index->settings->function_type == 7) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        sffa_workspace_destroy(&sffa);
         pthread_mutex_unlock(data->lock_fft_plan);
     }
 
@@ -1599,6 +1613,7 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
     unsigned long i = 0;
     float *raw_file = data->ts;
     fftw_workspace fftw = {0};
+    sffa_workspace sffa = {0};
     ts_type *coeff_scratch = NULL;
 
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
@@ -1607,7 +1622,12 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
         fftw_workspace_init(&fftw, ts_length);
         pthread_mutex_unlock(data->lock_fft_plan);
     }
-    if (index->settings->function_type == 5 || index->settings->function_type == 6) {
+    if (index->settings->function_type == 7) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        sffa_workspace_init(&sffa, index->settings->timeseries_size);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+    if (index->settings->function_type == 5 || index->settings->function_type == 6 || index->settings->function_type == 7) {
         coeff_scratch = malloc(sizeof(ts_type) * index->settings->n_segments);
         if (coeff_scratch == NULL) {
             fprintf(stderr, "error: cannot allocate transformation scratch buffer\n");
@@ -1642,6 +1662,8 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
                 success = spartan_from_ts(index, ts, sax, coeff_scratch);
             } else if (index->settings->function_type == 6) {
                 success = pisa_from_ts(index, ts, sax, &fftw, coeff_scratch);
+            } else if (index->settings->function_type == 7) {
+                success = sffa_from_ts(index, ts, sax, &sffa, coeff_scratch);
             } else {
                 success = sax_from_ts(ts, sax, index->settings);
             }
@@ -1666,6 +1688,11 @@ void *index_creation_pRecBuf_worker_new(void *transferdata) {
     if (index->settings->function_type == 4 || index->settings->function_type == 6) {
         pthread_mutex_lock(data->lock_fft_plan);
         fftw_workspace_destroy(&fftw);
+        pthread_mutex_unlock(data->lock_fft_plan);
+    }
+    if (index->settings->function_type == 7) {
+        pthread_mutex_lock(data->lock_fft_plan);
+        sffa_workspace_destroy(&sffa);
         pthread_mutex_unlock(data->lock_fft_plan);
     }
     free(coeff_scratch);

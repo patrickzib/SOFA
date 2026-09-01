@@ -37,6 +37,8 @@ set(ADS_SOURCES
   src/ads/isax/inmemory_topk_engine.c
   src/ads/sfa/dft.c
   src/ads/sfa/sfa.c
+  src/ads/sffa/frft.c
+  src/ads/sffa/sffa.c
   src/ads/spartan/pca.c
   src/ads/spartan/spartan.c
   src/ads/pisa/pisa.c
@@ -177,6 +179,31 @@ if(BUILD_TESTING)
     target_link_libraries(test_trie_partitioned_bounds PRIVATE ${MATH_LIBRARY})
   endif()
   add_test(NAME trie_partitioned_bound_reference COMMAND test_trie_partitioned_bounds)
+
+  add_executable(test_sffa scripts/tests/test_sffa.c)
+  target_include_directories(test_sffa PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_sffa PRIVATE ads)
+  if(MATH_LIBRARY)
+    target_link_libraries(test_sffa PRIVATE ${MATH_LIBRARY})
+  endif()
+  add_test(NAME sffa_unitary_reference COMMAND test_sffa)
+
+  add_executable(test_sffa_api scripts/tests/test_sffa_api.c src/ads/api.c)
+  target_include_directories(test_sffa_api PRIVATE
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include
+  )
+  target_link_libraries(test_sffa_api PRIVATE ads)
+  if(MESSI_FFTW_TARGET)
+    target_link_libraries(test_sffa_api PRIVATE ${MESSI_FFTW_TARGET})
+  endif()
+  if(MATH_LIBRARY)
+    target_link_libraries(test_sffa_api PRIVATE ${MATH_LIBRARY})
+  endif()
+  add_test(NAME sffa_api_exact_search COMMAND test_sffa_api)
 
   add_executable(test_build_progress scripts/tests/test_build_progress.c)
   target_include_directories(test_build_progress PRIVATE

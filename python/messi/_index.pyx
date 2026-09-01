@@ -12,6 +12,7 @@ cimport numpy as np
 from ._native cimport (
     messi_index, messi_index_params, messi_index_create, messi_index_destroy,
     messi_index_add_file, messi_index_search, messi_index_pca_transform,
+    messi_index_sffa_order,
 )
 
 ctypedef np.float32_t FLOAT32_t
@@ -21,7 +22,7 @@ cdef int DEFAULT_PAA_SEGMENTS = 16
 cdef int MESSI_INDEX_ISAX = 0
 cdef int MESSI_INDEX_TRIE = 1
 
-_TRANSFORMS = {"sax": 3, "sfa": 4, "spartan": 5, "pisa": 6}
+_TRANSFORMS = {"sax": 3, "sfa": 4, "spartan": 5, "pisa": 6, "sffa": 7}
 _LAYOUTS = {"isax": MESSI_INDEX_ISAX, "trie": MESSI_INDEX_TRIE}
 
 
@@ -60,6 +61,7 @@ cdef class Index:
                   int histogram_type=2,
                   int sample_type=1,
                   sfa_n_coefficients=None,
+                  sffa_order=1.0,
                   int filetype_int=0,
                   int max_query_threads=1,
                   int queue_count=0,
@@ -84,6 +86,8 @@ cdef class Index:
         cdef int transform_dim
         cdef int record_lb_dim
         cdef int resolved_sfa_n_coefficients
+        cdef double resolved_sffa_order
+        cdef char sffa_auto_order = 0
         cdef object layout_name
         cdef object transform_name
 
@@ -106,11 +110,23 @@ cdef class Index:
         index_type = _LAYOUTS[layout_name]
         if transform is not None:
             if not isinstance(transform, str) or transform.lower() not in _TRANSFORMS:
-                raise ValueError("transform must be sax, sfa, spartan, or pisa")
+                raise ValueError("transform must be sax, sfa, spartan, pisa, or sffa")
             transform_name = transform.lower()
             function_type = _TRANSFORMS[transform_name]
-        elif function_type not in (3, 4, 5, 6):
-            raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), or 6 (PISA)")
+        elif function_type not in (3, 4, 5, 6, 7):
+            raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), 6 (PISA), or 7 (SFFA)")
+        if isinstance(sffa_order, str):
+            if sffa_order.lower() != "auto":
+                raise ValueError("sffa_order must be a finite number or 'auto'")
+            sffa_auto_order = 1
+            resolved_sffa_order = 1.0
+        else:
+            try:
+                resolved_sffa_order = float(sffa_order)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("sffa_order must be a finite number or 'auto'") from exc
+            if not np.isfinite(resolved_sffa_order):
+                raise ValueError("sffa_order must be finite")
 
         if index_type == MESSI_INDEX_TRIE:
             record_lb_dim = trie_record_lb_dimensions or n_segments
@@ -123,8 +139,8 @@ cdef class Index:
                 trie_split_dimensions = min(32, transform_dim)
             if trie_split_dimensions < 1 or trie_split_dimensions > transform_dim:
                 raise ValueError("trie_split_dimensions must be between 1 and trie_mbr_dimensions")
-            if trie_leaf_ivf and (trie_leaf_ivf < 2 or trie_leaf_ivf > 64 or function_type not in (4, 5, 6)):
-                raise ValueError("trie_leaf_ivf requires SFA, SPARTAN, or PISA and a value between 2 and 64")
+            if trie_leaf_ivf and (trie_leaf_ivf < 2 or trie_leaf_ivf > 64 or function_type not in (4, 5, 6, 7)):
+                raise ValueError("trie_leaf_ivf requires a learned transform and a value between 2 and 64")
             if trie_dynamic_alphabet:
                 if trie_fanout != 8:
                     raise ValueError("trie_fanout cannot be combined with trie_dynamic_alphabet")
@@ -140,8 +156,8 @@ cdef class Index:
         if dynamic_root_split_variance:
             if index_type != MESSI_INDEX_ISAX:
                 raise ValueError("dynamic_root_split_variance requires layout='isax'")
-            if function_type not in (4, 5, 6):
-                raise ValueError("dynamic_root_split_variance requires SFA, SPARTAN, or PISA")
+            if function_type not in (4, 5, 6, 7):
+                raise ValueError("dynamic_root_split_variance requires a learned transform")
         if sfa_n_coefficients is None:
             resolved_sfa_n_coefficients = min(64, timeseries_size)
             if resolved_sfa_n_coefficients % 2 != 0:
@@ -187,6 +203,8 @@ cdef class Index:
         params.histogram_type = histogram_type
         params.sample_type = sample_type
         params.n_coefficients = resolved_sfa_n_coefficients
+        params.sffa_order = resolved_sffa_order
+        params.sffa_auto_order = sffa_auto_order
         params.filetype_int = filetype_int
         params.max_query_threads = max_query_threads
         params.queue_count = queue_count or max_query_threads
@@ -215,6 +233,7 @@ cdef class Index:
         self._config = {"layout": layout_name, "function_type": function_type,
                         "tight_bound": bool(tight_bound),
                         "sfa_n_coefficients": resolved_sfa_n_coefficients if function_type == 4 else None,
+                        "sffa_order": sffa_order if function_type == 7 else None,
                         "transform_dimensions": transform_dim,
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
@@ -300,6 +319,8 @@ cdef class Index:
             self.close()
             raise RuntimeError("Bulk add failed; the Index was closed")
         self._has_data = True
+        if self._function_type == 7:
+            self._config["sffa_order"] = messi_index_sffa_order(self._index)
 
     def add(self, data, storage_dir=None, int dynamic_index=1):
         """Build from a finite 2-D array via an owned temporary raw snapshot."""

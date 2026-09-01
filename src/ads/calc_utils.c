@@ -28,11 +28,13 @@ ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
             return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 2.0f);
         if (index->settings->function_type == 6)
             return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+        if (index->settings->function_type == 7)
+            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
         if (index->settings->function_type == 5)
             return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
         return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
     }
-    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+    if (index->settings->function_type == 4 || index->settings->function_type == 6 || index->settings->function_type == 7)
         return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
     if (index->settings->function_type == 5)
         return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
@@ -41,7 +43,7 @@ ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
 
 ts_type messi_minidist(isax_index *index, float *paa_or_fft, sax_type *sax,
                        sax_type *sax_cardinalities, float bsf) {
-    if (index->settings->function_type == 4 || index->settings->function_type == 6)
+    if (index->settings->function_type == 4 || index->settings->function_type == 6 || index->settings->function_type == 7)
         return minidist_fft_to_sfa(index, paa_or_fft, sax, sax_cardinalities, bsf);
     if (index->settings->function_type == 5)
         return minidist_pca_to_spartan(index, paa_or_fft, sax, sax_cardinalities, bsf);
@@ -262,7 +264,7 @@ ts_type messi_minidist_range_raw_partitioned(isax_index *index,
     ts_type distance = 0.0f;
     ts_type unselected = 0.0f;
 
-    if (index->settings->function_type == 6) {
+    if (index->settings->function_type == 6 || index->settings->function_type == 7) {
         for (int i = 0; i < number_of_segments; ++i) {
             const ts_type contribution = messi_minidist_range_bins(index->bins[i], paa_or_fft[i],
                                                                     sax_min[i], sax_max[i],
@@ -416,7 +418,7 @@ int messi_build_record_lb_table(const isax_index *index,
 
     const ts_type *sax_bins = NULL;
     float sax_factor = 1.0f;
-    if (function_type != 4 && function_type != 5 && function_type != 6) {
+    if (function_type != 4 && function_type != 5 && function_type != 6 && function_type != 7) {
         const int offset = ((settings->sax_alphabet_cardinality - 1) *
                             (settings->sax_alphabet_cardinality - 2)) / 2;
         sax_bins = sax_breakpoints + offset;
@@ -428,7 +430,7 @@ int messi_build_record_lb_table(const isax_index *index,
                             dimension > 0 && dimension < sfa_start;
         const ts_type *bins = sax_bins;
         float factor = sax_factor;
-        if (function_type == 4 || function_type == 5 || function_type == 6) {
+        if (function_type == 4 || function_type == 5 || function_type == 6 || function_type == 7) {
             if (index->bins == NULL || index->bins[dimension] == NULL) return 0;
             bins = index->bins[dimension];
             factor = function_type == 4
@@ -490,7 +492,7 @@ ts_type minidist_fft_to_sfa(isax_index *index, float *fft, sax_type *sax, sax_ty
         sax_type c_c = sax_cardinalities[i];
         sax_type c_m = max_bit_cardinality;
         sax_type v = sax[i];
-        const float factor = index->settings->function_type == 4 ? 2.0f : 1.0f;
+    const float factor = index->settings->function_type == 4 ? 2.0f : 1.0f;
         distance += get_lb_distance(index->bins[i], fft[i], v, c_c, c_m, max_cardinality, factor, 0);
         if (distance > bsf) {
             return distance;

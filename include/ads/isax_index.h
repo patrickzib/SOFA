@@ -32,6 +32,16 @@ typedef enum {
     MESSI_INDEX_TRIE = 1
 } messi_index_type;
 
+/* Keep transform IDs public: they are persisted in the Python/C APIs and
+ * accepted by the command-line interface. */
+typedef enum {
+    MESSI_TRANSFORM_SAX = 3,
+    MESSI_TRANSFORM_SFA = 4,
+    MESSI_TRANSFORM_SPARTAN = 5,
+    MESSI_TRANSFORM_PISA = 6,
+    MESSI_TRANSFORM_SFFA = 7
+} messi_transform_type;
+
 
 typedef struct {
     char new_index;
@@ -83,6 +93,10 @@ typedef struct {
     int sample_type;
     unsigned int sampling_seed;
     int n_coefficients;
+    /* Fractional order p, where p=0 is identity and p=1 is the DFT. */
+    double sffa_order;
+    /* Select the SFFA order on a held-out portion of the training sample. */
+    char sffa_auto_order;
     int node_split_criterion;
     messi_index_type index_type;
     /* Optional iSAX SOFA v2 bounds.  The primary iSAX word/tree always
@@ -149,6 +163,10 @@ typedef struct {
     ts_type norm_factor;
 
     int * coefficients;
+    /* Selected SFFA scalar coordinates.  A coordinate is either the real or
+     * imaginary component of one fractional-Fourier output coefficient. */
+    struct sffa_coordinate *sffa_coordinates;
+    ts_type sffa_scale;
     ts_type *pca_mean;
     ts_type *pca_components;
     double *pca_bias;

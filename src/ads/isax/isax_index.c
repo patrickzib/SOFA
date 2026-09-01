@@ -241,6 +241,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->sffa_order = 1.0;
+    settings->sffa_auto_order = 0;
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
@@ -2962,6 +2964,12 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     else if (settings->function_type == 6) {
         fprintf(stderr, "  transform     : PISA (full real FFT: %d independent coordinates -> PCA), %d dimensions, alphabet %d (%d bits)\n",
                 settings->timeseries_size, settings->n_segments, settings->sax_alphabet_cardinality,
+                settings->sax_bit_cardinality);
+    }
+    else if (settings->function_type == 7) {
+        fprintf(stderr, "  transform     : SFFA, order %s%.6g, %d scalar real/imaginary coordinates, alphabet %d (%d bits)\n",
+                settings->sffa_auto_order ? "auto -> " : "", settings->sffa_order,
+                settings->n_segments, settings->sax_alphabet_cardinality,
                 settings->sax_bit_cardinality);
     }
 
