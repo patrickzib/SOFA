@@ -41,6 +41,8 @@ Options:
   --no-trie-record-mbr-suffix-bound
                             Disable trie record-MBR suffix pruning
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves
+  --no-trie-leaf-ivf-raw-ball-bound
+                            Disable certified raw centroid/radius cluster pruning
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -184,6 +186,7 @@ TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_LEAF_IVF=
+TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -244,6 +247,7 @@ while [[ $# -gt 0 ]]; do
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; shift 2 ;;
+        --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -293,6 +297,7 @@ fi
 [[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ -z $TRIE_LEAF_IVF || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -423,6 +428,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && COMMON_ARGS+=(--no-trie-record-mbr-suffix-bound)
 fi
 [[ -n $TRIE_LEAF_IVF ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+[[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet
