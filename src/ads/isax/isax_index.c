@@ -250,6 +250,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->isax_record_lb_table = 0;
     settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_ivf = 0;
+    settings->trie_leaf_ivf_raw_ball_bound = 1;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
@@ -2974,7 +2975,10 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s%s\n",
                 settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "",
-                settings->trie_leaf_ivf ? " + leaf IVF MBRs" : "");
+                settings->trie_leaf_ivf
+                    ? (settings->trie_leaf_ivf_raw_ball_bound
+                           ? " + leaf IVF MBRs/raw balls" : " + leaf IVF MBRs")
+                    : "");
         if (settings->trie_leaf_ivf)
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);

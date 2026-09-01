@@ -334,6 +334,7 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_ivf = 0;
+    static int trie_leaf_ivf_raw_ball_bound = 1;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
@@ -421,6 +422,7 @@ int main(int argc, char **argv) {
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-ivf", required_argument, 0, 1014},
+                {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -498,6 +500,9 @@ int main(int argc, char **argv) {
                 break;
             case 1014:
                 trie_leaf_ivf = atoi(optarg);
+                break;
+            case 1023:
+                trie_leaf_ivf_raw_ball_bound = 0;
                 break;
             case 1017:
                 isax_node_mbr = 1;
@@ -771,6 +776,7 @@ int main(int argc, char **argv) {
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
+                       "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -1256,6 +1262,7 @@ int main(int argc, char **argv) {
         index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
+        index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
@@ -1608,8 +1615,8 @@ int main(int argc, char **argv) {
                     const double cluster_record_skip_percent = dataset_size > 0
                         ? 100.0 * avg_cluster_records_pruned / dataset_size : 0.0;
                     fprintf(stderr,
-                            "    %-20s : %.2f%% cluster MBRs pruned (%.2f%% of indexed series)\n",
-                            "leaf cluster MBRs", cluster_prune_percent,
+                            "    %-20s : %.2f%% cluster bounds pruned (%.2f%% of indexed series)\n",
+                            "leaf cluster bounds", cluster_prune_percent,
                             cluster_record_skip_percent);
                 }
                 fprintf(stderr,
