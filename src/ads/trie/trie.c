@@ -68,6 +68,11 @@ typedef struct symbolic_trie_node {
     trie_leaf_cluster *clusters;
     sax_type *cluster_min_words;
     sax_type *cluster_max_words;
+    /* A ball in the exact (already normalized, when requested) raw-series
+     * space.  Unlike the symbolic k-means centres used to form clusters,
+     * these are certified for pruning by the triangle inequality. */
+    ts_type *cluster_raw_centroids;
+    float *cluster_raw_radii;
     int cluster_count;
 } symbolic_trie_node;
 
@@ -249,7 +254,8 @@ static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
     free(node->words); free(node->positions); free(node->min_word); free(node->max_word);
-    free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words); free(node);
+    free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
+    free(node->cluster_raw_centroids); free(node->cluster_raw_radii); free(node);
 }
 
 static unsigned long trie_node_count(const symbolic_trie_node *node) {
@@ -385,7 +391,7 @@ static double trie_cluster_distance(const sax_type *word, const float *centroid,
 }
 
 static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
-                             int cluster_count, const float *centers) {
+                             int cluster_count, const float *centers, int ts_length) {
     const int size = node->size;
     if (size < TRIE_LEAF_IVF_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
     const int train_size = size < TRIE_LEAF_IVF_TRAIN_SIZE ? size : TRIE_LEAF_IVF_TRAIN_SIZE;
@@ -460,12 +466,17 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
     sax_type *max_words = calloc((size_t) active * dimensions, sizeof(*max_words));
     sax_type **ordered_words = malloc((size_t) size * sizeof(*ordered_words));
     file_position_type *ordered_positions = malloc((size_t) size * sizeof(*ordered_positions));
+    ts_type *raw_centroids = calloc((size_t) active * ts_length, sizeof(*raw_centroids));
+    double *raw_sums = calloc((size_t) active * ts_length, sizeof(*raw_sums));
+    float *raw_radii = calloc((size_t) active, sizeof(*raw_radii));
     int *offsets = calloc((size_t) cluster_count, sizeof(*offsets));
     int *cursors = calloc((size_t) cluster_count, sizeof(*cursors));
     int *remap = malloc((size_t) cluster_count * sizeof(*remap));
     if (clusters == NULL || min_words == NULL || max_words == NULL || ordered_words == NULL ||
-        ordered_positions == NULL || offsets == NULL || cursors == NULL || remap == NULL) {
+        ordered_positions == NULL || raw_centroids == NULL || raw_sums == NULL || raw_radii == NULL ||
+        offsets == NULL || cursors == NULL || remap == NULL) {
         free(clusters); free(min_words); free(max_words); free(ordered_words); free(ordered_positions);
+        free(raw_centroids); free(raw_sums); free(raw_radii);
         free(offsets); free(cursors); free(remap); free(centroids); free(sums); free(assignments); free(counts);
         return 0;
     }
@@ -492,14 +503,45 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
             if (node->words[record][d] < minimum[d]) minimum[d] = node->words[record][d];
             if (node->words[record][d] > maximum[d]) maximum[d] = node->words[record][d];
         }
+        const ts_type *series = rawfile + node->positions[record];
+        double *sum = raw_sums + (size_t) group * ts_length;
+        for (int t = 0; t < ts_length; ++t) sum[t] += series[t];
+    }
+    for (int cluster = 0; cluster < active; ++cluster) {
+        ts_type *centroid = raw_centroids + (size_t) cluster * ts_length;
+        const double *sum = raw_sums + (size_t) cluster * ts_length;
+        const int count = clusters[cluster].size;
+        for (int t = 0; t < ts_length; ++t) centroid[t] = (ts_type) (sum[t] / count);
+    }
+    for (int cluster = 0; cluster < active; ++cluster) {
+        const ts_type *centroid = raw_centroids + (size_t) cluster * ts_length;
+        double maximum_distance_squared = 0.0;
+        const int first = clusters[cluster].offset;
+        const int last = first + clusters[cluster].size;
+        for (int record = first; record < last; ++record) {
+            const ts_type *series = rawfile + ordered_positions[record];
+            double distance_squared = 0.0;
+            for (int t = 0; t < ts_length; ++t) {
+                const double delta = (double) series[t] - centroid[t];
+                distance_squared += delta * delta;
+            }
+            if (distance_squared > maximum_distance_squared)
+                maximum_distance_squared = distance_squared;
+        }
+        /* Round upward: an undersized stored radius could invalidate the
+         * lower bound after the double-to-float conversion. */
+        raw_radii[cluster] = nextafterf((float) sqrt(maximum_distance_squared), INFINITY);
     }
     memcpy(node->words, ordered_words, (size_t) size * sizeof(*node->words));
     memcpy(node->positions, ordered_positions, (size_t) size * sizeof(*node->positions));
     node->clusters = clusters;
     node->cluster_min_words = min_words;
     node->cluster_max_words = max_words;
+    node->cluster_raw_centroids = raw_centroids;
+    node->cluster_raw_radii = raw_radii;
     node->cluster_count = active;
     free(ordered_words); free(ordered_positions); free(offsets); free(cursors); free(remap);
+    free(raw_sums);
     free(centroids); free(sums); free(assignments); free(counts);
     return 1;
 }
@@ -558,7 +600,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
         for (size_t i = 0; i < leaves.size; ++i) {
             symbolic_trie_node *node = leaves.items[i];
             if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
-                                   index->settings->trie_leaf_ivf, centers)) {
+                                   index->settings->trie_leaf_ivf, centers,
+                                   index->settings->timeseries_size)) {
                 failed = 1;
                 continue;
             }
@@ -572,7 +615,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
     for (size_t i = 0; i < leaves.size; ++i) {
         symbolic_trie_node *node = leaves.items[i];
         if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
-                               index->settings->trie_leaf_ivf, centers)) {
+                               index->settings->trie_leaf_ivf, centers,
+                               index->settings->timeseries_size)) {
             failed = 1;
             continue;
         }
@@ -632,6 +676,30 @@ static float trie_exact_distance(const ts_type *query, const ts_type *record,
     float result = ts_ed((ts_type *) query, (ts_type *) record, length, bsf);
     if (start != 0) stats->exact_distance_microseconds += trie_monotonic_microseconds() - start;
     return result;
+}
+
+/* For every member x of a cluster, ||q - x|| is at least
+ * max(0, ||q - c|| - r), where r encloses every member around c.  The
+ * cluster is still formed in symbolic space; this separate raw-space ball is
+ * what makes the additional bound exact. */
+static float trie_cluster_raw_ball_lower_bound(const symbolic_trie_node *node,
+                                               int cluster, const ts_type *query,
+                                               int ts_length) {
+    if (node->cluster_raw_centroids == NULL || node->cluster_raw_radii == NULL)
+        return 0.0f;
+    const ts_type *centroid = node->cluster_raw_centroids + (size_t) cluster * ts_length;
+    double squared = 0.0;
+    for (int t = 0; t < ts_length; ++t) {
+        const double delta = (double) query[t] - centroid[t];
+        squared += delta * delta;
+    }
+    /* Downward rounding keeps finite-precision arithmetic from turning this
+     * mathematical lower bound into an overestimate.  Radii were rounded up
+     * when built. */
+    const double distance = nextafter(sqrt(squared), 0.0);
+    const double lower = distance - (double) node->cluster_raw_radii[cluster];
+    if (lower <= 0.0) return 0.0f;
+    return nextafterf((float) (lower * lower), 0.0f);
 }
 
 static void trie_heap_sift_down(trie_leaf_candidate *heap, int size, int root) {
@@ -1341,10 +1409,15 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
         const trie_leaf_cluster *group = &node->clusters[cluster];
         if (stats != NULL) ++stats->cluster_bounds;
-        const float bound = trie_lower_bound(index->trie, index, transform,
+        const float symbolic_bound = trie_lower_bound(index->trie, index, transform,
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
             index->trie->dimensions, bsf, stats);
+        const float raw_ball_bound = index->settings->trie_leaf_ivf_raw_ball_bound
+            ? trie_cluster_raw_ball_lower_bound(node, cluster, query,
+                                                index->settings->timeseries_size)
+            : 0.0f;
+        const float bound = symbolic_bound > raw_ball_bound ? symbolic_bound : raw_ball_bound;
         if (bound >= bsf) {
             if (stats != NULL) { ++stats->cluster_pruned; stats->cluster_records_pruned += group->size; }
             continue;
