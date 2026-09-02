@@ -1180,13 +1180,23 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     unsigned long transform_completed = 0;
 #if HAVE_CBLAS
     if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
+        int reported_transform_percent = 10;
         for (long first = 0; first < ts_num && !failed;
              first += TRIE_PCA_PROJECTION_BLOCK_RECORDS) {
             const unsigned int records = (unsigned int) ((ts_num - first) <
                 (long) TRIE_PCA_PROJECTION_BLOCK_RECORDS
                     ? (ts_num - first) : TRIE_PCA_PROJECTION_BLOCK_RECORDS);
-            if (trie_build_pca_block(index, trie, first, records, apply_znorm) != SUCCESS)
+            if (trie_build_pca_block(index, trie, first, records, apply_znorm) != SUCCESS) {
                 failed = 1;
+            } else {
+                double percent = 10.0 +
+                    45.0 * (double) (first + records) / (double) ts_num;
+                int whole_percent = (int) percent;
+                if (whole_percent > reported_transform_percent) {
+                    messi_build_progress_update(&build_progress, percent);
+                    reported_transform_percent = whole_percent;
+                }
+            }
         }
     } else
 #endif
