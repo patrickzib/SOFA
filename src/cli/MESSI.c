@@ -112,6 +112,27 @@ static double monotonic_seconds(void) {
     return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
+/* A pruning curve needs one deterministic query-work order, while index
+ * construction and transform training should retain all requested workers. */
+static enum response run_trie_queries(isax_index *index, const char *queries,
+                                      int query_count, int filetype_int,
+                                      int apply_znorm, float minimum_distance,
+                                      int use_batch) {
+    const int build_workers = maxquerythread;
+    const int trace_curve = index->settings->trie_pruning_curve_path != NULL;
+    if (trace_curve) {
+        maxquerythread = 1;
+        fprintf(stderr,
+                ">>> trie pruning curve: using 1 serial query worker; index build used %d workers\n",
+                build_workers);
+    }
+    const enum response result =
+            (use_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+            (index, queries, query_count, filetype_int, apply_znorm, minimum_distance);
+    maxquerythread = build_workers;
+    return result;
+}
+
 static void format_compact_count(double value, char *buffer, size_t buffer_size) {
     const char *suffix = "";
     double scaled = value;
@@ -335,7 +356,7 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_ivf = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
-    static int trie_leaf_ivf_local_vq_bound = 1;
+    static int trie_leaf_ivf_local_vq_bound = 0;
     static int trie_pruning_curve = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
@@ -426,6 +447,7 @@ int main(int argc, char **argv) {
                 {"trie-leaf-ivf", required_argument, 0, 1014},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"no-trie-leaf-ivf-local-vq-bound", no_argument, 0, 1024},
+                {"trie-leaf-ivf-local-vq-bound", no_argument, 0, 1026},
                 {"trie-pruning-curve", no_argument, 0, 1025},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
@@ -510,6 +532,9 @@ int main(int argc, char **argv) {
                 break;
             case 1024:
                 trie_leaf_ivf_local_vq_bound = 0;
+                break;
+            case 1026:
+                trie_leaf_ivf_local_vq_bound = 1;
                 break;
             case 1025:
                 trie_pruning_curve = 1;
@@ -787,8 +812,9 @@ int main(int argc, char **argv) {
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
+                       "  --trie-leaf-ivf-local-vq-bound  Enable per-record local VQ residual pruning (off by default)\n"
                        "  --no-trie-leaf-ivf-local-vq-bound  Disable per-record local VQ residual pruning\n"
-                       "  --trie-pruning-curve           Write a serial pruning curve below MESSI_LOG_ROOT\n"
+                       "  --trie-pruning-curve           Write a serial query curve below MESSI_LOG_ROOT\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -1338,8 +1364,8 @@ int main(int argc, char **argv) {
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             double query_wall_start = monotonic_seconds();
-            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
-                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+            if (run_trie_queries(idx, queries, queries_size, filetype_int,
+                                 apply_znorm, minimum_distance, trie_query_batch) != SUCCESS) {
                 fprintf(stderr, "error: trie query processing failed.\n");
                 return EXIT_FAILURE;
             }
@@ -1384,7 +1410,8 @@ int main(int argc, char **argv) {
             // } else {
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int,
+                                     apply_znorm, minimum_distance, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1427,7 +1454,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int,
+                                     apply_znorm, minimum_distance, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;
@@ -1470,7 +1498,8 @@ int main(int argc, char **argv) {
             } else {*/
             double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
+                if (run_trie_queries(idx, queries, queries_size, filetype_int,
+                                     apply_znorm, minimum_distance, trie_query_batch) != SUCCESS) return EXIT_FAILURE;
             } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
                                                        filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
             query_wall_seconds = monotonic_seconds() - query_wall_start;

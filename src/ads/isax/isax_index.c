@@ -251,7 +251,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_ivf = 0;
     settings->trie_leaf_ivf_raw_ball_bound = 1;
-    settings->trie_leaf_ivf_local_vq_bound = 1;
+    settings->trie_leaf_ivf_local_vq_bound = 0;
     settings->trie_pruning_curve_path = NULL;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;

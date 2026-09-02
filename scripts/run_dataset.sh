@@ -43,6 +43,8 @@ Options:
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
+  --trie-leaf-ivf-local-vq-bound
+                            Enable per-record local VQ residual pruning (off by default)
   --no-trie-leaf-ivf-local-vq-bound
                             Disable per-record local VQ residual pruning
   --trie-pruning-curve     Write a serial pruning curve under MESSI_LOG_ROOT
@@ -190,7 +192,7 @@ TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_LEAF_IVF=
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
-TRIE_LEAF_IVF_LOCAL_VQ_BOUND=true
+TRIE_LEAF_IVF_LOCAL_VQ_BOUND=false
 TRIE_PRUNING_CURVE=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
@@ -253,6 +255,7 @@ while [[ $# -gt 0 ]]; do
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; shift 2 ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-leaf-ivf-local-vq-bound) TRIE_LEAF_IVF_LOCAL_VQ_BOUND=true; shift ;;
         --no-trie-leaf-ivf-local-vq-bound) TRIE_LEAF_IVF_LOCAL_VQ_BOUND=false; shift ;;
         --trie-pruning-curve) TRIE_PRUNING_CURVE=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
@@ -305,7 +308,7 @@ fi
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ -z $TRIE_LEAF_IVF || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
-[[ $TRIE_LEAF_IVF_LOCAL_VQ_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-local-vq-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_LOCAL_VQ_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-local-vq-bound requires --index-type trie'
 [[ $TRIE_PRUNING_CURVE == false || $INDEX_TYPE == trie ]] || die '--trie-pruning-curve requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
@@ -397,7 +400,6 @@ METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
 IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 [[ ${#METHOD_LIST[@]} -gt 0 ]] || die 'at least one method is required'
 if [[ $TRIE_PRUNING_CURVE == true ]]; then
-    [[ $THREADS == 1 ]] || die '--trie-pruning-curve requires --threads 1'
     [[ $TRIE_QUERY_BATCH == false ]] || die '--trie-pruning-curve cannot be combined with --trie-query-batch'
     [[ ${#METHOD_LIST[@]} -eq 1 ]] || die '--trie-pruning-curve requires exactly one method'
 fi
@@ -443,7 +445,7 @@ if [[ $INDEX_TYPE == trie ]]; then
 fi
 [[ -n $TRIE_LEAF_IVF ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
-[[ $TRIE_LEAF_IVF_LOCAL_VQ_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-local-vq-bound)
+[[ $TRIE_LEAF_IVF_LOCAL_VQ_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-local-vq-bound)
 [[ $TRIE_PRUNING_CURVE == true ]] && COMMON_ARGS+=(--trie-pruning-curve)
 if [[ $INDEX_TYPE == trie ]]; then
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
