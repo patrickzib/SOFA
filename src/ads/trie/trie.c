@@ -129,8 +129,6 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
  * pass to the one partition pass that cannot be avoided. */
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
 #define TRIE_PCA_PROJECTION_BLOCK_RECORDS 4096U
-#define TRIE_PRUNING_CURVE_CLOCK_CHECK_EVENTS 4096ULL
-
 typedef enum {
     TRIE_CURVE_NODE,
     TRIE_CURVE_CLUSTER,
@@ -142,14 +140,16 @@ typedef struct {
     FILE *file;
     long total_records;
     int query_index;
-    double started_at;
-    double next_sample_at;
-    unsigned long long events_since_clock_check;
     unsigned long long node_pruned;
     unsigned long long cluster_pruned;
     unsigned long long local_vq_pruned;
     unsigned long long record_pruned;
     unsigned long long exact_evaluated;
+    unsigned long long node_bound_microseconds;
+    unsigned long long cluster_bound_microseconds;
+    unsigned long long local_vq_microseconds;
+    unsigned long long record_bound_microseconds;
+    unsigned long long exact_distance_microseconds;
 } trie_pruning_curve;
 
 typedef struct trie_query_stats {
@@ -183,16 +183,23 @@ static unsigned long long trie_monotonic_microseconds(void);
 static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index *index,
                               const ts_type *transform, sax_type *sax_min,
                               sax_type *sax_max, int dimensions, float bsf,
-                              trie_query_stats *stats) {
+                              trie_query_stats *stats, int curve_node_bound) {
     unsigned long long start = 0;
-    if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
+    if (stats != NULL && (profile_query_phases ||
+                          (curve_node_bound && stats->curve != NULL)))
+        start = trie_monotonic_microseconds();
     isax_index shadow_index = *index;
     isax_index_settings shadow_settings = *index->settings;
     shadow_settings.n_segments = dimensions;
     shadow_index.settings = &shadow_settings;
     float result = messi_minidist_range_raw(&shadow_index, (float *) transform, sax_min, sax_max,
                                             shadow_settings.max_sax_cardinalities, bsf);
-    if (start != 0) stats->mbr_bound_microseconds += trie_monotonic_microseconds() - start;
+    if (start != 0) {
+        const unsigned long long elapsed = trie_monotonic_microseconds() - start;
+        if (profile_query_phases) stats->mbr_bound_microseconds += elapsed;
+        if (curve_node_bound && stats->curve != NULL)
+            stats->curve->node_bound_microseconds += elapsed;
+    }
     return result;
 }
 
@@ -349,27 +356,38 @@ static unsigned long long trie_monotonic_microseconds(void) {
     return (unsigned long long) time.tv_sec * 1000000ULL + (unsigned long long) time.tv_nsec / 1000ULL;
 }
 
-static void trie_pruning_curve_write_at(trie_pruning_curve *curve, double now) {
-    if (curve == NULL || curve->file == NULL) return;
-    const double elapsed_ms = 1000.0 * (now - curve->started_at);
-    fprintf(curve->file, "%d,%.6f,%ld,%llu,%llu,%llu,%llu,%llu\n",
-            curve->query_index, elapsed_ms, curve->total_records, curve->node_pruned,
-            curve->cluster_pruned, curve->local_vq_pruned,
-            curve->record_pruned, curve->exact_evaluated);
-    curve->next_sample_at = now + 0.001;
+static void trie_pruning_curve_add_time(trie_query_stats *stats,
+                                        trie_curve_stage stage,
+                                        unsigned long long elapsed) {
+    trie_pruning_curve *curve = stats == NULL ? NULL : stats->curve;
+    if (curve == NULL) return;
+    if (stage == TRIE_CURVE_CLUSTER)
+        curve->cluster_bound_microseconds += elapsed;
+    else if (stage == TRIE_CURVE_LOCAL_VQ)
+        curve->local_vq_microseconds += elapsed;
+    else if (stage == TRIE_CURVE_RECORD)
+        curve->record_bound_microseconds += elapsed;
+    else
+        curve->node_bound_microseconds += elapsed;
 }
 
-/* Timing a pruning event is deliberately not in the per-record hot path.
- * Counters are cheap opt-in bookkeeping; the monotonic clock is checked only
- * after a block of events, then rows are emitted no more than once per ms. */
-static void trie_pruning_curve_maybe_write(trie_pruning_curve *curve,
-                                           unsigned long long events) {
+static void trie_pruning_curve_write(trie_pruning_curve *curve,
+                                     unsigned long long total_microseconds) {
     if (curve == NULL || curve->file == NULL) return;
-    curve->events_since_clock_check += events;
-    if (curve->events_since_clock_check < TRIE_PRUNING_CURVE_CLOCK_CHECK_EVENTS) return;
-    curve->events_since_clock_check = 0;
-    const double now = messi_monotonic_seconds();
-    if (now >= curve->next_sample_at) trie_pruning_curve_write_at(curve, now);
+    const unsigned long long measured = curve->node_bound_microseconds +
+        curve->cluster_bound_microseconds + curve->local_vq_microseconds +
+        curve->record_bound_microseconds + curve->exact_distance_microseconds;
+    const unsigned long long other = total_microseconds > measured
+        ? total_microseconds - measured : 0;
+    fprintf(curve->file,
+            "%d,%.6f,%ld,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu\n",
+            curve->query_index, (double) total_microseconds / 1000.0,
+            curve->total_records, curve->node_pruned,
+            curve->cluster_pruned, curve->local_vq_pruned,
+            curve->record_pruned, curve->exact_evaluated,
+            curve->node_bound_microseconds, curve->cluster_bound_microseconds,
+            curve->local_vq_microseconds, curve->record_bound_microseconds,
+            curve->exact_distance_microseconds, other);
 }
 
 static void trie_pruning_curve_add(trie_query_stats *stats, trie_curve_stage stage,
@@ -380,14 +398,12 @@ static void trie_pruning_curve_add(trie_query_stats *stats, trie_curve_stage sta
     else if (stage == TRIE_CURVE_CLUSTER) curve->cluster_pruned += records;
     else if (stage == TRIE_CURVE_LOCAL_VQ) curve->local_vq_pruned += records;
     else curve->record_pruned += records;
-    trie_pruning_curve_maybe_write(curve, records);
 }
 
 static void trie_pruning_curve_exact(trie_query_stats *stats) {
     trie_pruning_curve *curve = stats == NULL ? NULL : stats->curve;
     if (curve == NULL) return;
     ++curve->exact_evaluated;
-    trie_pruning_curve_maybe_write(curve, 1);
 }
 
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
@@ -770,9 +786,14 @@ static float trie_exact_distance(const ts_type *query, const ts_type *record,
                                  int length, float bsf, trie_query_stats *stats) {
     unsigned long long start = 0;
     trie_pruning_curve_exact(stats);
-    if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
+    if (stats != NULL && (profile_query_phases || stats->curve != NULL))
+        start = trie_monotonic_microseconds();
     float result = ts_ed((ts_type *) query, (ts_type *) record, length, bsf);
-    if (start != 0) stats->exact_distance_microseconds += trie_monotonic_microseconds() - start;
+    if (start != 0) {
+        const unsigned long long elapsed = trie_monotonic_microseconds() - start;
+        if (profile_query_phases) stats->exact_distance_microseconds += elapsed;
+        if (stats->curve != NULL) stats->curve->exact_distance_microseconds += elapsed;
+    }
     return result;
 }
 
@@ -1452,8 +1473,13 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             if (stats != NULL) ++stats->lower_bounds;
             float vq_lower = 0.0f;
             if (use_local_vq) {
+                unsigned long long curve_start = stats != NULL && stats->curve != NULL
+                    ? trie_monotonic_microseconds() : 0;
                 if (stats != NULL) ++stats->local_vq_bounds;
                 vq_lower = trie_record_local_vq_lower_bound(node, i, raw_centroid_distance);
+                if (curve_start != 0)
+                    trie_pruning_curve_add_time(stats, TRIE_CURVE_LOCAL_VQ,
+                        trie_monotonic_microseconds() - curve_start);
                 if (vq_lower > bsf) {
                     if (stats != NULL) { ++stats->local_vq_pruned; ++stats->local_vq_records_pruned; }
                     trie_pruning_curve_add(stats, TRIE_CURVE_LOCAL_VQ, 1);
@@ -1462,8 +1488,13 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             }
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
+            unsigned long long curve_start = stats != NULL && stats->curve != NULL
+                ? trie_monotonic_microseconds() : 0;
             const float lower = trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
                                                          mbr_suffix, scratch);
+            if (curve_start != 0)
+                trie_pruning_curve_add_time(stats, TRIE_CURVE_RECORD,
+                    trie_monotonic_microseconds() - curve_start);
             const float combined_lower = lower > vq_lower ? lower : vq_lower;
             if (combined_lower <= bsf) {
                 if (bound_start != 0)
@@ -1487,12 +1518,23 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     int candidate_count = 0;
     unsigned long long bound_start = profile_query_phases && stats != NULL
                                          ? trie_monotonic_microseconds() : 0;
+    unsigned long long curve_record_start = stats != NULL && stats->curve != NULL
+        ? trie_monotonic_microseconds() : 0;
+    unsigned long long curve_local_vq_elapsed = 0;
     for (int i = offset; i < end; ++i) {
         if (stats != NULL) ++stats->lower_bounds;
         float vq_lower = 0.0f;
         if (use_local_vq) {
+            unsigned long long curve_start = stats != NULL && stats->curve != NULL
+                ? trie_monotonic_microseconds() : 0;
             if (stats != NULL) ++stats->local_vq_bounds;
             vq_lower = trie_record_local_vq_lower_bound(node, i, raw_centroid_distance);
+            if (curve_start != 0) {
+                const unsigned long long elapsed = trie_monotonic_microseconds() - curve_start;
+                trie_pruning_curve_add_time(stats, TRIE_CURVE_LOCAL_VQ,
+                    elapsed);
+                curve_local_vq_elapsed += elapsed;
+            }
             if (vq_lower > bsf) {
                 if (stats != NULL) { ++stats->local_vq_pruned; ++stats->local_vq_records_pruned; }
                 trie_pruning_curve_add(stats, TRIE_CURVE_LOCAL_VQ, 1);
@@ -1506,6 +1548,11 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             scratch->candidates[candidate_count].lower_bound = lower_bound;
             scratch->candidates[candidate_count++].record_index = i;
         } else trie_pruning_curve_add(stats, TRIE_CURVE_RECORD, 1);
+    }
+    if (curve_record_start != 0) {
+        const unsigned long long elapsed = trie_monotonic_microseconds() - curve_record_start;
+        trie_pruning_curve_add_time(stats, TRIE_CURVE_RECORD,
+            elapsed > curve_local_vq_elapsed ? elapsed - curve_local_vq_elapsed : 0);
     }
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
@@ -1540,8 +1587,13 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
                                        trie_query_stats *stats, trie_query_scratch *scratch,
                                        file_position_type *best_position) {
     if (node->cluster_count == 0) {
+        unsigned long long curve_start = stats != NULL && stats->curve != NULL
+            ? trie_monotonic_microseconds() : 0;
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     node->min_word, node->max_word, scratch);
+        if (curve_start != 0)
+            trie_pruning_curve_add_time(stats, TRIE_CURVE_RECORD,
+                trie_monotonic_microseconds() - curve_start);
         return trie_scan_leaf_range(index, node, 0, node->size, suffix, -1.0,
                                     query, transform, bsf, stats, scratch, best_position);
     }
@@ -1549,12 +1601,14 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     trie_cluster_bound ordered[64];
     int count = 0;
     for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
+        unsigned long long curve_start = stats != NULL && stats->curve != NULL
+            ? trie_monotonic_microseconds() : 0;
         const trie_leaf_cluster *group = &node->clusters[cluster];
         if (stats != NULL) ++stats->cluster_bounds;
         const float symbolic_bound = trie_lower_bound(index->trie, index, transform,
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
-            index->trie->dimensions, bsf, stats);
+            index->trie->dimensions, bsf, stats, 0);
         const int need_raw_centroid_distance = index->settings->trie_leaf_ivf_raw_ball_bound ||
                                                index->settings->trie_leaf_ivf_local_vq_bound;
         const double raw_centroid_distance = need_raw_centroid_distance
@@ -1564,6 +1618,9 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
         const float raw_ball_bound = index->settings->trie_leaf_ivf_raw_ball_bound
             ? trie_cluster_raw_ball_lower_bound(node, cluster, raw_centroid_distance)
             : 0.0f;
+        if (curve_start != 0)
+            trie_pruning_curve_add_time(stats, TRIE_CURVE_CLUSTER,
+                trie_monotonic_microseconds() - curve_start);
         const float bound = symbolic_bound > raw_ball_bound ? symbolic_bound : raw_ball_bound;
         if (bound >= bsf) {
             if (stats != NULL) { ++stats->cluster_pruned; stats->cluster_records_pruned += group->size; }
@@ -1583,8 +1640,13 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
         const trie_leaf_cluster *group = &node->clusters[cluster];
         const sax_type *minimum = node->cluster_min_words + (size_t) cluster * index->trie->dimensions;
         const sax_type *maximum = node->cluster_max_words + (size_t) cluster * index->trie->dimensions;
+        unsigned long long curve_start = stats != NULL && stats->curve != NULL
+            ? trie_monotonic_microseconds() : 0;
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     minimum, maximum, scratch);
+        if (curve_start != 0)
+            trie_pruning_curve_add_time(stats, TRIE_CURVE_RECORD,
+                trie_monotonic_microseconds() - curve_start);
         bsf = trie_scan_leaf_range(index, node, group->offset, group->size, suffix,
                                    raw_centroid_distance,
                                    query, transform, bsf, stats, scratch, best_position);
@@ -1599,7 +1661,7 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     if (node == skip_leaf) return bsf;
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                                   index->trie->dimensions, bsf, stats);
+                                   index->trie->dimensions, bsf, stats, 1);
     if (lower > bsf) {
         long skipped = node->subtree_size;
         if (skip_leaf != NULL && trie_node_contains(node, skip_leaf))
@@ -1616,7 +1678,7 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
             ordered[n].node = node->children[i];
             ordered[n++].bound = trie_lower_bound(index->trie, index, transform,
                 node->children[i]->min_word, node->children[i]->max_word,
-                index->trie->dimensions, bsf, stats);
+                index->trie->dimensions, bsf, stats, 1);
         }
         for (int i = 1; i < n; ++i) {
             trie_child_bound current = ordered[i]; int j = i - 1;
@@ -1652,7 +1714,7 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
                 float bound = trie_lower_bound(index->trie, index, transform,
                                                 node->children[i]->min_word,
                                                 node->children[i]->max_word,
-                                                index->trie->dimensions, best_bound, stats);
+                                                index->trie->dimensions, best_bound, stats, 1);
                 if (bound < best_bound) {
                     best_bound = bound;
                     next = node->children[i];
@@ -1771,7 +1833,7 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
     if (node == skip_leaf || __atomic_load_n(failed, __ATOMIC_RELAXED)) return;
     ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                                   index->trie->dimensions, bsf, stats);
+                                   index->trie->dimensions, bsf, stats, 1);
     if (lower >= bsf) return;
     if (node->leaf) {
         int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;
@@ -1933,7 +1995,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         }
         curve.total_records = index->total_records;
         fprintf(curve.file,
-                "query,elapsed_ms,total_records,node_pruned,cluster_pruned,local_vq_pruned,record_pruned,exact_evaluated\n");
+                "query,elapsed_ms,total_records,node_pruned,cluster_pruned,local_vq_pruned,record_pruned,exact_evaluated,node_mbr_us,cluster_bound_us,local_vq_us,record_bound_us,exact_distance_us,other_us\n");
     }
     int ts_length = index->settings->timeseries_size;
     ts_type *query = malloc(sizeof(*query) * (size_t) ts_length);
@@ -1968,13 +2030,12 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         trie_query_stats stats = {0};
         if (curve.file != NULL) {
             curve.query_index = i;
-            curve.started_at = (double) query_start / 1000000.0;
-            curve.next_sample_at = curve.started_at;
             curve.node_pruned = curve.cluster_pruned = curve.local_vq_pruned = 0;
             curve.record_pruned = curve.exact_evaluated = 0;
+            curve.node_bound_microseconds = curve.cluster_bound_microseconds = 0;
+            curve.local_vq_microseconds = curve.record_bound_microseconds = 0;
+            curve.exact_distance_microseconds = 0;
             stats.curve = &curve;
-            curve.events_since_clock_check = 0;
-            trie_pruning_curve_write_at(&curve, messi_monotonic_seconds());
         }
         unsigned long long search_start = trie_monotonic_microseconds();
         const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform, &stats);
@@ -2026,7 +2087,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
                                            stats.candidate_heap_microseconds + stats.synchronization_microseconds;
         }
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
-        if (curve.file != NULL) trie_pruning_curve_write_at(&curve, messi_monotonic_seconds());
+        if (curve.file != NULL) trie_pruning_curve_write(&curve, stats.total_microseconds);
         cumulative_microseconds += stats.total_microseconds;
         trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
         if (SHOULD_REPORT_QUERY(i, query_count)) {
