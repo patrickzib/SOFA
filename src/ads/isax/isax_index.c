@@ -254,6 +254,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
+    settings->trie_streaming_leaf_scan = 0;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2903,6 +2904,10 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     if (settings->index_type == MESSI_INDEX_TRIE) {
         fprintf(stderr, "  split policy  : symbolic entropy × variance\n");
         fprintf(stderr, "  root split    : sampled symbolic partition\n");
+        fprintf(stderr, "  leaf refine   : %s\n",
+                settings->trie_streaming_leaf_scan
+                    ? "streaming lower-bound -> exact-distance"
+                    : "lower-bound heap (best first)");
         if (settings->trie_dynamic_alphabet) {
             fprintf(stderr, "  trie alphabet : dynamic, %d-%d fanout, %d-bit average budget\n",
                     1 << settings->trie_min_bits,

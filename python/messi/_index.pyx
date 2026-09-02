@@ -76,7 +76,8 @@ cdef class Index:
                   int trie_max_fanout=16,
                   int trie_alphabet_budget_bits=3,
                   bint dynamic_root_split_variance=False,
-                  root_directory=None):
+                  root_directory=None,
+                  bint trie_streaming_leaf_scan=False):
         cdef messi_index_params params
         cdef bytes root_dir_bytes
         cdef const char *root_ptr = <const char *> 0
@@ -133,6 +134,8 @@ cdef class Index:
             elif trie_fanout not in (2, 4, 8):
                 raise ValueError("trie_fanout must be 2, 4, or 8")
         else:
+            if trie_streaming_leaf_scan:
+                raise ValueError("trie_streaming_leaf_scan requires layout='trie'")
             transform_dim = n_segments
             record_lb_dim = 0
             if n_segments <= 0 or n_segments > timeseries_size:
@@ -196,6 +199,7 @@ cdef class Index:
         params.trie_bound_dimensions = record_lb_dim
         params.trie_split_dimensions = trie_split_dimensions
         params.trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound
+        params.trie_streaming_leaf_scan = trie_streaming_leaf_scan
         params.trie_leaf_ivf = trie_leaf_ivf
         params.trie_fanout = trie_fanout
         params.trie_dynamic_alphabet = trie_dynamic_alphabet
@@ -219,6 +223,7 @@ cdef class Index:
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
                         "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
+                        "trie_streaming_leaf_scan": bool(trie_streaming_leaf_scan),
                         "trie_leaf_ivf": trie_leaf_ivf,
                         "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,

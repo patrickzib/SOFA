@@ -333,6 +333,7 @@ int main(int argc, char **argv) {
     static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
+    static int trie_streaming_leaf_scan = 0;
     static int trie_leaf_ivf = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
@@ -423,6 +424,7 @@ int main(int argc, char **argv) {
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-ivf", required_argument, 0, 1014},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
+                {"trie-streaming-leaf-scan", no_argument, 0, 1024},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -503,6 +505,9 @@ int main(int argc, char **argv) {
                 break;
             case 1023:
                 trie_leaf_ivf_raw_ball_bound = 0;
+                break;
+            case 1024:
+                trie_streaming_leaf_scan = 1;
                 break;
             case 1017:
                 isax_node_mbr = 1;
@@ -775,6 +780,7 @@ int main(int argc, char **argv) {
                        "  --trie-split-dimensions N      Split candidates (default: min(32, MBR dimensions))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
+                       "  --trie-streaming-leaf-scan  Refine each passing record immediately (no record heap)\n"
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
@@ -900,6 +906,10 @@ int main(int argc, char **argv) {
     }
     if (trie_record_mbr_suffix_bound && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_streaming_leaf_scan && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-streaming-leaf-scan requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (trie_leaf_ivf && index_type != MESSI_INDEX_TRIE) {
@@ -1261,6 +1271,7 @@ int main(int argc, char **argv) {
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_split_dimensions = trie_split_dimensions;
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
+        index_settings->trie_streaming_leaf_scan = trie_streaming_leaf_scan;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_fanout = trie_fanout;

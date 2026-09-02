@@ -40,6 +40,8 @@ Options:
                             Add leaf-MBR contributions outside record-prefix dimensions (default for trie)
   --no-trie-record-mbr-suffix-bound
                             Disable trie record-MBR suffix pruning
+  --trie-streaming-leaf-scan
+                            Refine each passing record immediately instead of using the record heap
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
@@ -185,6 +187,7 @@ TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
+TRIE_STREAMING_LEAF_SCAN=false
 TRIE_LEAF_IVF=
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_FANOUT=8
@@ -246,6 +249,7 @@ while [[ $# -gt 0 ]]; do
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
+        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; shift 2 ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
@@ -296,6 +300,7 @@ fi
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
+[[ $TRIE_STREAMING_LEAF_SCAN == false || $INDEX_TYPE == trie ]] || die '--trie-streaming-leaf-scan requires --index-type trie'
 [[ -z $TRIE_LEAF_IVF || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
@@ -426,6 +431,7 @@ fi
 if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && COMMON_ARGS+=(--no-trie-record-mbr-suffix-bound)
+    [[ $TRIE_STREAMING_LEAF_SCAN == true ]] && COMMON_ARGS+=(--trie-streaming-leaf-scan)
 fi
 [[ -n $TRIE_LEAF_IVF ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)

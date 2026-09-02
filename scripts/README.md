@@ -74,6 +74,11 @@ default and is intended for direct A/B benchmarking with the MBR suffix bound.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
+`--trie-streaming-leaf-scan` provides an A/B alternative to the default
+best-first record heap. It computes each record's lower bound and immediately
+runs exact distance when that bound passes, so an improved BSF affects the very
+next record. Cluster and leaf traversal ordering is unchanged.
+
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path
 components, and the destination is checked before removal.

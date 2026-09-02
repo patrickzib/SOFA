@@ -1330,9 +1330,11 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                                   trie_query_stats *stats, trie_query_scratch *scratch,
                                   file_position_type *best_position) {
     const int end = offset + count;
-    if (!trie_scratch_reserve(scratch, count)) {
-        /* Allocation failure is not a correctness failure: retain the former
-         * streaming order rather than dropping candidates. */
+    if (index->settings->trie_streaming_leaf_scan ||
+        !trie_scratch_reserve(scratch, count)) {
+        /* Streaming mode deliberately lets every improved exact distance
+         * tighten the bound of the next record.  Allocation failure uses the
+         * same correct fallback rather than dropping candidates. */
         for (int i = offset; i < end; ++i) {
             if (stats != NULL) ++stats->lower_bounds;
             unsigned long long bound_start = profile_query_phases && stats != NULL

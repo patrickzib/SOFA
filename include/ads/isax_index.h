@@ -98,6 +98,9 @@ typedef struct {
      * split.  MBRs always retain the full symbolic word. */
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
+    /* Refine passing records immediately instead of ordering them in a
+     * per-leaf lower-bound heap.  Intended for direct A/B benchmarking. */
+    char trie_streaming_leaf_scan;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */

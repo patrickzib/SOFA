@@ -42,6 +42,7 @@ typedef struct {
     int trie_bound_dimensions;
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
+    char trie_streaming_leaf_scan;
     int trie_leaf_ivf;
     int trie_fanout;
     char trie_dynamic_alphabet;
