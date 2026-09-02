@@ -86,17 +86,24 @@ return exact 1-NN distances and zero-based sequential row IDs. `k` must be 1.
 
 ## Index defaults
 
-The direct CLI intentionally keeps iSAX tight-bound pruning off; benchmark
-runners and the Python API enable it by default.  All trie entry points build
-node MBRs and enable the record-MBR suffix contribution by default.
+The direct CLI and benchmark runners default to the trie layout, 64 record-LB
+dimensions, node MBRs up to 128 dimensions, and 16 leaf-IVF groups. Their
+automatic worker count uses available physical CPU cores rather than SMT
+siblings. The Python API retains its explicit, compatibility-oriented defaults.
+When iSAX is selected, the direct CLI keeps tight-bound pruning off while the
+benchmark runners and Python API enable it by default.
 
 | Setting | Direct CLI | Script runners | Python `Index` |
 |---|---|---|---|
+| Index layout | Trie | Trie | iSAX; pass `layout="trie"` |
+| Worker threads | Available physical cores | Available physical cores | 1; pass `max_query_threads=N` |
 | iSAX tight-bound pruning | Off; use `--tight-bound` | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
 | iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
 | Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
+| Trie record-LB width | 64 | 64 | `n_segments` (16 by default) |
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
-| Trie leaf IVF groups | Off; use `--trie-leaf-ivf K` | Off; use `--trie-leaf-ivf K` | Off; pass `trie_leaf_ivf=K` |
+| Trie leaf refinement | Lower-bound heap (best first) | Same | Same; pass `trie_streaming_leaf_scan=True` for streaming LB → ED |
+| Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | Off; pass `trie_leaf_ivf=K` |
 
 Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
 leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and

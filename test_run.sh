@@ -46,11 +46,12 @@ if [[ $INDEX_TYPE == isax ]]; then
   args+=(--dynamic-root-split-variance)
 else
   # Use the standard trie layout: a 128-dimensional symbolic MBR word,
-  # 32 dimensions for record bounds/splitting, plus the MBR suffix.
+  # 64 dimensions for record bounds/splitting, plus the MBR suffix and IVF-16.
   args+=(--trie-mbr-dimensions 128
-         --n-segments 32
-         --trie-split-dimensions 32
-         --trie-record-mbr-suffix-bound)
+         --n-segments 64
+         --trie-split-dimensions 64
+         --trie-record-mbr-suffix-bound
+         --trie-leaf-ivf 16)
 fi
 
 "${MESSI_BIN:-./bin/MESSI}" "${args[@]}"

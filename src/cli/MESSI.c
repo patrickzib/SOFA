@@ -31,6 +31,9 @@
 #include <sched.h>
 #include <glob.h>
 #endif
+#ifdef __APPLE__
+#include <sys/sysctl.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -253,6 +256,64 @@ static int select_numa_cpus(cpu_set_t *selected, const cpu_set_t *allowed, int r
     globfree(&paths);
     return result;
 }
+
+/* Count distinct package/core pairs in the selected affinity mask so the
+ * automatic thread count does not treat SMT siblings as additional cores. */
+static int selected_physical_core_count(const cpu_set_t *selected) {
+    int packages[CPU_SETSIZE];
+    int cores[CPU_SETSIZE];
+    int count = 0;
+
+    for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
+        char filename[PATH_MAX];
+        FILE *file;
+        int package_id, core_id;
+        int duplicate = 0;
+        if (!CPU_ISSET(cpu, selected)) continue;
+
+        snprintf(filename, sizeof(filename),
+                 "/sys/devices/system/cpu/cpu%d/topology/physical_package_id", cpu);
+        file = fopen(filename, "r");
+        if (file == NULL || fscanf(file, "%d", &package_id) != 1) {
+            if (file != NULL) fclose(file);
+            continue;
+        }
+        fclose(file);
+        snprintf(filename, sizeof(filename),
+                 "/sys/devices/system/cpu/cpu%d/topology/core_id", cpu);
+        file = fopen(filename, "r");
+        if (file == NULL || fscanf(file, "%d", &core_id) != 1) {
+            if (file != NULL) fclose(file);
+            continue;
+        }
+        fclose(file);
+
+        for (int i = 0; i < count; ++i) {
+            if (packages[i] == package_id && cores[i] == core_id) {
+                duplicate = 1;
+                break;
+            }
+        }
+        if (!duplicate) {
+            packages[count] = package_id;
+            cores[count] = core_id;
+            ++count;
+        }
+    }
+    return count > 0 ? count : CPU_COUNT(selected);
+}
+#endif
+
+#ifndef __linux__
+static int available_physical_core_count(int logical_cpus) {
+#ifdef __APPLE__
+    int physical_cpus = 0;
+    size_t size = sizeof(physical_cpus);
+    if (sysctlbyname("hw.physicalcpu", &physical_cpus, &size, NULL, 0) == 0 &&
+        physical_cpus > 0) return physical_cpus;
+#endif
+    return logical_cpus;
+}
 #endif
 
 int main(int argc, char **argv) {
@@ -291,7 +352,7 @@ int main(int argc, char **argv) {
     static long int dataset_size = 6000000;//testbench
     static int queries_size = 10;
     static int time_series_size = 256;
-    static int n_segments = 16;
+    static int n_segments = 64;
     static int sax_cardinality = 8;
     static int leaf_size = 2000;
     static int min_leaf_size = 10;
@@ -324,7 +385,7 @@ int main(int argc, char **argv) {
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
     static int root_split_variance_disabled = 0;
     static int node_split_criterion = 1;
-    static messi_index_type index_type = MESSI_INDEX_ISAX;
+    static messi_index_type index_type = MESSI_INDEX_TRIE;
     /* The trie mirrors iSAX's per-query worker scheduling by default. */
     static int trie_query_batch = 0;
     static int profile_query_phases_requested = 0;
@@ -335,6 +396,7 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_streaming_leaf_scan = 0;
     static int trie_leaf_ivf = 0;
+    static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
@@ -423,6 +485,7 @@ int main(int argc, char **argv) {
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-ivf", required_argument, 0, 1014},
+                {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
                 {"trie-fanout", required_argument, 0, 1005},
@@ -502,6 +565,11 @@ int main(int argc, char **argv) {
                 break;
             case 1014:
                 trie_leaf_ivf = atoi(optarg);
+                trie_leaf_ivf_specified = 1;
+                break;
+            case 1025:
+                trie_leaf_ivf = 0;
+                trie_leaf_ivf_specified = 1;
                 break;
             case 1023:
                 trie_leaf_ivf_raw_ball_bound = 0;
@@ -735,8 +803,8 @@ int main(int argc, char **argv) {
                        "  --queries-size N               Number of queries\n"
                        "  --timeseries-size N            Values per series\n"
                        "  --index-path PATH              Index output directory\n"
-                       "  --index-type isax|trie         Layout (default: isax)\n"
-                       "  --n-segments N                 Symbolic dimensions (default: 16; trie: 16--64)\n"
+                       "  --index-type isax|trie         Layout (default: trie)\n"
+                       "  --n-segments N                 Record-bound dimensions (default: 64; trie: 16--64)\n"
                        "  --sax-cardinality N            SAX bits per dimension\n"
                        "  --leaf-size N                  Maximum records per leaf\n"
                        "  --min-leaf-size N              Minimum iSAX query-leaf occupancy\n"
@@ -744,7 +812,7 @@ int main(int argc, char **argv) {
                        "  --in-memory                    Build/query in-memory index\n"
                        "\n"
                        "Query execution:\n"
-                       "  --threads N|auto               Worker threads (default: available CPUs)\n"
+                       "  --threads N|auto               Workers (default: available physical CPU cores)\n"
                        "  --queue-number N               Priority queues\n"
                        "  --numa auto|none|N             CPU affinity policy\n"
                        "  --tight-bound                  Enable tight iSAX leaf pruning\n"
@@ -776,12 +844,13 @@ int main(int argc, char **argv) {
                        "Trie options:\n"
                        "  --trie-query-parallel          Parallelize each query (default)\n"
                        "  --trie-query-batch             Batch independent queries\n"
-                       "  --trie-mbr-dimensions N        MBR dimensions (16--128)\n"
-                       "  --trie-split-dimensions N      Split candidates (default: min(32, MBR dimensions))\n"
+                       "  --trie-mbr-dimensions N        MBR dimensions (default: min(128, series length))\n"
+                       "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
                        "  --trie-streaming-leaf-scan  Refine each passing record immediately (no record heap)\n"
-                       "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
+                       "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; learned-transform default: 16)\n"
+                       "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
@@ -853,6 +922,9 @@ int main(int argc, char **argv) {
     query_report_interval = query_report_interval_requested;
 
     if (index_type == MESSI_INDEX_TRIE) {
+        if (!trie_leaf_ivf_specified &&
+            (function_type == 4 || function_type == 5 || function_type == 6))
+            trie_leaf_ivf = 16;
         if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
         if (function_type < 3 || function_type > 6) {
             fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");
@@ -970,7 +1042,8 @@ int main(int argc, char **argv) {
         mask = allowed_cpus;
     }
     int usable_cpus = CPU_COUNT(&mask);
-    int thread_count = requested_threads > 0 ? requested_threads : usable_cpus;
+    int physical_cores = selected_physical_core_count(&mask);
+    int thread_count = requested_threads > 0 ? requested_threads : physical_cores;
     if (thread_count > usable_cpus) {
         fprintf(stderr, "warning: requested %d threads but only %d selected CPUs are available; capping threads.\n",
                 thread_count, usable_cpus);
@@ -980,19 +1053,23 @@ int main(int argc, char **argv) {
         perror("pthread_setaffinity_np");
         return EXIT_FAILURE;
     }
-    fprintf(stderr, ">>> using %d worker threads on %d available CPUs%s%s\n", thread_count,
-            usable_cpus, requested_numa_nodes == 0 ? " (affinity disabled)" : "",
+    fprintf(stderr, ">>> using %d worker threads on %d physical cores (%d logical CPUs)%s%s\n",
+            thread_count, physical_cores, usable_cpus,
+            requested_numa_nodes == 0 ? " (affinity disabled)" : "",
             detected_numa_nodes > 0 ? " across detected NUMA nodes" : "");
 #else
     long online_cpus = sysconf(_SC_NPROCESSORS_ONLN);
     int available_cpus = online_cpus > 0 ? (int) online_cpus : 1;
-    int thread_count = requested_threads > 0 ? requested_threads : available_cpus;
+    int physical_cores = available_physical_core_count(available_cpus);
+    int thread_count = requested_threads > 0 ? requested_threads : physical_cores;
     if (thread_count > available_cpus) {
         fprintf(stderr, "warning: requested %d threads but only %d CPUs are available; capping threads.\n",
                 thread_count, available_cpus);
         thread_count = available_cpus;
     }
-    fprintf(stderr, ">>> using %d worker threads; NUMA affinity is unavailable on this platform.\n", thread_count);
+    fprintf(stderr,
+            ">>> using %d worker threads on %d physical cores (%d logical CPUs); NUMA affinity is unavailable on this platform.\n",
+            thread_count, physical_cores, available_cpus);
 #endif
     calculate_thread = thread_count;
     maxquerythread = thread_count;
@@ -1090,6 +1167,8 @@ int main(int argc, char **argv) {
                                  : (time_series_size < 128 ? time_series_size : 128);
             if (trie_split_dimensions == 0) {
                 trie_split_dimensions = index_segments < 32 ? index_segments : 32;
+                if (trie_split_dimensions < trie_bound_dimensions)
+                    trie_split_dimensions = trie_bound_dimensions;
             }
             if (trie_split_dimensions < trie_bound_dimensions ||
                 trie_split_dimensions > index_segments) {

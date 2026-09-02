@@ -9,7 +9,9 @@ shift 2
 
 THREADS=${1:-}
 QUEUE_NUMBER=${2:-}
-ARGS=("$DATASET" "$PROFILE" --threads "$THREADS" --queue-number "$QUEUE_NUMBER")
+ARGS=("$DATASET" "$PROFILE")
+[[ -n $THREADS ]] && ARGS+=(--threads "$THREADS")
+[[ -n $QUEUE_NUMBER ]] && ARGS+=(--queue-number "$QUEUE_NUMBER")
 
 if [[ $DATASET == seisbench ]]; then
     [[ -n ${3:-} ]] && ARGS+=(--dataset-file "$3")

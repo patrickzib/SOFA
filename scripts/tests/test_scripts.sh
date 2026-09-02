@@ -13,7 +13,7 @@ assert_not_contains() { [[ $1 != *"$2"* ]] || fail "expected output not to conta
 while IFS= read -r script; do bash -n "$script"; done < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
 pass 'all maintained scripts pass bash syntax validation'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 5 ]] || fail 'standard profile should emit five default commands'
 assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'
 assert_not_contains "$OUTPUT" '--function-type 6'
@@ -23,6 +23,16 @@ assert_contains "$OUTPUT" '--sample-type 2'
 assert_not_contains "$OUTPUT" '--sample-type 3'
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
+
+OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
+assert_contains "$OUTPUT" '--threads 7'
+assert_contains "$OUTPUT" '--index-type trie'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--trie-split-dimensions 64'
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+pass 'runner defaults to the trie benchmark profile and physical-core thread count'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-type 3'
@@ -46,9 +56,10 @@ assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_not_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
-assert_contains "$OUTPUT" '--trie-split-dimensions 32'
+assert_contains "$OUTPUT" '--trie-split-dimensions 64'
 assert_contains "$OUTPUT" '--trie-fanout 8'
 assert_contains "$OUTPUT" '--trie-record-mbr-suffix-bound'
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 assert_not_contains "$OUTPUT" '--tight-bound'
 pass 'trie standard profile excludes SAX from its method matrix'
 
@@ -134,7 +145,7 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-
 fi
 pass 'query report interval is forwarded and validated'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
 assert_contains "$OUTPUT" '--queries-size 1'
@@ -143,12 +154,12 @@ assert_contains "$OUTPUT" '--histogram-type 2'
 assert_not_contains "$OUTPUT" '--histogram-type 1'
 pass 'high-frequency profile preserves BigANN flags and coefficients'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --index-type isax --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
 assert_contains "$OUTPUT" '--sampling-seed 1'
 pass 'standard SFA uses the 64-coefficient training pool when permitted'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 --index-type isax --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sfa-n-coefficients 48'
 pass 'short series use the largest valid even coefficient pool'
 
@@ -175,7 +186,7 @@ assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
 assert_contains "$OUTPUT" '--sample-size 100000'
 pass 'binning sample size is capped for reduced datasets'
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sift1b knn --threads 36 --queue-number 36 --k 20 --dry-run 2>/dev/null)
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sift1b knn --threads 36 --queue-number 36 --index-type isax --k 20 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--topk --k-size 20'
 assert_contains "$OUTPUT" '--histogram-type 1'
 assert_contains "$OUTPUT" '--tight-bound'
@@ -189,6 +200,11 @@ OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true "$SCRIPT_DIR/run_astro.sh" 9 18 2>/dev/nu
 assert_contains "$OUTPUT" '--threads 9'
 assert_contains "$OUTPUT" '--queue-number 18'
 pass 'compatibility wrappers work outside the scripts directory'
+
+OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_astro.sh" 2>/dev/null)
+assert_contains "$OUTPUT" '--threads 7'
+assert_contains "$OUTPUT" '--index-type trie'
+pass 'compatibility wrappers inherit canonical defaults when counts are omitted'
 
 if "$SCRIPT_DIR/run_dataset.sh" astro knn --threads 1 --queue-number 1 --dry-run >/dev/null 2>&1; then
     fail 'knn profile accepted a missing K value'
@@ -229,7 +245,7 @@ printf '%s\n' '#!/usr/bin/env bash' \
     'printf "%s\\n" "  exact distances  : 567.00 K/query (0.57% of 100.00 M indexed series)" >&2' \
     > "$FAKE_MESSI"
 chmod +x "$FAKE_MESSI"
-OUTPUT=$(MESSI_SHELL_LOG_DIR="$TEMP_ROOT/logs" "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --data-root "$TEMP_ROOT" \
+OUTPUT=$(MESSI_SHELL_LOG_DIR="$TEMP_ROOT/logs" "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax --data-root "$TEMP_ROOT" \
     --binary "$FAKE_MESSI" --methods spartan-width 2>&1)
 assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-frequency ==='
 assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
@@ -247,6 +263,14 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --ind
 assert_contains "$OUTPUT" '--index-type trie'
 assert_not_contains "$OUTPUT" '--function-type 3'
 pass 'suite forwards the selected index layout to dataset runs'
+
+OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_suite.sh" high-frequency --datasets astro --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--threads 7'
+assert_contains "$OUTPUT" '--queue-number 7'
+assert_contains "$OUTPUT" '--index-type trie'
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+pass 'suite defaults to trie and the available physical-core count'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
     --methods spartan-depth,spartan-width --trie-mbr-dims 64 --dry-run 2>/dev/null)

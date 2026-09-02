@@ -14,12 +14,12 @@ Suites:
   generated-queries, hard-queries, noise-workloads
 
 Options:
-  --threads LIST          Comma-separated CPU/queue counts (default: 36)
+  --threads LIST          Comma-separated CPU/queue counts (default: available physical CPU cores)
   --k-values LIST         K values for knn (default: 20,50)
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
-  --index-type TYPE       Index layout: isax (default) or trie
+  --index-type TYPE       Index layout: trie (default) or isax
   --enable-sofa-v2        Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
   --isax-node-mbr         Enable iSAX node MBR bounds
   --isax-record-mbr-suffix-bound
@@ -39,7 +39,7 @@ Options:
   --sampling-seed N       Sampling seed (default: 1)
   --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
-  --n-segments N          Trie record-prefix lower-bound dimensions (default: 16; range: 16--64)
+  --n-segments N          Trie record-prefix lower-bound dimensions (default: 64; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
                           Add leaf-MBR contributions outside record-prefix dimensions (default for trie)
@@ -47,7 +47,8 @@ Options:
                           Disable trie record-MBR suffix pruning
   --trie-streaming-leaf-scan
                           Refine each passing record immediately instead of using the record heap
-  --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves
+  --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves (default: 16)
+  --no-trie-leaf-ivf       Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
@@ -99,13 +100,12 @@ dataset_label() {
 SUITE=$1
 shift
 
-THREADS_CSV=36
-THREADS_SET=false
+THREADS_CSV=$(physical_core_count) || die 'unable to detect physical CPU cores; pass --threads N'
 K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 METHODS_OVERRIDE=
-INDEX_TYPE=isax
+INDEX_TYPE=trie
 QUEUE_NUMBER=
 NUMA_MODE=auto
 DATASET_FILE=
@@ -120,11 +120,13 @@ SAMPLING_SEED=
 NO_SIMD=false
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
-TRIE_RECORD_LB_DIMS=16
+TRIE_RECORD_LB_DIMS=64
+TRIE_RECORD_LB_DIMS_SPECIFIED=false
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_STREAMING_LEAF_SCAN=false
-TRIE_LEAF_IVF=
+TRIE_LEAF_IVF=16
+TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -153,7 +155,7 @@ RESULTS_ROOT=${MESSI_RESULTS_ROOT:-"$HOME/MESSI_SFA_logs"}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS_CSV=$2; THREADS_SET=true; shift 2 ;;
+        --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS_CSV=$2; shift 2 ;;
         --k-values) [[ $# -ge 2 ]] || die "$1 requires a value"; K_VALUES_CSV=$2; shift 2 ;;
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
@@ -177,12 +179,13 @@ while [[ $# -gt 0 ]]; do
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
         --no-simd) NO_SIMD=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
-        --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; shift 2 ;;
+        --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; TRIE_RECORD_LB_DIMS_SPECIFIED=true; shift 2 ;;
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
         --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; shift ;;
-        --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; shift 2 ;;
+        --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
+        --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
@@ -209,8 +212,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ $SUITE == noise-workloads && $THREADS_SET == false ]]; then THREADS_CSV=9,18,36; fi
-
 case "$SUITE" in
     standard|high-frequency|knn|sampling|generated-queries|hard-queries|noise-workloads) ;;
     *) die "unknown suite '$SUITE'" ;;
@@ -224,7 +225,7 @@ esac
     die '--trie-fanout requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || \
     die '--trie-mbr-dims requires --index-type trie'
-[[ $TRIE_RECORD_LB_DIMS == 16 || $INDEX_TYPE == trie ]] || \
+[[ $TRIE_RECORD_LB_DIMS_SPECIFIED == false || $INDEX_TYPE == trie ]] || \
     die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
@@ -238,7 +239,7 @@ esac
     die 'choose at most one of --trie-query-parallel and --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
     die '--dynamic-root-split-variance requires --index-type isax'
-[[ -z $TRIE_LEAF_IVF || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
+[[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || \
     die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
@@ -301,7 +302,8 @@ run_one() {
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
         [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
         $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
-        [[ -n $TRIE_LEAF_IVF ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+        [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+        [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
         [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"

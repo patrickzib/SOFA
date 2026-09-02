@@ -3,6 +3,59 @@
 # Dataset metadata used by run_dataset.sh. The caller supplies the profile so
 # profile-specific coefficient counts remain explicit rather than duplicated in
 # dozens of launch scripts.
+
+# Print the number of physical CPU cores available to this process.  Linux
+# affinity is respected so scheduler/cpuset allocations do not accidentally
+# expand to the whole host.  MESSI_PHYSICAL_CORES is an explicit escape hatch
+# for platforms whose topology cannot be discovered reliably.
+physical_core_count() {
+    local count allowed
+    if [[ -n ${MESSI_PHYSICAL_CORES:-} ]]; then
+        [[ $MESSI_PHYSICAL_CORES =~ ^[1-9][0-9]*$ ]] || {
+            printf 'MESSI_PHYSICAL_CORES must be a positive integer\n' >&2
+            return 1
+        }
+        printf '%s\n' "$MESSI_PHYSICAL_CORES"
+        return 0
+    fi
+
+    case "$(uname -s 2>/dev/null)" in
+        Darwin)
+            count=$(sysctl -n hw.physicalcpu 2>/dev/null || true)
+            ;;
+        Linux)
+            allowed=$(awk '/^Cpus_allowed_list:/ { print $2; exit }' /proc/self/status 2>/dev/null || true)
+            if command -v lscpu >/dev/null 2>&1; then
+                count=$(lscpu -p=CPU,CORE,SOCKET 2>/dev/null | awk -F, -v allowed="$allowed" '
+                    function cpu_allowed(cpu, pieces, ranges, n, i, endpoints) {
+                        if (allowed == "") return 1
+                        n = split(allowed, ranges, ",")
+                        for (i = 1; i <= n; ++i) {
+                            pieces = split(ranges[i], endpoints, "-")
+                            if ((pieces == 1 && cpu == endpoints[1]) ||
+                                (pieces == 2 && cpu >= endpoints[1] && cpu <= endpoints[2])) return 1
+                        }
+                        return 0
+                    }
+                    !/^#/ && NF >= 3 && cpu_allowed($1) {
+                        cores[$3 ":" $2] = 1
+                    }
+                    END {
+                        for (core in cores) ++count
+                        if (count > 0) print count
+                    }
+                ')
+            fi
+            ;;
+    esac
+
+    if [[ ! ${count:-} =~ ^[1-9][0-9]*$ ]]; then
+        count=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+    fi
+    [[ ${count:-} =~ ^[1-9][0-9]*$ ]] || return 1
+    printf '%s\n' "$count"
+}
+
 load_dataset() {
     local dataset=${1,,}
     local profile=$2

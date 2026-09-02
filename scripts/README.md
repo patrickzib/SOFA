@@ -1,7 +1,11 @@
 # Benchmark scripts
 
 `run_dataset.sh` is the canonical entrypoint for one dataset and profile. The
-older `run_*.sh` names remain as compatibility wrappers.
+older `run_*.sh` names remain as compatibility wrappers. Both canonical
+runners default to trie indexes with 128 MBR dimensions (capped by series
+length), 64 record-bound dimensions, and 16 leaf-IVF groups. If `--threads`
+is omitted, they use the physical cores available to the process; set
+`MESSI_PHYSICAL_CORES=N` when platform or scheduler topology is unavailable.
 
 ```bash
 scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
@@ -10,7 +14,9 @@ scripts/run_dataset.sh sald sampling --threads 36 --queue-number 36 --sample-fac
 scripts/run_dataset.sh astro high-frequency --threads 36 --queue-number 36 --dry-run
 ```
 
-The profiles preserve the existing experiment matrices:
+The profiles preserve the existing experiment matrices. With the default trie
+layout, `standard` runs SFA and SPARTAN variants and `knn` runs SFA variants;
+select `--index-type isax` for the wider legacy matrices below:
 
 - `standard`: SAX, SFA, PISA, and SPARTAN variants
 - `high-frequency`: one query with SFA equi-width
@@ -69,8 +75,8 @@ root. Absolute overrides are used unchanged. `--dry-run` prints shell-escaped
 commands and performs no benchmark or log archival.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
-directory inside terminal leaves with at least 4 K records. It is disabled by
-default and is intended for direct A/B benchmarking with the MBR suffix bound.
+directory inside terminal leaves with at least 4 K records. It is enabled by
+default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
