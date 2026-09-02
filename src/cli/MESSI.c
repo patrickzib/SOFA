@@ -335,6 +335,8 @@ int main(int argc, char **argv) {
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_leaf_ivf = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
+    static int trie_leaf_ivf_local_vq_bound = 1;
+    static int trie_pruning_curve = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
@@ -423,6 +425,8 @@ int main(int argc, char **argv) {
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-ivf", required_argument, 0, 1014},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
+                {"no-trie-leaf-ivf-local-vq-bound", no_argument, 0, 1024},
+                {"trie-pruning-curve", no_argument, 0, 1025},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -503,6 +507,12 @@ int main(int argc, char **argv) {
                 break;
             case 1023:
                 trie_leaf_ivf_raw_ball_bound = 0;
+                break;
+            case 1024:
+                trie_leaf_ivf_local_vq_bound = 0;
+                break;
+            case 1025:
+                trie_pruning_curve = 1;
                 break;
             case 1017:
                 isax_node_mbr = 1;
@@ -777,6 +787,8 @@ int main(int argc, char **argv) {
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; off by default)\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
+                       "  --no-trie-leaf-ivf-local-vq-bound  Disable per-record local VQ residual pruning\n"
+                       "  --trie-pruning-curve           Write a serial pruning curve below MESSI_LOG_ROOT\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -904,6 +916,10 @@ int main(int argc, char **argv) {
     }
     if (trie_leaf_ivf && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-leaf-ivf requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_pruning_curve && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-pruning-curve requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (index_type != MESSI_INDEX_ISAX &&
@@ -1147,6 +1163,7 @@ int main(int argc, char **argv) {
         char log_filename_tree[FILENAME_LENGTH];
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
+        char log_filename_curve[FILENAME_LENGTH];
 
         char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
@@ -1166,11 +1183,13 @@ int main(int argc, char **argv) {
         snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
         snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
         snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
+        snprintf(log_filename_curve, sizeof(log_filename_curve), "%s/trie_pruning_curve", log_root);
 
         if (ensure_directory(log_filename) != 0 ||
             ensure_directory(log_filename_tree) != 0 ||
             ensure_directory(log_filename_index) != 0 ||
-            ensure_directory(log_filename_query) != 0) {
+            ensure_directory(log_filename_query) != 0 ||
+            (trie_pruning_curve && ensure_directory(log_filename_curve) != 0)) {
             fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
                     log_root, strerror(errno));
         }
@@ -1190,6 +1209,13 @@ int main(int argc, char **argv) {
         strcat(log_filename_query, "/MESSI_QUERY_");
         strcat(log_filename_query, time_str);
         strcat(log_filename_query, ".csv");
+
+        if (trie_pruning_curve) {
+            strcat(log_filename_curve, "/MESSI_TRIE_PRUNING_CURVE_");
+            strcat(log_filename_curve, time_str);
+            strcat(log_filename_curve, ".csv");
+            fprintf(stderr, ">>> trie pruning curve: %s\n", log_filename_curve);
+        }
 
         strcat(index_directory, time_str);
 
@@ -1263,6 +1289,9 @@ int main(int argc, char **argv) {
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
+        index_settings->trie_leaf_ivf_local_vq_bound = trie_leaf_ivf_local_vq_bound;
+        index_settings->trie_pruning_curve_path =
+                trie_pruning_curve ? log_filename_curve : NULL;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
@@ -1560,6 +1589,8 @@ int main(int argc, char **argv) {
              * has no per-record lower-bound call. */
             const double avg_cluster_records_pruned = queries_size > 0
                 ? (double) trie_cluster_records_pruned_all / queries_size : 0.0;
+            const double avg_local_vq_records_pruned = queries_size > 0
+                ? (double) trie_local_vq_records_pruned_all / queries_size : 0.0;
             const double node_mbr_skipped =
                 (double) dataset_size > avg_lower_bounds + avg_cluster_records_pruned
                     ? (double) dataset_size - avg_lower_bounds - avg_cluster_records_pruned
@@ -1604,8 +1635,9 @@ int main(int argc, char **argv) {
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
             if (index_type == MESSI_INDEX_TRIE) {
-                const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
-                    ? "prefix + MBR suffix" : "symbolic record bound";
+                const char *record_bound_name = idx->settings->trie_leaf_ivf_local_vq_bound
+                    ? "symbolic + local VQ" : (idx->settings->trie_record_mbr_suffix_bound
+                        ? "prefix + MBR suffix" : "symbolic record bound");
                 fprintf(stderr, "  pruning breakdown:\n"
                        "    %-20s : %.2f%% indexed series skipped before leaf scanning\n",
                        "node MBRs", node_mbr_percent);
@@ -1619,8 +1651,18 @@ int main(int argc, char **argv) {
                             "leaf cluster bounds", cluster_prune_percent,
                             cluster_record_skip_percent);
                 }
+                if (trie_local_vq_bounds_all != 0) {
+                    const double vq_prune_percent =
+                        100.0 * (double) trie_local_vq_pruned_all / trie_local_vq_bounds_all;
+                    const double vq_record_skip_percent = dataset_size > 0
+                        ? 100.0 * avg_local_vq_records_pruned / dataset_size : 0.0;
+                    fprintf(stderr,
+                            "    %-20s : %.2f%% local-VQ checks pruned (%.2f%% of indexed series)\n",
+                            "local VQ residuals", vq_prune_percent,
+                            vq_record_skip_percent);
+                }
                 fprintf(stderr,
-                       "    %-20s : %.2f%% of records reaching record bounds pruned (%.2f%% of indexed series)\n"
+                       "    %-20s : %.2f%% of records reaching record-level bounds pruned (%.2f%% of indexed series)\n"
                        "    %-20s : %.2f%% indexed series pruned before exact distance\n",
                        record_bound_name, record_bound_candidate_percent,
                        record_bound_index_percent,

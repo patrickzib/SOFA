@@ -102,6 +102,10 @@ typedef struct {
     int trie_leaf_ivf;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
+    /* Per-record residual bound around the trie IVF raw-space centroids. */
+    char trie_leaf_ivf_local_vq_bound;
+    /* Benchmark-only CSV trace of cumulative trie pruning; NULL disables it. */
+    const char *trie_pruning_curve_path;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

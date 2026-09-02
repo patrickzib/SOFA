@@ -58,6 +58,7 @@ typedef struct symbolic_trie_node {
     file_position_type *positions;
     int size;
     int capacity;
+    long subtree_size;
     int split_dimension;
     uint16_t split_fanout;
     /* The trie may split on up to 128 transform dimensions. */
@@ -73,6 +74,9 @@ typedef struct symbolic_trie_node {
      * these are certified for pruning by the triangle inequality. */
     ts_type *cluster_raw_centroids;
     float *cluster_raw_radii;
+    /* Per-record distance to its enclosing local raw-space centroid.  The
+     * array follows the leaf's reordered words/positions. */
+    float *cluster_record_raw_radii;
     int cluster_count;
 } symbolic_trie_node;
 
@@ -125,6 +129,28 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
  * pass to the one partition pass that cannot be avoided. */
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
 #define TRIE_PCA_PROJECTION_BLOCK_RECORDS 4096U
+#define TRIE_PRUNING_CURVE_CLOCK_CHECK_EVENTS 4096ULL
+
+typedef enum {
+    TRIE_CURVE_NODE,
+    TRIE_CURVE_CLUSTER,
+    TRIE_CURVE_LOCAL_VQ,
+    TRIE_CURVE_RECORD
+} trie_curve_stage;
+
+typedef struct {
+    FILE *file;
+    long total_records;
+    int query_index;
+    double started_at;
+    double next_sample_at;
+    unsigned long long events_since_clock_check;
+    unsigned long long node_pruned;
+    unsigned long long cluster_pruned;
+    unsigned long long local_vq_pruned;
+    unsigned long long record_pruned;
+    unsigned long long exact_evaluated;
+} trie_pruning_curve;
 
 typedef struct trie_query_stats {
     unsigned long checked_nodes;
@@ -142,6 +168,10 @@ typedef struct trie_query_stats {
     unsigned long cluster_bounds;
     unsigned long cluster_pruned;
     unsigned long cluster_records_pruned;
+    unsigned long local_vq_bounds;
+    unsigned long local_vq_pruned;
+    unsigned long local_vq_records_pruned;
+    trie_pruning_curve *curve;
     float approximate_distance;
 } trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
@@ -255,7 +285,8 @@ static void trie_node_destroy(symbolic_trie_node *node) {
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
     free(node->words); free(node->positions); free(node->min_word); free(node->max_word);
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
-    free(node->cluster_raw_centroids); free(node->cluster_raw_radii); free(node);
+    free(node->cluster_raw_centroids); free(node->cluster_raw_radii);
+    free(node->cluster_record_raw_radii); free(node);
 }
 
 static unsigned long trie_node_count(const symbolic_trie_node *node) {
@@ -263,6 +294,23 @@ static unsigned long trie_node_count(const symbolic_trie_node *node) {
     unsigned long count = 1;
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) count += trie_node_count(node->children[i]);
     return count;
+}
+
+static long trie_set_subtree_sizes(symbolic_trie_node *node) {
+    if (node == NULL) return 0;
+    if (node->leaf) return node->subtree_size = node->size;
+    long total = 0;
+    for (int i = 0; i < node->split_fanout; ++i)
+        total += trie_set_subtree_sizes(node->children[i]);
+    return node->subtree_size = total;
+}
+
+static int trie_node_contains(const symbolic_trie_node *node,
+                              const symbolic_trie_node *descendant) {
+    for (const symbolic_trie_node *current = descendant; current != NULL;
+         current = current->parent)
+        if (current == node) return 1;
+    return 0;
 }
 
 /* Compute split quality from the completed tree so parallel construction does
@@ -299,6 +347,47 @@ static unsigned long long trie_monotonic_microseconds(void) {
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
     return (unsigned long long) time.tv_sec * 1000000ULL + (unsigned long long) time.tv_nsec / 1000ULL;
+}
+
+static void trie_pruning_curve_write_at(trie_pruning_curve *curve, double now) {
+    if (curve == NULL || curve->file == NULL) return;
+    const double elapsed_ms = 1000.0 * (now - curve->started_at);
+    fprintf(curve->file, "%d,%.6f,%ld,%llu,%llu,%llu,%llu,%llu\n",
+            curve->query_index, elapsed_ms, curve->total_records, curve->node_pruned,
+            curve->cluster_pruned, curve->local_vq_pruned,
+            curve->record_pruned, curve->exact_evaluated);
+    curve->next_sample_at = now + 0.001;
+}
+
+/* Timing a pruning event is deliberately not in the per-record hot path.
+ * Counters are cheap opt-in bookkeeping; the monotonic clock is checked only
+ * after a block of events, then rows are emitted no more than once per ms. */
+static void trie_pruning_curve_maybe_write(trie_pruning_curve *curve,
+                                           unsigned long long events) {
+    if (curve == NULL || curve->file == NULL) return;
+    curve->events_since_clock_check += events;
+    if (curve->events_since_clock_check < TRIE_PRUNING_CURVE_CLOCK_CHECK_EVENTS) return;
+    curve->events_since_clock_check = 0;
+    const double now = messi_monotonic_seconds();
+    if (now >= curve->next_sample_at) trie_pruning_curve_write_at(curve, now);
+}
+
+static void trie_pruning_curve_add(trie_query_stats *stats, trie_curve_stage stage,
+                                   unsigned long long records) {
+    trie_pruning_curve *curve = stats == NULL ? NULL : stats->curve;
+    if (curve == NULL || records == 0) return;
+    if (stage == TRIE_CURVE_NODE) curve->node_pruned += records;
+    else if (stage == TRIE_CURVE_CLUSTER) curve->cluster_pruned += records;
+    else if (stage == TRIE_CURVE_LOCAL_VQ) curve->local_vq_pruned += records;
+    else curve->record_pruned += records;
+    trie_pruning_curve_maybe_write(curve, records);
+}
+
+static void trie_pruning_curve_exact(trie_query_stats *stats) {
+    trie_pruning_curve *curve = stats == NULL ? NULL : stats->curve;
+    if (curve == NULL) return;
+    ++curve->exact_evaluated;
+    trie_pruning_curve_maybe_write(curve, 1);
 }
 
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
@@ -338,6 +427,9 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     trie_cluster_bounds = stats->cluster_bounds;
     trie_cluster_pruned = stats->cluster_pruned;
     trie_cluster_records_pruned = stats->cluster_records_pruned;
+    trie_local_vq_bounds = stats->local_vq_bounds;
+    trie_local_vq_pruned = stats->local_vq_pruned;
+    trie_local_vq_records_pruned = stats->local_vq_records_pruned;
     SAVE_STATS(distance)
 }
 
@@ -469,14 +561,16 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
     ts_type *raw_centroids = calloc((size_t) active * ts_length, sizeof(*raw_centroids));
     double *raw_sums = calloc((size_t) active * ts_length, sizeof(*raw_sums));
     float *raw_radii = calloc((size_t) active, sizeof(*raw_radii));
+    float *record_raw_radii = malloc((size_t) size * sizeof(*record_raw_radii));
     int *offsets = calloc((size_t) cluster_count, sizeof(*offsets));
     int *cursors = calloc((size_t) cluster_count, sizeof(*cursors));
     int *remap = malloc((size_t) cluster_count * sizeof(*remap));
     if (clusters == NULL || min_words == NULL || max_words == NULL || ordered_words == NULL ||
         ordered_positions == NULL || raw_centroids == NULL || raw_sums == NULL || raw_radii == NULL ||
+        record_raw_radii == NULL ||
         offsets == NULL || cursors == NULL || remap == NULL) {
         free(clusters); free(min_words); free(max_words); free(ordered_words); free(ordered_positions);
-        free(raw_centroids); free(raw_sums); free(raw_radii);
+        free(raw_centroids); free(raw_sums); free(raw_radii); free(record_raw_radii);
         free(offsets); free(cursors); free(remap); free(centroids); free(sums); free(assignments); free(counts);
         return 0;
     }
@@ -525,6 +619,8 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
                 const double delta = (double) series[t] - centroid[t];
                 distance_squared += delta * delta;
             }
+            const float radius = nextafterf((float) sqrt(distance_squared), INFINITY);
+            record_raw_radii[record] = radius;
             if (distance_squared > maximum_distance_squared)
                 maximum_distance_squared = distance_squared;
         }
@@ -539,6 +635,7 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
     node->cluster_max_words = max_words;
     node->cluster_raw_centroids = raw_centroids;
     node->cluster_raw_radii = raw_radii;
+    node->cluster_record_raw_radii = record_raw_radii;
     node->cluster_count = active;
     free(ordered_words); free(ordered_positions); free(offsets); free(cursors); free(remap);
     free(raw_sums);
@@ -672,6 +769,7 @@ static int trie_scratch_reserve(trie_query_scratch *scratch, int capacity) {
 static float trie_exact_distance(const ts_type *query, const ts_type *record,
                                  int length, float bsf, trie_query_stats *stats) {
     unsigned long long start = 0;
+    trie_pruning_curve_exact(stats);
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
     float result = ts_ed((ts_type *) query, (ts_type *) record, length, bsf);
     if (start != 0) stats->exact_distance_microseconds += trie_monotonic_microseconds() - start;
@@ -682,22 +780,34 @@ static float trie_exact_distance(const ts_type *query, const ts_type *record,
  * max(0, ||q - c|| - r), where r encloses every member around c.  The
  * cluster is still formed in symbolic space; this separate raw-space ball is
  * what makes the additional bound exact. */
-static float trie_cluster_raw_ball_lower_bound(const symbolic_trie_node *node,
-                                               int cluster, const ts_type *query,
-                                               int ts_length) {
+static double trie_cluster_raw_centroid_distance(const symbolic_trie_node *node,
+                                                 int cluster, const ts_type *query,
+                                                 int ts_length) {
     if (node->cluster_raw_centroids == NULL || node->cluster_raw_radii == NULL)
-        return 0.0f;
+        return 0.0;
     const ts_type *centroid = node->cluster_raw_centroids + (size_t) cluster * ts_length;
     double squared = 0.0;
     for (int t = 0; t < ts_length; ++t) {
         const double delta = (double) query[t] - centroid[t];
         squared += delta * delta;
     }
-    /* Downward rounding keeps finite-precision arithmetic from turning this
-     * mathematical lower bound into an overestimate.  Radii were rounded up
-     * when built. */
-    const double distance = nextafter(sqrt(squared), 0.0);
-    const double lower = distance - (double) node->cluster_raw_radii[cluster];
+    return nextafter(sqrt(squared), 0.0);
+}
+
+static float trie_cluster_raw_ball_lower_bound(const symbolic_trie_node *node,
+                                               int cluster, double centroid_distance) {
+    if (node->cluster_raw_radii == NULL) return 0.0f;
+    /* The centroid distance is rounded down and radii are rounded up, so this
+     * finite-precision result remains a conservative lower bound. */
+    const double lower = centroid_distance - (double) node->cluster_raw_radii[cluster];
+    if (lower <= 0.0) return 0.0f;
+    return nextafterf((float) (lower * lower), 0.0f);
+}
+
+static float trie_record_local_vq_lower_bound(const symbolic_trie_node *node,
+                                              int record, double centroid_distance) {
+    if (node->cluster_record_raw_radii == NULL) return 0.0f;
+    const double lower = centroid_distance - (double) node->cluster_record_raw_radii[record];
     if (lower <= 0.0) return 0.0f;
     return nextafterf((float) (lower * lower), 0.0f);
 }
@@ -1290,6 +1400,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         fprintf(stderr, "    total            : %.3f s\n", messi_monotonic_seconds() - clustering_start);
     }
     trie->node_count = trie_node_count(trie->root);
+    (void) trie_set_subtree_sizes(trie->root);
     unsigned long internal_nodes = 0;
     unsigned long long nonempty_children = 0;
     unsigned long long child_slots = 0;
@@ -1326,20 +1437,35 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 
 static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *node,
                                   int offset, int count, float mbr_suffix,
+                                  double raw_centroid_distance,
                                   const ts_type *query, const ts_type *transform, float bsf,
                                   trie_query_stats *stats, trie_query_scratch *scratch,
                                   file_position_type *best_position) {
     const int end = offset + count;
+    const int use_local_vq = index->settings->trie_leaf_ivf_local_vq_bound &&
+                             node->cluster_record_raw_radii != NULL &&
+                             raw_centroid_distance >= 0.0;
     if (!trie_scratch_reserve(scratch, count)) {
         /* Allocation failure is not a correctness failure: retain the former
          * streaming order rather than dropping candidates. */
         for (int i = offset; i < end; ++i) {
             if (stats != NULL) ++stats->lower_bounds;
+            float vq_lower = 0.0f;
+            if (use_local_vq) {
+                if (stats != NULL) ++stats->local_vq_bounds;
+                vq_lower = trie_record_local_vq_lower_bound(node, i, raw_centroid_distance);
+                if (vq_lower > bsf) {
+                    if (stats != NULL) { ++stats->local_vq_pruned; ++stats->local_vq_records_pruned; }
+                    trie_pruning_curve_add(stats, TRIE_CURVE_LOCAL_VQ, 1);
+                    continue;
+                }
+            }
             unsigned long long bound_start = profile_query_phases && stats != NULL
                                                  ? trie_monotonic_microseconds() : 0;
             const float lower = trie_record_lower_bound(index->trie, index, transform, node->words[i], bsf,
                                                          mbr_suffix, scratch);
-            if (lower <= bsf) {
+            const float combined_lower = lower > vq_lower ? lower : vq_lower;
+            if (combined_lower <= bsf) {
                 if (bound_start != 0)
                     stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
                 if (stats != NULL) ++stats->exact_distances;
@@ -1349,8 +1475,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                     bsf = d;
                     if (best_position != NULL) *best_position = node->positions[i];
                 }
-            } else if (bound_start != 0) {
-                stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
+            } else {
+                if (bound_start != 0)
+                    stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
+                trie_pruning_curve_add(stats, TRIE_CURVE_RECORD, 1);
             }
         }
         return bsf;
@@ -1361,12 +1489,23 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                                          ? trie_monotonic_microseconds() : 0;
     for (int i = offset; i < end; ++i) {
         if (stats != NULL) ++stats->lower_bounds;
+        float vq_lower = 0.0f;
+        if (use_local_vq) {
+            if (stats != NULL) ++stats->local_vq_bounds;
+            vq_lower = trie_record_local_vq_lower_bound(node, i, raw_centroid_distance);
+            if (vq_lower > bsf) {
+                if (stats != NULL) { ++stats->local_vq_pruned; ++stats->local_vq_records_pruned; }
+                trie_pruning_curve_add(stats, TRIE_CURVE_LOCAL_VQ, 1);
+                continue;
+            }
+        }
         float lower_bound = trie_record_lower_bound(index->trie, index, transform,
                                                      node->words[i], bsf, mbr_suffix, scratch);
         if (lower_bound <= bsf) {
+            if (vq_lower > lower_bound) lower_bound = vq_lower;
             scratch->candidates[candidate_count].lower_bound = lower_bound;
             scratch->candidates[candidate_count++].record_index = i;
-        }
+        } else trie_pruning_curve_add(stats, TRIE_CURVE_RECORD, 1);
     }
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
@@ -1390,6 +1529,9 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             if (best_position != NULL) *best_position = node->positions[candidate.record_index];
         }
     }
+    /* The remaining heap entries are safely rejected by their already
+     * computed record-level lower bounds after a later BSF improvement. */
+    trie_pruning_curve_add(stats, TRIE_CURVE_RECORD, (unsigned long long) candidate_count);
     return bsf;
 }
 
@@ -1400,10 +1542,10 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     if (node->cluster_count == 0) {
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     node->min_word, node->max_word, scratch);
-        return trie_scan_leaf_range(index, node, 0, node->size, suffix,
+        return trie_scan_leaf_range(index, node, 0, node->size, suffix, -1.0,
                                     query, transform, bsf, stats, scratch, best_position);
     }
-    typedef struct { int cluster; float bound; } trie_cluster_bound;
+    typedef struct { int cluster; float bound; double raw_centroid_distance; } trie_cluster_bound;
     trie_cluster_bound ordered[64];
     int count = 0;
     for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
@@ -1413,16 +1555,22 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
             index->trie->dimensions, bsf, stats);
+        const int need_raw_centroid_distance = index->settings->trie_leaf_ivf_raw_ball_bound ||
+                                               index->settings->trie_leaf_ivf_local_vq_bound;
+        const double raw_centroid_distance = need_raw_centroid_distance
+            ? trie_cluster_raw_centroid_distance(node, cluster, query,
+                                                 index->settings->timeseries_size)
+            : -1.0;
         const float raw_ball_bound = index->settings->trie_leaf_ivf_raw_ball_bound
-            ? trie_cluster_raw_ball_lower_bound(node, cluster, query,
-                                                index->settings->timeseries_size)
+            ? trie_cluster_raw_ball_lower_bound(node, cluster, raw_centroid_distance)
             : 0.0f;
         const float bound = symbolic_bound > raw_ball_bound ? symbolic_bound : raw_ball_bound;
         if (bound >= bsf) {
             if (stats != NULL) { ++stats->cluster_pruned; stats->cluster_records_pruned += group->size; }
+            trie_pruning_curve_add(stats, TRIE_CURVE_CLUSTER, (unsigned long long) group->size);
             continue;
         }
-        ordered[count++] = (trie_cluster_bound) { cluster, bound };
+        ordered[count++] = (trie_cluster_bound) { cluster, bound, raw_centroid_distance };
     }
     for (int i = 1; i < count; ++i) {
         trie_cluster_bound current = ordered[i]; int j = i - 1;
@@ -1431,12 +1579,14 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     }
     for (int i = 0; i < count; ++i) {
         const int cluster = ordered[i].cluster;
+        const double raw_centroid_distance = ordered[i].raw_centroid_distance;
         const trie_leaf_cluster *group = &node->clusters[cluster];
         const sax_type *minimum = node->cluster_min_words + (size_t) cluster * index->trie->dimensions;
         const sax_type *maximum = node->cluster_max_words + (size_t) cluster * index->trie->dimensions;
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     minimum, maximum, scratch);
         bsf = trie_scan_leaf_range(index, node, group->offset, group->size, suffix,
+                                   raw_centroid_distance,
                                    query, transform, bsf, stats, scratch, best_position);
     }
     return bsf;
@@ -1450,7 +1600,14 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                                    index->trie->dimensions, bsf, stats);
-    if (lower > bsf) return bsf;
+    if (lower > bsf) {
+        long skipped = node->subtree_size;
+        if (skip_leaf != NULL && trie_node_contains(node, skip_leaf))
+            skipped -= skip_leaf->subtree_size;
+        trie_pruning_curve_add(stats, TRIE_CURVE_NODE,
+                               skipped > 0 ? (unsigned long long) skipped : 0);
+        return bsf;
+    }
     if (!node->leaf) {
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
         trie_child_bound ordered[TRIE_MAX_FANOUT];
@@ -1466,9 +1623,18 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
             while (j >= 0 && ordered[j].bound > current.bound) { ordered[j + 1] = ordered[j]; --j; }
             ordered[j + 1] = current;
         }
-        for (int i = 0; i < n; ++i) if (ordered[i].bound <= bsf)
-            bsf = trie_search_node(index, ordered[i].node, query, transform, bsf, stats, skip_leaf, scratch,
-                                   best_position);
+        for (int i = 0; i < n; ++i) {
+            if (ordered[i].bound <= bsf) {
+                bsf = trie_search_node(index, ordered[i].node, query, transform, bsf, stats, skip_leaf, scratch,
+                                       best_position);
+            } else {
+                long skipped = ordered[i].node->subtree_size;
+                if (skip_leaf != NULL && trie_node_contains(ordered[i].node, skip_leaf))
+                    skipped -= skip_leaf->subtree_size;
+                trie_pruning_curve_add(stats, TRIE_CURVE_NODE,
+                                       skipped > 0 ? (unsigned long long) skipped : 0);
+            }
+        }
         return bsf;
     }
     return trie_scan_leaf_best_first(index, node, query, transform, bsf, stats, scratch, best_position);
@@ -1725,6 +1891,9 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->cluster_bounds += worker_stats[i].cluster_bounds;
         result_stats->cluster_pruned += worker_stats[i].cluster_pruned;
         result_stats->cluster_records_pruned += worker_stats[i].cluster_records_pruned;
+        result_stats->local_vq_bounds += worker_stats[i].local_vq_bounds;
+        result_stats->local_vq_pruned += worker_stats[i].local_vq_pruned;
+        result_stats->local_vq_records_pruned += worker_stats[i].local_vq_records_pruned;
     }
     for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
     for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
@@ -1748,6 +1917,24 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
+    trie_pruning_curve curve = {0};
+    if (index->settings->trie_pruning_curve_path != NULL) {
+        if (maxquerythread != 1) {
+            fprintf(stderr, "error: --trie-pruning-curve requires --threads 1.\n");
+            fclose(file);
+            return FAILURE;
+        }
+        curve.file = fopen(index->settings->trie_pruning_curve_path, "w");
+        if (curve.file == NULL) {
+            fprintf(stderr, "error: cannot open trie pruning curve %s.\n",
+                    index->settings->trie_pruning_curve_path);
+            fclose(file);
+            return FAILURE;
+        }
+        curve.total_records = index->total_records;
+        fprintf(curve.file,
+                "query,elapsed_ms,total_records,node_pruned,cluster_pruned,local_vq_pruned,record_pruned,exact_evaluated\n");
+    }
     int ts_length = index->settings->timeseries_size;
     ts_type *query = malloc(sizeof(*query) * (size_t) ts_length);
     file_type *query_int = filetype_int ? malloc(sizeof(*query_int) * (size_t) ts_length) : NULL;
@@ -1768,17 +1955,27 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             read_ok = fread(query, sizeof(*query), (size_t) ts_length, file) == (size_t) ts_length;
         }
         if (!read_ok || (apply_znorm && (znorm(query, ts_length), 0))) {
-            fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+            fclose(file); if (curve.file) fclose(curve.file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
         unsigned long long query_start = trie_monotonic_microseconds();
         if (trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
-            fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+            fclose(file); if (curve.file) fclose(curve.file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
         trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
+        if (curve.file != NULL) {
+            curve.query_index = i;
+            curve.started_at = (double) query_start / 1000000.0;
+            curve.next_sample_at = curve.started_at;
+            curve.node_pruned = curve.cluster_pruned = curve.local_vq_pruned = 0;
+            curve.record_pruned = curve.exact_evaluated = 0;
+            stats.curve = &curve;
+            curve.events_since_clock_check = 0;
+            trie_pruning_curve_write_at(&curve, messi_monotonic_seconds());
+        }
         unsigned long long search_start = trie_monotonic_microseconds();
         const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform, &stats);
         float bsf = seed_leaf == NULL ? FLT_MAX :
@@ -1812,6 +2009,9 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.cluster_bounds += parallel_stats.cluster_bounds;
             stats.cluster_pruned += parallel_stats.cluster_pruned;
             stats.cluster_records_pruned += parallel_stats.cluster_records_pruned;
+            stats.local_vq_bounds += parallel_stats.local_vq_bounds;
+            stats.local_vq_pruned += parallel_stats.local_vq_pruned;
+            stats.local_vq_records_pruned += parallel_stats.local_vq_records_pruned;
         } else {
             distance = trie_search_node(index, index->trie->root, query, transform,
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch, NULL);
@@ -1826,6 +2026,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
                                            stats.candidate_heap_microseconds + stats.synchronization_microseconds;
         }
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
+        if (curve.file != NULL) trie_pruning_curve_write_at(&curve, messi_monotonic_seconds());
         cumulative_microseconds += stats.total_microseconds;
         trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
         if (SHOULD_REPORT_QUERY(i, query_count)) {
@@ -1833,13 +2034,17 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             trie_print_query_stats(i, index->trie, &stats, distance, cumulative_microseconds);
         }
     }
-    fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+    fclose(file); if (curve.file) fclose(curve.file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
     fftw_workspace_destroy(&fftw); return SUCCESS;
 }
 
 enum response symbolic_trie_query_file_batch(isax_index *index, const char *path, int query_count,
                                              int filetype_int, int apply_znorm, float minimum_distance) {
     if (index == NULL || path == NULL || query_count < 0) return FAILURE;
+    if (index->settings->trie_pruning_curve_path != NULL) {
+        fprintf(stderr, "error: --trie-pruning-curve is incompatible with --trie-query-batch.\n");
+        return FAILURE;
+    }
     FILE *file = fopen(path, "rb");
     int length = index->settings->timeseries_size, dimensions = index->settings->n_segments;
     ts_type *queries = malloc((size_t) query_count * length * sizeof(*queries));
