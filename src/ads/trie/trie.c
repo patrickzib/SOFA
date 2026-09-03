@@ -74,7 +74,7 @@ typedef struct symbolic_trie_node {
      * these are certified for pruning by the triangle inequality. */
     ts_type *cluster_raw_centroids;
     float *cluster_raw_radii;
-    /* Per-record radii, sorted within each cluster alongside words/positions. */
+    /* Per-record centroid radii in the existing IVF-cluster record order. */
     float *record_raw_radii;
     int cluster_count;
 } symbolic_trie_node;
@@ -410,20 +410,6 @@ static double trie_cluster_distance(const sax_type *word, const float *centroid,
     return distance;
 }
 
-typedef struct {
-    float radius;
-    sax_type *word;
-    file_position_type position;
-} trie_radial_record;
-
-static int trie_compare_radial_records(const void *left, const void *right) {
-    const trie_radial_record *a = left;
-    const trie_radial_record *b = right;
-    if (a->radius < b->radius) return -1;
-    if (a->radius > b->radius) return 1;
-    return (a->position > b->position) - (a->position < b->position);
-}
-
 static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
                              int cluster_count, const float *centers, int ts_length,
                              int radial_enabled) {
@@ -512,7 +498,7 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
         ordered_positions == NULL || raw_centroids == NULL || raw_sums == NULL || raw_radii == NULL ||
         offsets == NULL || cursors == NULL || remap == NULL) {
         free(clusters); free(min_words); free(max_words); free(ordered_words); free(ordered_positions);
-        free(raw_centroids); free(raw_sums); free(raw_radii);
+        free(raw_centroids); free(raw_sums); free(raw_radii); free(record_radii);
         free(offsets); free(cursors); free(remap); free(centroids); free(sums); free(assignments); free(counts);
         return 0;
     }
@@ -569,35 +555,6 @@ static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alpha
         /* Round upward: an undersized stored radius could invalidate the
          * lower bound after the double-to-float conversion. */
         raw_radii[cluster] = nextafterf((float) sqrt(maximum_distance_squared), INFINITY);
-    }
-    if (record_radii != NULL) {
-        int largest_group = 0;
-        for (int cluster = 0; cluster < active; ++cluster)
-            if (clusters[cluster].size > largest_group) largest_group = clusters[cluster].size;
-        trie_radial_record *sorted = malloc((size_t) largest_group * sizeof(*sorted));
-        if (sorted == NULL) {
-            free(record_radii);
-            record_radii = NULL;
-        } else {
-            for (int cluster = 0; cluster < active; ++cluster) {
-                const int first = clusters[cluster].offset;
-                const int count = clusters[cluster].size;
-                for (int i = 0; i < count; ++i) {
-                    const int record = first + i;
-                    sorted[i].radius = record_radii[record];
-                    sorted[i].word = ordered_words[record];
-                    sorted[i].position = ordered_positions[record];
-                }
-                qsort(sorted, (size_t) count, sizeof(*sorted), trie_compare_radial_records);
-                for (int i = 0; i < count; ++i) {
-                    const int record = first + i;
-                    record_radii[record] = sorted[i].radius;
-                    ordered_words[record] = sorted[i].word;
-                    ordered_positions[record] = sorted[i].position;
-                }
-            }
-            free(sorted);
-        }
     }
     memcpy(node->words, ordered_words, (size_t) size * sizeof(*node->words));
     memcpy(node->positions, ordered_positions, (size_t) size * sizeof(*node->positions));
@@ -1433,50 +1390,6 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     return SUCCESS;
 }
 
-static int trie_radius_lower_bound(const float *radii, int first, int last, double value) {
-    while (first < last) {
-        const int middle = first + (last - first) / 2;
-        if ((double) radii[middle] < value) first = middle + 1;
-        else last = middle;
-    }
-    return first;
-}
-
-typedef struct {
-    int first;
-    int last;
-} trie_radial_window;
-
-/* Find the only radius interval that can still contain records within BSF.
- * The two tails are certified by the reverse triangle inequality.  All
- * nextafter/double work is O(log n), outside the per-record scan. */
-static trie_radial_window trie_radius_window(const float *radii, int first, int last,
-                                             messi_distance_interval query_radius,
-                                             float bsf) {
-    const double threshold = messi_bsf_radius_upper(bsf);
-    const double minimum_radius = query_radius.lower - threshold;
-    const double maximum_radius = query_radius.upper + threshold;
-    int left = first, right = last;
-    while (left < right) {
-        const int middle = left + (right - left) / 2;
-        if (messi_stored_radius_upper(radii[middle]) < minimum_radius)
-            left = middle + 1;
-        else
-            right = middle;
-    }
-    const int window_first = left;
-    left = window_first;
-    right = last;
-    while (left < right) {
-        const int middle = left + (right - left) / 2;
-        if (messi_stored_radius_lower(radii[middle]) <= maximum_radius)
-            left = middle + 1;
-        else
-            right = middle;
-    }
-    return (trie_radial_window) { window_first, left };
-}
-
 static float trie_refine_streaming_record(isax_index *index, const symbolic_trie_node *node,
                                           int record, float mbr_suffix,
                                           const ts_type *query, const ts_type *transform,
@@ -1515,91 +1428,34 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     const int streaming = index->settings->trie_streaming_leaf_scan ||
                           !trie_scratch_reserve(scratch, count);
     int candidate_count = 0;
+    const unsigned long lower_bounds_before = stats != NULL ? stats->lower_bounds : 0;
     const unsigned long long bound_start = !streaming && profile_query_phases && stats != NULL
                                                ? trie_monotonic_microseconds() : 0;
 
-    if (record_radii == NULL) {
-        for (int record = offset; record < end; ++record) {
-            if (streaming) {
-                bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
-                                                   query, transform, bsf, stats, scratch,
-                                                   best_position);
-                continue;
-            }
-            if (stats != NULL) ++stats->lower_bounds;
-            const float lower = trie_record_lower_bound(index->trie, index, transform,
-                                                        node->words[record], bsf,
-                                                        mbr_suffix, scratch);
-            if (lower <= bsf) {
-                scratch->candidates[candidate_count].lower_bound = lower;
-                scratch->candidates[candidate_count++].record_index = record;
-            }
-        }
-    } else {
-        if (stats != NULL) stats->radial_candidates += (unsigned long) count;
-        trie_radial_window window = trie_radius_window(record_radii, offset, end,
-                                                       query_radius, bsf);
-        if (stats != NULL)
-            stats->radial_pruned += (unsigned long) (count - (window.last - window.first));
+    if (record_radii != NULL && stats != NULL)
+        stats->radial_candidates += (unsigned long) count;
+    for (int record = offset; record < end; ++record) {
+        if (record_radii != NULL &&
+            messi_radial_lower_bound_squared(query_radius, record_radii[record]) > bsf)
+            continue;
         if (streaming) {
-            const double middle_radius = 0.5 * (query_radius.lower + query_radius.upper);
-            int right = trie_radius_lower_bound(record_radii, window.first, window.last,
-                                                middle_radius);
-            int left = right - 1;
-            double left_distance = left >= window.first
-                ? middle_radius - (double) record_radii[left] : INFINITY;
-            double right_distance = right < window.last
-                ? (double) record_radii[right] - middle_radius : INFINITY;
-            while (left >= window.first || right < window.last) {
-                int record;
-                if (left_distance <= right_distance) {
-                    record = left--;
-                    left_distance = left >= window.first
-                        ? middle_radius - (double) record_radii[left] : INFINITY;
-                } else {
-                    record = right++;
-                    right_distance = right < window.last
-                        ? (double) record_radii[right] - middle_radius : INFINITY;
-                }
-                const float previous_bsf = bsf;
-                bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
-                                                   query, transform, bsf, stats, scratch,
-                                                   best_position);
-                if (bsf < previous_bsf) {
-                    const trie_radial_window tightened = trie_radius_window(
-                        record_radii, offset, end, query_radius, bsf);
-                    int tightened_first = tightened.first;
-                    int tightened_last = tightened.last;
-                    if (tightened_first < window.first) tightened_first = window.first;
-                    if (tightened_last > window.last) tightened_last = window.last;
-                    if (tightened_first > left + 1) tightened_first = left + 1;
-                    if (tightened_last < right) tightened_last = right;
-                    if (stats != NULL)
-                        stats->radial_pruned += (unsigned long)
-                            ((tightened_first - window.first) +
-                             (window.last - tightened_last));
-                    window.first = tightened_first;
-                    window.last = tightened_last;
-                    if (left < window.first) left_distance = INFINITY;
-                    if (right >= window.last) right_distance = INFINITY;
-                }
-            }
-        } else {
-            /* Heap mode has no BSF updates while collecting record bounds, so
-             * one initial radius window is sufficient and is scanned
-             * contiguously. */
-            for (int record = window.first; record < window.last; ++record) {
-                if (stats != NULL) ++stats->lower_bounds;
-                const float lower = trie_record_lower_bound(index->trie, index, transform,
-                                                            node->words[record], bsf,
-                                                            mbr_suffix, scratch);
-                if (lower <= bsf) {
-                    scratch->candidates[candidate_count].lower_bound = lower;
-                    scratch->candidates[candidate_count++].record_index = record;
-                }
-            }
+            bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
+                                               query, transform, bsf, stats, scratch,
+                                               best_position);
+            continue;
+        }
+        if (stats != NULL) ++stats->lower_bounds;
+        const float lower = trie_record_lower_bound(index->trie, index, transform,
+                                                    node->words[record], bsf,
+                                                    mbr_suffix, scratch);
+        if (lower <= bsf) {
+            scratch->candidates[candidate_count].lower_bound = lower;
+            scratch->candidates[candidate_count++].record_index = record;
         }
     }
+    if (record_radii != NULL && stats != NULL)
+        stats->radial_pruned += (unsigned long) count -
+            (stats->lower_bounds - lower_bounds_before);
     if (streaming) return bsf;
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;

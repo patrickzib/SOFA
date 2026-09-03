@@ -47,34 +47,25 @@ static int test_radial_bound(void) {
             const messi_distance_interval query_radius =
                 messi_distance_interval_from_squared(query_squared, count);
             const float record_radius = (float) sqrt(record_squared);
-            const float covering_bsf = nextafterf((float) exact_squared, INFINITY);
-            if (!messi_radial_radius_may_pass(query_radius, record_radius, covering_bsf)) {
+            const float lower = messi_radial_lower_bound_squared(query_radius, record_radius);
+            if ((long double) lower > exact_squared) {
                 fprintf(stderr,
-                        "radial window rejected a possible result: dimensions=%d trial=%d bsf=%g exact=%Lg\n",
-                        count, trial, covering_bsf, exact_squared);
+                        "radial lower bound exceeded exact distance: dimensions=%d trial=%d lower=%g exact=%Lg\n",
+                        count, trial, lower, exact_squared);
                 return 0;
             }
-            const float selective_bsf = (float) (0.1L * exact_squared);
-            if (!messi_radial_radius_may_pass(query_radius, record_radius, selective_bsf)) {
-                ++pruned;
-                if (exact_squared <= (long double) selective_bsf) {
-                    fprintf(stderr,
-                            "radial window pruned inside BSF: dimensions=%d trial=%d bsf=%g exact=%Lg\n",
-                            count, trial, selective_bsf, exact_squared);
-                    return 0;
-                }
-            }
+            if (lower > 0.0f) ++pruned;
         }
     }
 
     const messi_distance_interval zero = messi_distance_interval_from_squared(0.0, 256);
     if (zero.lower != 0.0 || zero.upper != 0.0 ||
-        !messi_radial_radius_may_pass(zero, 0.0f, 0.0f)) {
-        fprintf(stderr, "radial zero-distance interval is not exact\n");
+        messi_radial_lower_bound_squared(zero, 0.0f) != 0.0f) {
+        fprintf(stderr, "radial zero-distance bound is not exact\n");
         return 0;
     }
     if (pruned == 0) {
-        fprintf(stderr, "radial window test did not exercise pruning\n");
+        fprintf(stderr, "radial lower-bound test did not exercise pruning\n");
         return 0;
     }
     return 1;

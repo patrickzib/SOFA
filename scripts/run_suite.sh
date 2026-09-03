@@ -54,7 +54,7 @@ Options:
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
   --trie-leaf-ivf-radial-bound
-                          Radius-sort IVF records and prune candidates by triangle inequality
+                          Prune IVF records by centroid radius without reordering
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)

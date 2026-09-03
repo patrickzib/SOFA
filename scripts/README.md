@@ -80,27 +80,15 @@ default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
-`--trie-leaf-ivf-radial-bound` is an opt-in record-level triangle bound for
-these IVF leaves. During construction it stores one float radius per record
-and sorts each IVF group by distance from its raw-space centroid. At query
-time, two binary searches identify the radius interval that can still beat the
-current BSF, and both excluded tails are discarded in bulk. Streaming scans
-start near the query radius within that interval; a better BSF tightens the
-remaining interval with another pair of binary searches. There is no radial
-lower-bound calculation in the per-record loop. This can be benchmarked
-independently of the cluster raw-ball bound:
-
-```bash
-scripts/run_dataset.sh deep1b standard \
-  --trie-leaf-ivf-radial-bound
-
-scripts/run_dataset.sh deep1b standard \
-  --trie-leaf-ivf-radial-bound \
-  --no-trie-leaf-ivf-raw-ball-bound
-```
+`--trie-leaf-ivf-radial-bound` stores each record's distance from its raw-space
+IVF centroid. Records remain in their existing IVF-cluster order. During a
+leaf scan, the reverse triangle inequality is evaluated per record before the
+symbolic record bound; rejected records skip both the symbolic bound and exact
+distance. The option adds one float per record in eligible leaves but performs
+no radius sorting or two-front traversal.
 
 The query summary attributes pruning to the first successful bound: node MBR,
-leaf-IVF symbolic MBR, leaf-IVF raw ball, record radial window, then the
+leaf-IVF symbolic MBR, leaf-IVF raw ball, per-record radial bound, then the
 symbolic record bound. Each line reports an average count per query, its
 stage-local pruning rate, and its share of all indexed records, so overlapping
 bounds are not double-counted.

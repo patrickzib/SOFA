@@ -106,7 +106,7 @@ typedef struct {
     int trie_leaf_ivf;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
-    /* Opt-in per-record centroid-radius ordering and triangle bound. */
+    /* Opt-in per-record centroid-radius triangle bound. */
     char trie_leaf_ivf_radial_bound;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */

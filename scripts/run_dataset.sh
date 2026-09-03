@@ -50,7 +50,7 @@ Options:
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
   --trie-leaf-ivf-radial-bound
-                            Radius-sort IVF records and prune candidates by triangle inequality
+                            Prune IVF records by centroid radius without reordering
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -330,6 +330,8 @@ MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must b
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
     is_positive_integer "$TRIE_RECORD_LB_DIMS" || die '--n-segments must be a positive integer'
     (( TRIE_RECORD_LB_DIMS >= 16 && TRIE_RECORD_LB_DIMS <= 64 )) || \
         die '--n-segments must be between 16 and 64 for trie runs'
@@ -351,8 +353,6 @@ if [[ $INDEX_TYPE == trie ]]; then
         is_positive_integer "$TRIE_LEAF_IVF" || die '--trie-leaf-ivf must be a positive integer'
         (( TRIE_LEAF_IVF >= 2 && TRIE_LEAF_IVF <= 64 )) || die '--trie-leaf-ivf must be between 2 and 64'
     fi
-    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
-        die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
     (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
     [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || die '--trie-fanout must be 2, 4, or 8'

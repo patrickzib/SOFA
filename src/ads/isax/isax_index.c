@@ -2989,7 +2989,7 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);
         if (settings->trie_leaf_ivf_radial_bound)
-            fprintf(stderr, "  radial bound  : bulk sorted-radius window pruning\n");
+            fprintf(stderr, "  radial bound  : per-record centroid radii, original IVF order\n");
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

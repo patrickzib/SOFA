@@ -29,31 +29,19 @@ static inline messi_distance_interval messi_distance_interval_from_squared(doubl
 }
 
 /* The stored radius is the nearest float to the build-time double result.
- * Expanding it by one float ULP covers both that conversion and the much
- * smaller double-precision accumulation error. */
-static inline double messi_stored_radius_lower(float stored_record_radius) {
-    const double lower = (double) nextafterf(stored_record_radius, -INFINITY);
-    return lower > 0.0 ? lower : 0.0;
-}
-
-static inline double messi_stored_radius_upper(float stored_record_radius) {
-    return (double) nextafterf(stored_record_radius, INFINITY);
-}
-
-/* Convert the squared BSF to a distance threshold, rounded outward.  Query
- * code uses this once per binary-searched window, never once per record. */
-static inline double messi_bsf_radius_upper(float bsf) {
-    if (!(bsf >= 0.0f) || isinf(bsf)) return INFINITY;
-    return nextafter(sqrt((double) bsf), INFINITY);
-}
-
-/* Reference predicate used by numerical tests.  The query path implements
- * the same inequalities with two binary searches over sorted radii. */
-static inline int messi_radial_radius_may_pass(messi_distance_interval query_radius,
-                                               float stored_record_radius, float bsf) {
-    const double threshold = messi_bsf_radius_upper(bsf);
-    return messi_stored_radius_upper(stored_record_radius) >= query_radius.lower - threshold &&
-           messi_stored_radius_lower(stored_record_radius) <= query_radius.upper + threshold;
+ * Expand it by one float ULP before applying the reverse triangle inequality. */
+static inline float messi_radial_lower_bound_squared(messi_distance_interval query_radius,
+                                                      float stored_record_radius) {
+    double record_lower = (double) nextafterf(stored_record_radius, -INFINITY);
+    const double record_upper = (double) nextafterf(stored_record_radius, INFINITY);
+    if (record_lower < 0.0) record_lower = 0.0;
+    double gap = 0.0;
+    if (query_radius.lower > record_upper)
+        gap = query_radius.lower - record_upper;
+    else if (record_lower > query_radius.upper)
+        gap = record_lower - query_radius.upper;
+    if (gap <= 0.0) return 0.0f;
+    return nextafterf((float) (gap * gap), 0.0f);
 }
 
 #endif
