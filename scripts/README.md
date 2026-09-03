@@ -81,9 +81,10 @@ Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
 `--trie-leaf-ivf-radial-bound` stores each record's distance from its raw-space
-IVF centroid. Records remain in their existing IVF-cluster order. During a
-leaf scan, the reverse triangle inequality is evaluated per record before the
-symbolic record bound; rejected records skip both the symbolic bound and exact
+IVF centroid as a contiguous float32 array. Records remain in their existing
+IVF-cluster order. During a leaf scan, AVX-512 classifies 16 radii per load and
+AVX2 classifies 8; the survivor mask is processed in record order before the
+symbolic record bound. Rejected records skip both the symbolic bound and exact
 distance. The option adds one float per record in eligible leaves but performs
 no radius sorting or two-front traversal.
 

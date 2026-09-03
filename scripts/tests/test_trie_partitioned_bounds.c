@@ -54,13 +54,24 @@ static int test_radial_bound(void) {
                         count, trial, lower, exact_squared);
                 return 0;
             }
+            const float covering_bsf = nextafterf((float) exact_squared, INFINITY);
+            const messi_radial_window window =
+                messi_radial_window_from_bsf(query_radius, covering_bsf);
+            if (!messi_radial_radius_in_window(record_radius, window)) {
+                fprintf(stderr,
+                        "radial float window rejected a possible result: dimensions=%d trial=%d bsf=%g exact=%Lg\n",
+                        count, trial, covering_bsf, exact_squared);
+                return 0;
+            }
             if (lower > 0.0f) ++pruned;
         }
     }
 
     const messi_distance_interval zero = messi_distance_interval_from_squared(0.0, 256);
     if (zero.lower != 0.0 || zero.upper != 0.0 ||
-        messi_radial_lower_bound_squared(zero, 0.0f) != 0.0f) {
+        messi_radial_lower_bound_squared(zero, 0.0f) != 0.0f ||
+        !messi_radial_radius_in_window(
+            0.0f, messi_radial_window_from_bsf(zero, 0.0f))) {
         fprintf(stderr, "radial zero-distance bound is not exact\n");
         return 0;
     }

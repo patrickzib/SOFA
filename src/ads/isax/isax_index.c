@@ -2988,8 +2988,17 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         if (settings->trie_leaf_ivf)
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);
-        if (settings->trie_leaf_ivf_radial_bound)
-            fprintf(stderr, "  radial bound  : per-record centroid radii, original IVF order\n");
+        if (settings->trie_leaf_ivf_radial_bound) {
+#if defined(__AVX512F__)
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order\n",
+                    settings->SIMD_flag ? "16-lane AVX-512" : "scalar scan");
+#elif ADS_HAVE_AVX2
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order\n",
+                    settings->SIMD_flag ? "8-lane AVX2" : "scalar scan");
+#else
+            fprintf(stderr, "  radial bound  : float32 centroid radii, scalar scan, original IVF order\n");
+#endif
+        }
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

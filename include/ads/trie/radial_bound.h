@@ -9,6 +9,11 @@ typedef struct {
     double upper;
 } messi_distance_interval;
 
+typedef struct {
+    float lower;
+    float upper;
+} messi_radial_window;
+
 /* Bound the exact norm represented by a double-precision sum of squared float
  * differences.  The gamma term covers subtraction, multiplication, and
  * accumulation rounding; nextafter also covers the final square root. */
@@ -42,6 +47,29 @@ static inline float messi_radial_lower_bound_squared(messi_distance_interval que
         gap = record_lower - query_radius.upper;
     if (gap <= 0.0) return 0.0f;
     return nextafterf((float) (gap * gap), 0.0f);
+}
+
+/* Convert the current squared BSF to a conservative interval of stored
+ * float radii that may still contain an answer.  The extra float ULP at each
+ * endpoint covers the one-ULP interval around every stored record radius.
+ * This work is cached by the caller until BSF changes. */
+static inline messi_radial_window messi_radial_window_from_bsf(
+        messi_distance_interval query_radius, float bsf) {
+    if (!(bsf >= 0.0f) || isinf(bsf))
+        return (messi_radial_window) { -INFINITY, INFINITY };
+    const double threshold = nextafter(sqrt((double) bsf), INFINITY);
+    const double lower = query_radius.lower - threshold;
+    const double upper = query_radius.upper + threshold;
+    return (messi_radial_window) {
+        nextafterf((float) lower, -INFINITY),
+        nextafterf((float) upper, INFINITY)
+    };
+}
+
+/* Ordered comparisons deliberately treat NaN as a survivor. */
+static inline int messi_radial_radius_in_window(float stored_record_radius,
+                                                messi_radial_window window) {
+    return !(stored_record_radius < window.lower || stored_record_radius > window.upper);
 }
 
 #endif

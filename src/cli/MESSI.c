@@ -865,7 +865,7 @@ int main(int argc, char **argv) {
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; learned-transform default: 16)\n"
                        "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
-                       "  --trie-leaf-ivf-radial-bound  Prune IVF records by centroid radius without reordering\n"
+                       "  --trie-leaf-ivf-radial-bound  SIMD-prune IVF records by float32 centroid radius without reordering\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"

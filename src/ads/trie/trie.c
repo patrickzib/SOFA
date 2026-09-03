@@ -1417,6 +1417,47 @@ static float trie_refine_streaming_record(isax_index *index, const symbolic_trie
     return bsf;
 }
 
+static inline int trie_radial_simd_lanes(const isax_index *index) {
+    if (!index->settings->SIMD_flag) return 1;
+#if defined(__AVX512F__)
+    return 16;
+#elif ADS_HAVE_AVX2
+    return 8;
+#else
+    return 1;
+#endif
+}
+
+/* Return one survivor bit per contiguous float radius.  Using a prune mask
+ * makes unordered (NaN) radii survive, matching the conservative scalar
+ * predicate. */
+static inline unsigned int trie_radial_survivor_mask(const float *radii,
+                                                      messi_radial_window window,
+                                                      int lanes) {
+#if defined(__AVX512F__)
+    if (lanes == 16) {
+        const __m512 values = _mm512_loadu_ps(radii);
+        const __mmask16 below = _mm512_cmp_ps_mask(
+            values, _mm512_set1_ps(window.lower), _CMP_LT_OQ);
+        const __mmask16 above = _mm512_cmp_ps_mask(
+            values, _mm512_set1_ps(window.upper), _CMP_GT_OQ);
+        return (unsigned int) ((~(below | above)) & 0xffffU);
+    }
+#elif ADS_HAVE_AVX2
+    if (lanes == 8) {
+        const __m256 values = _mm256_loadu_ps(radii);
+        const __m256 below = _mm256_cmp_ps(
+            values, _mm256_set1_ps(window.lower), _CMP_LT_OQ);
+        const __m256 above = _mm256_cmp_ps(
+            values, _mm256_set1_ps(window.upper), _CMP_GT_OQ);
+        const unsigned int pruned = (unsigned int) _mm256_movemask_ps(
+            _mm256_or_ps(below, above));
+        return (~pruned) & 0xffU;
+    }
+#endif
+    return messi_radial_radius_in_window(radii[0], window) ? 1U : 0U;
+}
+
 static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *node,
                                   int offset, int count, float mbr_suffix,
                                   const float *record_radii,
@@ -1431,26 +1472,62 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     const unsigned long lower_bounds_before = stats != NULL ? stats->lower_bounds : 0;
     const unsigned long long bound_start = !streaming && profile_query_phases && stats != NULL
                                                ? trie_monotonic_microseconds() : 0;
+    const int radial_lanes = record_radii != NULL ? trie_radial_simd_lanes(index) : 1;
+    messi_radial_window radial_window = { -INFINITY, INFINITY };
+    float radial_window_bsf = 0.0f;
+    int radial_window_valid = 0;
 
-    if (record_radii != NULL && stats != NULL)
-        stats->radial_candidates += (unsigned long) count;
-    for (int record = offset; record < end; ++record) {
-        if (record_radii != NULL &&
-            messi_radial_lower_bound_squared(query_radius, record_radii[record]) > bsf)
-            continue;
-        if (streaming) {
-            bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
-                                               query, transform, bsf, stats, scratch,
-                                               best_position);
-            continue;
+    if (record_radii == NULL) {
+        for (int record = offset; record < end; ++record) {
+            if (streaming) {
+                bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
+                                                   query, transform, bsf, stats, scratch,
+                                                   best_position);
+                continue;
+            }
+            if (stats != NULL) ++stats->lower_bounds;
+            const float lower = trie_record_lower_bound(index->trie, index, transform,
+                                                        node->words[record], bsf,
+                                                        mbr_suffix, scratch);
+            if (lower <= bsf) {
+                scratch->candidates[candidate_count].lower_bound = lower;
+                scratch->candidates[candidate_count++].record_index = record;
+            }
         }
-        if (stats != NULL) ++stats->lower_bounds;
-        const float lower = trie_record_lower_bound(index->trie, index, transform,
-                                                    node->words[record], bsf,
-                                                    mbr_suffix, scratch);
-        if (lower <= bsf) {
-            scratch->candidates[candidate_count].lower_bound = lower;
-            scratch->candidates[candidate_count++].record_index = record;
+    } else {
+        if (stats != NULL) stats->radial_candidates += (unsigned long) count;
+        int block = offset;
+        while (block < end) {
+            if (!radial_window_valid || radial_window_bsf != bsf) {
+                radial_window = messi_radial_window_from_bsf(query_radius, bsf);
+                radial_window_bsf = bsf;
+                radial_window_valid = 1;
+            }
+            int lanes = 1;
+            if (radial_lanes > 1 && block + radial_lanes <= end)
+                lanes = radial_lanes;
+            unsigned int survivors = trie_radial_survivor_mask(
+                record_radii + block, radial_window, lanes);
+            while (survivors != 0U) {
+                const int lane = __builtin_ctz(survivors);
+                const int record = block + lane;
+                survivors &= survivors - 1U;
+                if (streaming) {
+                    bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
+                                                       query, transform, bsf, stats, scratch,
+                                                       best_position);
+                    continue;
+                }
+                if (stats != NULL) ++stats->lower_bounds;
+                const float lower = trie_record_lower_bound(index->trie, index, transform,
+                                                            node->words[record], bsf,
+                                                            mbr_suffix, scratch);
+                if (lower <= bsf) {
+                    scratch->candidates[candidate_count].lower_bound = lower;
+                    scratch->candidates[candidate_count++].record_index = record;
+                }
+            }
+            block += lanes;
         }
     }
     if (record_radii != NULL && stats != NULL)
