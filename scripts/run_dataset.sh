@@ -481,7 +481,7 @@ collect_run_summary() {
     local method=$1 transcript=$2 fields method_name binning layout leaf_cap fanout wall lower lower_pct exact exact_pct
     fields=$(awk '
         /^  wall time[[:space:]]*:/ { wall = $4 " " $5 }
-        /^  lower bounds[[:space:]]*:/ {
+        /^  (symbolic record bounds|lower bounds)[[:space:]]*:/ {
             line = $0; sub(/^.*:[[:space:]]*/, "", line)
             marker = index(line, " (")
             if (marker != 0) {

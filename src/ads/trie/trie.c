@@ -1442,6 +1442,41 @@ static int trie_radius_lower_bound(const float *radii, int first, int last, doub
     return first;
 }
 
+typedef struct {
+    int first;
+    int last;
+} trie_radial_window;
+
+/* Find the only radius interval that can still contain records within BSF.
+ * The two tails are certified by the reverse triangle inequality.  All
+ * nextafter/double work is O(log n), outside the per-record scan. */
+static trie_radial_window trie_radius_window(const float *radii, int first, int last,
+                                             messi_distance_interval query_radius,
+                                             float bsf) {
+    const double threshold = messi_bsf_radius_upper(bsf);
+    const double minimum_radius = query_radius.lower - threshold;
+    const double maximum_radius = query_radius.upper + threshold;
+    int left = first, right = last;
+    while (left < right) {
+        const int middle = left + (right - left) / 2;
+        if (messi_stored_radius_upper(radii[middle]) < minimum_radius)
+            left = middle + 1;
+        else
+            right = middle;
+    }
+    const int window_first = left;
+    left = window_first;
+    right = last;
+    while (left < right) {
+        const int middle = left + (right - left) / 2;
+        if (messi_stored_radius_lower(radii[middle]) <= maximum_radius)
+            left = middle + 1;
+        else
+            right = middle;
+    }
+    return (trie_radial_window) { window_first, left };
+}
+
 static float trie_refine_streaming_record(isax_index *index, const symbolic_trie_node *node,
                                           int record, float mbr_suffix,
                                           const ts_type *query, const ts_type *transform,
@@ -1502,35 +1537,66 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         }
     } else {
         if (stats != NULL) stats->radial_candidates += (unsigned long) count;
-        int right = trie_radius_lower_bound(record_radii, offset, end,
-                                            0.5 * (query_radius.lower + query_radius.upper));
-        int left = right - 1;
-        while (left >= offset || right < end) {
-            const float left_bound = left >= offset
-                ? messi_radial_lower_bound_squared(query_radius, record_radii[left]) : FLT_MAX;
-            const float right_bound = right < end
-                ? messi_radial_lower_bound_squared(query_radius, record_radii[right]) : FLT_MAX;
-            if (left_bound > bsf && right_bound > bsf) {
-                if (stats != NULL)
-                    stats->radial_pruned += (unsigned long) ((left - offset + 1) + (end - right));
-                break;
-            }
-            int record;
-            if (left_bound <= right_bound) record = left--;
-            else record = right++;
-            if (streaming) {
+        trie_radial_window window = trie_radius_window(record_radii, offset, end,
+                                                       query_radius, bsf);
+        if (stats != NULL)
+            stats->radial_pruned += (unsigned long) (count - (window.last - window.first));
+        if (streaming) {
+            const double middle_radius = 0.5 * (query_radius.lower + query_radius.upper);
+            int right = trie_radius_lower_bound(record_radii, window.first, window.last,
+                                                middle_radius);
+            int left = right - 1;
+            double left_distance = left >= window.first
+                ? middle_radius - (double) record_radii[left] : INFINITY;
+            double right_distance = right < window.last
+                ? (double) record_radii[right] - middle_radius : INFINITY;
+            while (left >= window.first || right < window.last) {
+                int record;
+                if (left_distance <= right_distance) {
+                    record = left--;
+                    left_distance = left >= window.first
+                        ? middle_radius - (double) record_radii[left] : INFINITY;
+                } else {
+                    record = right++;
+                    right_distance = right < window.last
+                        ? (double) record_radii[right] - middle_radius : INFINITY;
+                }
+                const float previous_bsf = bsf;
                 bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
                                                    query, transform, bsf, stats, scratch,
                                                    best_position);
-                continue;
+                if (bsf < previous_bsf) {
+                    const trie_radial_window tightened = trie_radius_window(
+                        record_radii, offset, end, query_radius, bsf);
+                    int tightened_first = tightened.first;
+                    int tightened_last = tightened.last;
+                    if (tightened_first < window.first) tightened_first = window.first;
+                    if (tightened_last > window.last) tightened_last = window.last;
+                    if (tightened_first > left + 1) tightened_first = left + 1;
+                    if (tightened_last < right) tightened_last = right;
+                    if (stats != NULL)
+                        stats->radial_pruned += (unsigned long)
+                            ((tightened_first - window.first) +
+                             (window.last - tightened_last));
+                    window.first = tightened_first;
+                    window.last = tightened_last;
+                    if (left < window.first) left_distance = INFINITY;
+                    if (right >= window.last) right_distance = INFINITY;
+                }
             }
-            if (stats != NULL) ++stats->lower_bounds;
-            const float lower = trie_record_lower_bound(index->trie, index, transform,
-                                                        node->words[record], bsf,
-                                                        mbr_suffix, scratch);
-            if (lower <= bsf) {
-                scratch->candidates[candidate_count].lower_bound = lower;
-                scratch->candidates[candidate_count++].record_index = record;
+        } else {
+            /* Heap mode has no BSF updates while collecting record bounds, so
+             * one initial radius window is sufficient and is scanned
+             * contiguously. */
+            for (int record = window.first; record < window.last; ++record) {
+                if (stats != NULL) ++stats->lower_bounds;
+                const float lower = trie_record_lower_bound(index->trie, index, transform,
+                                                            node->words[record], bsf,
+                                                            mbr_suffix, scratch);
+                if (lower <= bsf) {
+                    scratch->candidates[candidate_count].lower_bound = lower;
+                    scratch->candidates[candidate_count++].record_index = record;
+                }
             }
         }
     }

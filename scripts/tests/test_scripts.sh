@@ -259,7 +259,7 @@ FAKE_MESSI="$TEMP_ROOT/fake_messi"
 printf '%s\n' '#!/usr/bin/env bash' \
     'printf "%s\\n" "=== Query summary ===" >&2' \
     'printf "%s\\n" "  wall time        : 3.090 s (30.900 ms/query)" >&2' \
-    'printf "%s\\n" "  lower bounds     : 24.35 M/query (24.35% of 100.00 M indexed series)" >&2' \
+    'printf "%s\\n" "  symbolic record bounds: 24.35 M/query (24.35% of 100.00 M indexed series)" >&2' \
     'printf "%s\\n" "  exact distances  : 567.00 K/query (0.57% of 100.00 M indexed series)" >&2' \
     > "$FAKE_MESSI"
 chmod +x "$FAKE_MESSI"
@@ -269,7 +269,7 @@ assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-fr
 assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
 assert_contains "$OUTPUT" '24.35 M/query'
 [[ $OUTPUT =~ 24\.35\ M/query[[:space:]]+24\.35% ]] || fail 'suite summary columns are out of order'
-pass 'runner prints a compact suite summary from query results'
+pass 'runner parses the symbolic-record-bound label into its compact suite summary'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
