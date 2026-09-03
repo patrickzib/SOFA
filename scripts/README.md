@@ -97,3 +97,28 @@ small fixture test with the real `bin/MESSI`; no substitute executable is used.
 
 Files below `scripts/old/` are historical and unsupported. Useful datasets and
 query matrices from that directory are represented by the maintained runner.
+
+## Lower-bound versus exact-distance microbenchmark
+
+On Sonic, compile and run the record lower-bound and Euclidean-distance kernels
+with explicit AVX2 and AVX-512 builds:
+
+```bash
+scripts/run_lb_vs_ed_sonic.sh --count 2000000 --threads 1 --trials 5
+```
+
+The default count is two million records (about 2.04 GiB of inputs), access is
+randomized, and early abandonment is disabled so the output compares complete
+kernel costs.  It reports LB16/LB32/LB48/LB64, ED100/ED256, and the minimum
+pruning percentage at which each lower bound pays for itself.  For the
+64-physical-core production case, interleave allocations across Sonic's two
+NUMA nodes:
+
+```bash
+OMP_PLACES=cores OMP_PROC_BIND=close \
+  numactl --interleave=all scripts/run_lb_vs_ed_sonic.sh \
+  --count 2000000 --threads 64 --trials 5
+```
+
+Use `--sequential` to measure contiguous scans instead of the default randomized
+record order.  Build products are written under `build/benchmarks/`.
