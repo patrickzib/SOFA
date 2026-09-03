@@ -87,7 +87,8 @@ return exact 1-NN distances and zero-based sequential row IDs. `k` must be 1.
 ## Index defaults
 
 The direct CLI and benchmark runners default to the trie layout, 64 record-LB
-dimensions, node MBRs up to 128 dimensions, and 16 leaf-IVF groups. Their
+dimensions, node MBRs up to 128 dimensions, 16 leaf-IVF groups, and streaming
+leaf refinement. Their
 automatic worker count uses available physical CPU cores rather than SMT
 siblings. The Python API retains its explicit, compatibility-oriented defaults.
 When iSAX is selected, the direct CLI keeps tight-bound pruning off while the
@@ -102,8 +103,9 @@ benchmark runners and Python API enable it by default.
 | Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
 | Trie record-LB width | 64 | 64 | `n_segments` (16 by default) |
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
-| Trie leaf refinement | Lower-bound heap (best first) | Same | Same; pass `trie_streaming_leaf_scan=True` for streaming LB → ED |
+| Trie leaf refinement | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Same | Streaming for trie; pass `trie_streaming_leaf_scan=False` for the heap |
 | Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | Off; pass `trie_leaf_ivf=K` |
+| Trie IVF radial record bound | Off; use `--trie-leaf-ivf-radial-bound` | Same | Off; pass `trie_leaf_ivf_radial_bound=True` |
 
 Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
 leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and

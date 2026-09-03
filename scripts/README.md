@@ -80,10 +80,36 @@ default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
-`--trie-streaming-leaf-scan` provides an A/B alternative to the default
-best-first record heap. It computes each record's lower bound and immediately
-runs exact distance when that bound passes, so an improved BSF affects the very
-next record. Cluster and leaf traversal ordering is unchanged.
+`--trie-leaf-ivf-radial-bound` is an opt-in record-level triangle bound for
+these IVF leaves. During construction it stores one float radius per record
+and sorts each IVF group by distance from its raw-space centroid. At query
+time the group scan starts at the query's centroid radius and expands in both
+directions. Once both remaining radius fronts exceed the current BSF, every
+record beyond them is safely discarded without its symbolic record bound or
+exact distance. This can be benchmarked independently of the cluster raw-ball
+bound:
+
+```bash
+scripts/run_dataset.sh deep1b standard \
+  --trie-leaf-ivf-radial-bound
+
+scripts/run_dataset.sh deep1b standard \
+  --trie-leaf-ivf-radial-bound \
+  --no-trie-leaf-ivf-raw-ball-bound
+```
+
+The query summary attributes pruning to the first successful bound: node MBR,
+leaf-IVF symbolic MBR, leaf-IVF raw ball, per-record radial bound, then the
+symbolic record bound. Each line reports an average count per query, its
+stage-local pruning rate, and its share of all indexed records, so overlapping
+bounds are not double-counted.
+
+Trie leaf refinement streams by default: it computes each record's lower bound
+and immediately runs exact distance when that bound passes, so an improved BSF
+affects the very next record. Cluster and leaf traversal ordering is unchanged.
+Use `--no-trie-streaming-leaf-scan` to restore the best-first record heap for
+A/B benchmarks; `--trie-streaming-leaf-scan` remains as an explicit spelling
+of the default.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path

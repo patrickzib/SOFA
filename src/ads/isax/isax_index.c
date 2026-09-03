@@ -251,10 +251,11 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_ivf = 0;
     settings->trie_leaf_ivf_raw_ball_bound = 1;
+    settings->trie_leaf_ivf_radial_bound = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
-    settings->trie_streaming_leaf_scan = 0;
+    settings->trie_streaming_leaf_scan = 1;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2987,6 +2988,8 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         if (settings->trie_leaf_ivf)
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);
+        if (settings->trie_leaf_ivf_radial_bound)
+            fprintf(stderr, "  radial bound  : per-record centroid radii, nearest-radius-first scan\n");
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",

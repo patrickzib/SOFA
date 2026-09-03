@@ -31,6 +31,7 @@ cdef extern from "ads/api.h":
         char trie_record_mbr_suffix_bound
         char trie_streaming_leaf_scan
         int trie_leaf_ivf
+        char trie_leaf_ivf_radial_bound
         int trie_fanout
         char trie_dynamic_alphabet
         int trie_min_fanout

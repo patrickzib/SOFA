@@ -46,11 +46,15 @@ Options:
   --no-trie-record-mbr-suffix-bound
                           Disable trie record-MBR suffix pruning
   --trie-streaming-leaf-scan
-                          Refine each passing record immediately instead of using the record heap
+                          Refine each passing record immediately (default)
+  --no-trie-streaming-leaf-scan
+                          Use the record lower-bound heap instead
   --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves (default: 16)
   --no-trie-leaf-ivf       Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
+  --trie-leaf-ivf-radial-bound
+                          Radius-sort IVF records and prune candidates by triangle inequality
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
@@ -124,10 +128,12 @@ TRIE_RECORD_LB_DIMS=64
 TRIE_RECORD_LB_DIMS_SPECIFIED=false
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
-TRIE_STREAMING_LEAF_SCAN=false
+TRIE_STREAMING_LEAF_SCAN=true
+TRIE_STREAMING_LEAF_SCAN_SPECIFIED=false
 TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
+TRIE_LEAF_IVF_RADIAL_BOUND=false
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
@@ -183,10 +189,12 @@ while [[ $# -gt 0 ]]; do
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
-        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; shift ;;
+        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
+        --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -229,8 +237,8 @@ esac
     die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
-[[ $TRIE_STREAMING_LEAF_SCAN == false || $INDEX_TYPE == trie ]] || \
-    die '--trie-streaming-leaf-scan requires --index-type trie'
+[[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || \
+    die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || \
     die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || \
@@ -242,10 +250,14 @@ esac
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || \
     die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-leaf-ivf-radial-bound requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
 fi
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
     [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
@@ -302,9 +314,11 @@ run_one() {
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
         [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
         $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
+        [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
         [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
         [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
         [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+        [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                       --trie-max-fanout "$TRIE_MAX_FANOUT"
@@ -440,8 +454,12 @@ run_query_suite() {
                 [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
                 $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
                 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
-                [[ -n $TRIE_LEAF_IVF ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+                $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
+                [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
+                [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+                [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
                 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+                [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
                     command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                               --trie-max-fanout "$TRIE_MAX_FANOUT"

@@ -99,12 +99,15 @@ typedef struct {
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
     /* Refine passing records immediately instead of ordering them in a
-     * per-leaf lower-bound heap.  Intended for direct A/B benchmarking. */
+     * per-leaf lower-bound heap.  This is the trie default; clearing it
+     * restores the heap for A/B benchmarking. */
     char trie_streaming_leaf_scan;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
+    /* Opt-in per-record centroid-radius ordering and triangle bound. */
+    char trie_leaf_ivf_radial_bound;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

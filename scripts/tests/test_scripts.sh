@@ -32,6 +32,7 @@ assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
 assert_contains "$OUTPUT" '--n-segments 64'
 assert_contains "$OUTPUT" '--trie-split-dimensions 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'runner defaults to the trie benchmark profile and physical-core thread count'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
@@ -127,7 +128,11 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
     --trie-streaming-leaf-scan --dry-run >/dev/null 2>&1; then
     fail 'runner accepted trie streaming leaf scan for iSAX'
 fi
-pass 'trie streaming leaf scan is forwarded and scoped to trie'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --no-trie-streaming-leaf-scan --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--no-trie-streaming-leaf-scan'
+assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
+pass 'trie streaming leaf scan defaults on, supports heap opt-out, and is scoped to trie'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
@@ -137,6 +142,19 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
     fail 'runner accepted trie leaf IVF for iSAX'
 fi
 pass 'trie leaf IVF is forwarded and scoped to trie'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie IVF radial bound for iSAX'
+fi
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie IVF radial bound with IVF disabled'
+fi
+pass 'trie IVF radial bound is opt-in, forwarded, and requires IVF'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
@@ -270,6 +288,7 @@ assert_contains "$OUTPUT" '--queue-number 7'
 assert_contains "$OUTPUT" '--index-type trie'
 assert_contains "$OUTPUT" '--n-segments 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'suite defaults to trie and the available physical-core count'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
@@ -291,12 +310,25 @@ pass 'suite forwards the trie record/MBR suffix bound'
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-streaming-leaf-scan --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
-pass 'suite forwards trie streaming leaf refinement'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --no-trie-streaming-leaf-scan --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--no-trie-streaming-leaf-scan'
+assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
+pass 'suite defaults to streaming leaf refinement and forwards heap opt-out'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 pass 'suite forwards trie leaf IVF'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound'
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted trie IVF radial bound with IVF disabled'
+fi
+pass 'suite forwards and validates trie IVF radial bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)
