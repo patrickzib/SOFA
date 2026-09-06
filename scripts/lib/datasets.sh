@@ -73,6 +73,7 @@ load_dataset() {
     COEFF_NUMBER=64
     APPLY_Z_NORM=false
     FILETYPE_INT=false
+    INPUT_HEADER_BYTES=0
 
     case "$dataset" in
         astro)
@@ -114,6 +115,7 @@ load_dataset() {
             DATASET_FILE=SimSearchNet.bin; QUERY_FILE=SimSearchNet_queries.bin
             TS_SIZE=256; DATASET_SIZE=100000000
             APPLY_Z_NORM=true; FILETYPE_INT=true
+            INPUT_HEADER_BYTES=8
             ;;
         spacev1b)
             DATASET_FILE=spacev1B.bin; QUERY_FILE=spacev1B_queries.bin
@@ -220,7 +222,7 @@ load_dataset() {
 }
 
 active_datasets() {
-    printf '%s\n' bigann sald sift1b deep1b scedc astro spacev1b turinganns
+    printf '%s\n' bigann sald sift1b deep1b scedc astro seismic simsearchnet spacev1b turinganns
 }
 
 seisbench_datasets() {

@@ -797,8 +797,13 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     }
     fseek(ifile, 0L, SEEK_END);
     file_position_type sz = (file_position_type) ftell(ifile);
-    file_position_type total_records = sz / index->settings->ts_byte_size;
-    fseek(ifile, 0L, SEEK_SET);
+    const file_position_type input_header_bytes = index->settings->input_header_bytes;
+    const file_position_type input_record_bytes =
+        (file_position_type) index->settings->timeseries_size *
+        (filetype_int ? sizeof(file_type) : sizeof(ts_type));
+    file_position_type total_records = sz >= input_header_bytes
+        ? (sz - input_header_bytes) / input_record_bytes : 0;
+    fseek(ifile, (long) input_header_bytes, SEEK_SET);
 
     if (total_records < ts_num) {
         fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);

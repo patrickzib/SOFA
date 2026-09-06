@@ -26,6 +26,9 @@ Symbolic trie
 - Added float32 SIMD per-record radial pruning for trie IVF leaves, including
   `--trie-leaf-ivf-radial-bound-auto`, which keeps the bound only when a
   query-local 64 K candidate sample rejects at least 25%.
+- Added Seismic and SimSearchNet++ to the regular benchmark suite. ANN-format
+  files with a fixed prefix are supported through `--input-header-bytes`; the
+  SimSearchNet++ runner skips its two-word (8-byte) header automatically.
 - Removes the redundant full root-MBR scan after a successful root split by
   merging the child MBRs already formed during partitioning.
 - Provides batch and single-query parallel modes with configurable worker and

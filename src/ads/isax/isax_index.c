@@ -241,6 +241,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->input_header_bytes = 0;
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
@@ -2862,6 +2863,9 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     else if (settings->sample_type == 3) sampling = "random";
 
     fprintf(stderr, "=== MESSI index configuration ===\n");
+    if (settings->input_header_bytes != 0)
+        fprintf(stderr, "  input header  : skip %lu bytes in dataset and query files\n",
+                settings->input_header_bytes);
     if (settings->raw_filename) {
         fprintf(stderr, "  dataset       : %s\n", settings->raw_filename);
     }

@@ -1218,6 +1218,10 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double build_start = messi_monotonic_seconds();
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
+    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+        fclose(file);
+        return FAILURE;
+    }
     messi_build_progress build_progress;
     messi_build_progress_init(&build_progress);
     const size_t values = (size_t) ts_num * index->settings->timeseries_size;
@@ -2031,6 +2035,10 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
+    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+        fclose(file);
+        return FAILURE;
+    }
     int ts_length = index->settings->timeseries_size;
     ts_type *query = malloc(sizeof(*query) * (size_t) ts_length);
     file_type *query_int = filetype_int ? malloc(sizeof(*query_int) * (size_t) ts_length) : NULL;
@@ -2146,6 +2154,9 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
     const size_t query_values = (size_t) query_count * length;
     if (file == NULL || queries == NULL || distances == NULL || stats == NULL) {
         if (file) fclose(file); free(queries); free(distances); free(stats); return FAILURE;
+    }
+    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+        fclose(file); free(queries); free(distances); free(stats); return FAILURE;
     }
     int read_ok = 1;
     if (filetype_int) {

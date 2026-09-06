@@ -83,6 +83,9 @@ typedef struct {
     int sample_type;
     unsigned int sampling_seed;
     int n_coefficients;
+    /* Bytes preceding the dense vector payload in both dataset and query
+     * files (for example the two uint32 words in ANN benchmark *bin files). */
+    unsigned long input_header_bytes;
     int node_split_criterion;
     messi_index_type index_type;
     /* Optional iSAX SOFA v2 bounds.  The primary iSAX word/tree always

@@ -24,6 +24,20 @@ assert_not_contains "$OUTPUT" '--sample-type 3'
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" simsearchnet standard --threads 36 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet.bin'
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet_queries.bin'
+assert_contains "$OUTPUT" '--timeseries-size 256'
+assert_contains "$OUTPUT" '--dataset-size 100000000'
+assert_contains "$OUTPUT" '--filetype-int'
+assert_contains "$OUTPUT" '--input-header-bytes 8'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seismic standard --threads 36 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/seismic.bin'
+assert_contains "$OUTPUT" '--timeseries-size 256'
+assert_contains "$OUTPUT" '--dataset-size 100000000'
+assert_not_contains "$OUTPUT" '--input-header-bytes'
+pass 'seismic and headered SimSearchNet datasets have valid runner metadata'
+
 OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
 assert_contains "$OUTPUT" '--threads 7'

@@ -32,6 +32,7 @@ Options:
   --query-file PATH       Override the query path for regular-suite runs
   --dataset-size N        Override dataset records; accepts count suffixes
   --query-size N          Override queries per run; accepts count suffixes
+  --input-header-bytes N  Override bytes before dataset/query vector payloads
   --leaf-size N           Maximum records per leaf; accepts count suffixes
   --min-leaf-size N       iSAX query-leaf threshold; trie does not enforce it
   --sample-size N         Override binning sample size; accepts count suffixes
@@ -94,6 +95,7 @@ dataset_label() {
     case "$1" in
         bigann) printf 'BIGANN' ;; sald) printf 'SALD' ;; sift1b) printf 'SIFT1b' ;;
         deep1b) printf 'DEEP1b' ;; scedc) printf 'SCEDC' ;; astro) printf 'ASTRO' ;;
+        seismic) printf 'SEISMIC' ;; simsearchnet) printf 'SIMSEARCHNET' ;;
         ethc) printf 'ETHC' ;; isc_ehb_depthphases) printf 'ISC_EHB_DepthPhases' ;;
         lendb) printf 'LenDB' ;; iquique) printf 'Iquique' ;; neic) printf 'NEIC' ;;
         obs) printf 'OBS' ;; obst2024) printf 'OBST2024' ;; pnw) printf 'PNW' ;;
@@ -118,6 +120,7 @@ DATASET_FILE=
 QUERY_FILE=
 DATASET_SIZE=
 QUERY_SIZE=
+INPUT_HEADER_BYTES=
 LEAF_SIZE=
 MIN_LEAF_SIZE=
 SAMPLE_SIZE=
@@ -181,6 +184,7 @@ while [[ $# -gt 0 ]]; do
         --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_FILE=$2; shift 2 ;;
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE=$2; shift 2 ;;
+        --input-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; INPUT_HEADER_BYTES=$2; shift 2 ;;
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
@@ -306,6 +310,7 @@ run_one() {
     [[ -n $QUERY_FILE ]] && command+=(--query-file "$QUERY_FILE")
     [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
     [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+    [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
     [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
     command+=(--sample-type "$SAMPLE_TYPE")
     [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
@@ -448,6 +453,7 @@ run_query_suite() {
             [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
             [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+            [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
             [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
             command+=(--sample-type "$SAMPLE_TYPE")
             [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")

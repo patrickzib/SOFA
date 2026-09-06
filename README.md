@@ -185,7 +185,9 @@ Some datasets must be downloaded, others generated from seisbench.
 | **PNW** [ni2023curated] | 31,982,766    | 256           |
 | **SALD** [url:SALD] | 100,000,000   | 128           |
 | **SCEDC** [center2013southern] | 100,000,000   | 256           |
+| **Seismic** | 100,000,000 benchmark subset | 256 |
 | **SIFT1b** [jegou2011searching] | 100,000,000   | 128           |
+| **SimSearchNet++** [simhadri2022results] | 100,000,000 benchmark subset | 256 |
 | **SpaceV1B** | 100,000,000 | 100 |
 | **STEAD** [mousavi2019stanford] | 87,323,433    | 256           |
 | **Text-to-image** | 100,000,000 | 200 |

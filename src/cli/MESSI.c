@@ -128,6 +128,7 @@ static void format_compact_count(double value, char *buffer, size_t buffer_size)
 /* Keep every query engine, including the trie engines, from discovering a
  * short query file only after an expensive index build. */
 static int clamp_query_count_to_file(const char *path, int timeseries_size,
+                                     int filetype_int, unsigned long header_bytes,
                                      int *query_count) {
     FILE *file;
     long file_size;
@@ -147,8 +148,14 @@ static int clamp_query_count_to_file(const char *path, int timeseries_size,
         return 0;
     }
     fclose(file);
-    record_size = (size_t) timeseries_size * sizeof(ts_type);
-    available = (unsigned long long) file_size / record_size;
+    if ((unsigned long long) file_size < header_bytes) {
+        fprintf(stderr, "error: query file is smaller than its %lu-byte header: %s\n",
+                header_bytes, path);
+        return 0;
+    }
+    record_size = (size_t) timeseries_size *
+                  (filetype_int ? sizeof(file_type) : sizeof(ts_type));
+    available = ((unsigned long long) file_size - header_bytes) / record_size;
     if (available == 0) {
         fprintf(stderr, "error: query file contains no complete records: %s\n", path);
         return 0;
@@ -380,6 +387,7 @@ int main(int argc, char **argv) {
     static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
     static int filetype_int = 0;
+    static unsigned long input_header_bytes = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
@@ -474,6 +482,7 @@ int main(int argc, char **argv) {
                 {"sample-type",         required_argument, 0,    'C'},
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
+                {"input-header-bytes",  required_argument, 0, 1029},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
@@ -561,6 +570,16 @@ int main(int argc, char **argv) {
             case 1008:
                 SIMD_flag = 0;
                 break;
+            case 1029: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --input-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                input_header_bytes = value;
+                break;
+            }
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
                 trie_record_mbr_suffix_bound_specified = 1;
@@ -847,6 +866,7 @@ int main(int argc, char **argv) {
                        "  --histogram-type 1|2           Equi-depth (default) or equi-width\n"
                        "  --sfa-n-coefficients N         SFA candidate coefficients (even; n-segments..series length)\n"
                        "  --filetype-int                 Read int input and convert to float\n"
+                       "  --input-header-bytes N         Skip N bytes before vector data in dataset and queries\n"
                        "  --apply-z-norm                 Z-normalize base and queries\n"
                        "  --is-norm                      Input is already normalized (SFA ignores DC)\n"
                        "\n"
@@ -1048,7 +1068,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
         return EXIT_FAILURE;
     }
-    if (!clamp_query_count_to_file(queries, time_series_size, &queries_size)) {
+    if (!clamp_query_count_to_file(queries, time_series_size, filetype_int,
+                                   input_header_bytes, &queries_size)) {
         return EXIT_FAILURE;
     }
 
@@ -1372,6 +1393,7 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->input_header_bytes = input_header_bytes;
         index_settings->index_type = index_type;
         index_settings->isax_node_mbr = isax_node_mbr;
         index_settings->isax_record_mbr_suffix_bound = isax_record_mbr_suffix_bound;

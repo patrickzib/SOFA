@@ -12,6 +12,7 @@ scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
 scripts/run_dataset.sh bigann knn --threads 36 --queue-number 36 --k 20
 scripts/run_dataset.sh sald sampling --threads 36 --queue-number 36 --sample-factor 0.2
 scripts/run_dataset.sh astro high-frequency --threads 36 --queue-number 36 --dry-run
+scripts/run_dataset.sh simsearchnet standard --threads 36
 ```
 
 The profiles preserve the existing experiment matrices. With the default trie
@@ -73,6 +74,13 @@ Command-line path options take precedence over these environment variables:
 Relative dataset and query overrides are resolved below the applicable data
 root. Absolute overrides are used unchanged. `--dry-run` prints shell-escaped
 commands and performs no benchmark or log archival.
+
+The regular suite includes `seismic` and `simsearchnet`. Both use the first
+100 million base records for comparability with the other suite datasets.
+SimSearchNet is 256-dimensional uint8 data in the ANN benchmark binary format;
+its dataset and query files have an 8-byte `(count, dimensions)` header, which
+the runner skips automatically. `--input-header-bytes` can override this for
+custom files.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
 directory inside terminal leaves with at least 4 K records. It is enabled by

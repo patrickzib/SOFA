@@ -95,6 +95,10 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
         fprintf(stderr, "File %s not found!\n", ifilename);
         return FAILURE;
     }
+    if (fseek(ifile, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+        fclose(ifile);
+        return FAILURE;
+    }
 
     unsigned long ts_length = index->settings->timeseries_size;
     file_type *ts_orig1 = NULL;
