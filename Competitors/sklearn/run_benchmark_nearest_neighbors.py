@@ -50,7 +50,7 @@ DATASETS = {
 
 DEFAULT_DATASETS = [
     name for name in DATASETS
-    if name not in {"turinganns", "simsearchnet", "TEXTTOIMAGE"}
+    if name not in {"turinganns", "simsearchnet", "TEXTTOIMAGE", "seismic"}
 ]
 
 DATASET_PROPERTIES = {
@@ -97,7 +97,7 @@ def parse_args():
     parser.add_argument("--data-root", default=os.environ.get("MESSI_DATA_ROOT", NORMAL_PATH))
     parser.add_argument("--seisbench-root", default=os.environ.get("MESSI_SEISBENCH_ROOT", SEISBENCH_PATH))
     parser.add_argument("--datasets", default=",".join(DEFAULT_DATASETS),
-                        help="comma-separated dataset IDs; TuringANNS, SimSearchNet, and Text-to-Image are opt-in")
+                        help="comma-separated dataset IDs; TuringANNS, Seismic, SimSearchNet, and Text-to-Image are opt-in")
     parser.add_argument("--threads", type=int, nargs="+", default=[64], metavar="N")
     parser.add_argument("--output-dir", default="logs_sklearn_nearest_neighbors")
     parser.add_argument("--record-count", type=int, help="override the configured indexed prefix")

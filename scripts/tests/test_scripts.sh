@@ -322,6 +322,7 @@ pass 'generated-query suite expands default workloads and excludes opt-in datase
 
 OUTPUT=$(bash -c 'source "$1"; active_datasets' _ "$SCRIPT_DIR/lib/datasets.sh")
 assert_not_contains "$OUTPUT" 'turinganns'
+assert_not_contains "$OUTPUT" 'seismic'
 assert_not_contains "$OUTPUT" 'simsearchnet'
 assert_not_contains "$OUTPUT" 'text-to-image'
 pass 'opt-in datasets are excluded from the default suite'

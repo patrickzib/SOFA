@@ -49,7 +49,7 @@ class CompetitorDatasetMetadataTests(unittest.TestCase):
         )
 
     def test_dataset_defaults_and_100m_prefixes(self):
-        for name in ("simsearchnet", "TEXTTOIMAGE"):
+        for name in ("seismic", "simsearchnet", "TEXTTOIMAGE"):
             self.assertNotIn(name, FAISS.DEFAULT_DATASETS)
             self.assertNotIn(name, SKLEARN.DEFAULT_DATASETS)
         for name in ("simsearchnet", "seismic"):

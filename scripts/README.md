@@ -75,10 +75,9 @@ Relative dataset and query overrides are resolved below the applicable data
 root. Absolute overrides are used unchanged. `--dry-run` prints shell-escaped
 commands and performs no benchmark or log archival.
 
-The regular suite includes `seismic`; `simsearchnet` and `text-to-image` are
-opt-in and can be selected explicitly with `--datasets`. These datasets use
-the first 100 million base records for comparability with the other suite
-datasets.
+`seismic`, `simsearchnet`, and `text-to-image` are opt-in and can be selected
+explicitly with `--datasets`. These datasets use the first 100 million base
+records for comparability with the other suite datasets.
 SimSearchNet is 256-dimensional uint8 data in the ANN benchmark binary format;
 its dataset and query files have an 8-byte `(count, dimensions)` header, which
 the runner skips automatically. BigANN is 128-dimensional uint8, while SpaceV
@@ -87,11 +86,12 @@ header and a raw local query file. `--dataset-header-bytes` and
 `--query-header-bytes` override the offsets independently;
 `--input-header-bytes` remains a shorthand for setting both.
 
-TuringANNS, SimSearchNet, and Text-to-Image are opt-in for default script
-runs. TuringANNS remains excluded because the currently observed local
+TuringANNS, Seismic, SimSearchNet, and Text-to-Image are opt-in for default
+script runs. TuringANNS remains excluded because the currently observed local
 `turingANNs.bin` is not the canonical 100-dimensional float32 collection. It
 remains selectable explicitly after installing the correct headered base and
-query files.
+query files. Seismic remains opt-in because its current local distribution
+contains all-NaN records.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
 directory inside terminal leaves with at least 4 K records. It is enabled by
