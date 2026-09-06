@@ -834,19 +834,12 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     COUNT_INPUT_TIME_START
     if (filetype_int) {
-
-        fprintf(stderr, ">>> Reading file as %s\n",
-                filetype_int == FILE_INPUT_INT8 ? "signed int8" : "uint8");
         fread(rawfile_int32, sizeof(file_type), index->settings->timeseries_size * ts_num, ifile);
-
-        fprintf(stderr, ">>> Converting %s to float\n",
-                filetype_int == FILE_INPUT_INT8 ? "signed int8" : "uint8");
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
         for (long int i = 0; i < index->settings->timeseries_size * ts_num; i++) {
             // Convert int to float type
             rawfile[i] = file_value_to_ts(rawfile_int32[i], filetype_int);
         }
-        fprintf(stderr, ">>> Conversions done.\n");
     } else {
         fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
     }
@@ -857,7 +850,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     // apply z-normalization
     if (apply_znorm) {
-        fprintf(stderr, ">>> Applying z-norm\n");
         long int ts_length = index->settings->timeseries_size;
         const long int normalization_block = 1000000;
         for (long int first = 0; first < ts_num; first += normalization_block) {
