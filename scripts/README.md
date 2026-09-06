@@ -60,9 +60,9 @@ Command-line path options take precedence over these environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MESSI_BINARY` | repository `bin/MESSI` | MESSI executable |
-| `MESSI_DATA_ROOT` | `/vol/tmp/schaefpa/messi_datasets` | main datasets and queries |
+| `MESSI_DATA_ROOT` | `/home/tmp/schaefpa/messi_datasets` | main datasets and queries |
 | `MESSI_QUERY_ROOT` | main data root | optional separate main query root |
-| `MESSI_SEISBENCH_ROOT` | `/vol/tmp/schaefpa/seismic` | SeisBench datasets and queries |
+| `MESSI_SEISBENCH_ROOT` | `/home/tmp/schaefpa/seismic` | SeisBench datasets and queries |
 | `MESSI_SEISBENCH_QUERY_ROOT` | SeisBench root | optional separate SeisBench query root |
 | `MESSI_LOG_ROOT` | `$HOME/MESSI_logs` | logs produced by MESSI |
 | `MESSI_SHELL_LOG_DIR` | `MESSI_LOG_ROOT` | combined runner transcript for each dataset/profile run |
@@ -87,6 +87,14 @@ AVX2 classifies 8; the survivor mask is processed in record order before the
 symbolic record bound. Rejected records skip both the symbolic bound and exact
 distance. The option adds one float per record in eligible leaves but performs
 no radius sorting or two-front traversal.
+
+Use `--trie-leaf-ivf-radial-bound-auto` for the conservative adaptive mode.
+It measures at least 64 K radial candidates of each query (rounded to whole
+concurrently scanned IVF ranges) and bypasses the bound for the remaining
+ranges when fewer than 25% were rejected. The calibration is shared across
+query workers and stops all adaptive accounting after its one query-level
+decision. The existing
+`--trie-leaf-ivf-radial-bound` option remains unconditional.
 
 The query summary attributes pruning to the first successful bound: node MBR,
 leaf-IVF symbolic MBR, leaf-IVF raw ball, per-record radial bound, then the

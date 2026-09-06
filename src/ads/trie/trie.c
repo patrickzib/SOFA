@@ -183,6 +183,17 @@ typedef struct {
     int record_index;
 } trie_leaf_candidate;
 
+#define TRIE_RADIAL_AUTO_SAMPLE_CANDIDATES 65536UL
+#define TRIE_RADIAL_AUTO_REJECTION_DENOMINATOR 4UL
+
+typedef struct {
+    pthread_mutex_t lock;
+    unsigned long candidates;
+    unsigned long pruned;
+    /* 0 samples, 1 keeps the radial bound, -1 bypasses it. */
+    int decision;
+} trie_radial_auto_gate;
+
 /* One scratch heap per batch-query worker.  It is retained across leaves and
  * avoids per-record allocation in best-first leaf refinement. */
 typedef struct {
@@ -190,7 +201,52 @@ typedef struct {
     int capacity;
     float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
     int record_lb_table_ready;
+    trie_radial_auto_gate *radial_auto_gate;
 } trie_query_scratch;
+
+static int trie_radial_auto_gate_init(const isax_index *index,
+                                      trie_radial_auto_gate *gate) {
+    if (index == NULL || gate == NULL ||
+        !index->settings->trie_leaf_ivf_radial_bound_auto) return 0;
+    gate->candidates = 0;
+    gate->pruned = 0;
+    gate->decision = 0;
+    return pthread_mutex_init(&gate->lock, NULL) == 0;
+}
+
+static void trie_radial_auto_gate_destroy(trie_radial_auto_gate *gate,
+                                          int initialized) {
+    if (initialized) pthread_mutex_destroy(&gate->lock);
+}
+
+static inline int trie_radial_auto_gate_allows(const trie_query_scratch *scratch) {
+    return scratch != NULL && scratch->radial_auto_gate != NULL &&
+           __atomic_load_n(&scratch->radial_auto_gate->decision,
+                           __ATOMIC_ACQUIRE) >= 0;
+}
+
+/* This runs once per scanned IVF range only during the bounded calibration
+ * prefix.  No adaptive counters or synchronization remain after a decision. */
+static void trie_radial_auto_gate_observe(trie_radial_auto_gate *gate,
+                                          unsigned long candidates,
+                                          unsigned long pruned) {
+    if (gate == NULL || candidates == 0 ||
+        __atomic_load_n(&gate->decision, __ATOMIC_ACQUIRE) != 0) return;
+    pthread_mutex_lock(&gate->lock);
+    if (__atomic_load_n(&gate->decision, __ATOMIC_RELAXED) == 0) {
+        gate->candidates += candidates;
+        gate->pruned += pruned;
+        if (gate->candidates >= TRIE_RADIAL_AUTO_SAMPLE_CANDIDATES) {
+            const unsigned long required =
+                (gate->candidates + TRIE_RADIAL_AUTO_REJECTION_DENOMINATOR - 1) /
+                TRIE_RADIAL_AUTO_REJECTION_DENOMINATOR;
+            __atomic_store_n(&gate->decision,
+                             gate->pruned >= required ? 1 : -1,
+                             __ATOMIC_RELEASE);
+        }
+    }
+    pthread_mutex_unlock(&gate->lock);
+}
 
 /* Leaf records have one concrete word, unlike an MBR range.  The query-local
  * symbol table covers every supported record-bound prefix (16--64 dims). */
@@ -1472,12 +1528,21 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     const unsigned long lower_bounds_before = stats != NULL ? stats->lower_bounds : 0;
     const unsigned long long bound_start = !streaming && profile_query_phases && stats != NULL
                                                ? trie_monotonic_microseconds() : 0;
-    const int radial_lanes = record_radii != NULL ? trie_radial_simd_lanes(index) : 1;
+    const int radial_applied = record_radii != NULL &&
+        (!index->settings->trie_leaf_ivf_radial_bound_auto ||
+         trie_radial_auto_gate_allows(scratch));
+    const int radial_sampling = radial_applied &&
+        index->settings->trie_leaf_ivf_radial_bound_auto &&
+        scratch != NULL && scratch->radial_auto_gate != NULL &&
+        __atomic_load_n(&scratch->radial_auto_gate->decision,
+                        __ATOMIC_ACQUIRE) == 0;
+    const int radial_lanes = radial_applied ? trie_radial_simd_lanes(index) : 1;
     messi_radial_window radial_window = { -INFINITY, INFINITY };
     float radial_window_bsf = 0.0f;
     int radial_window_valid = 0;
+    unsigned long sampled_survivors = 0;
 
-    if (record_radii == NULL) {
+    if (!radial_applied) {
         for (int record = offset; record < end; ++record) {
             if (streaming) {
                 bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
@@ -1508,6 +1573,8 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 lanes = radial_lanes;
             unsigned int survivors = trie_radial_survivor_mask(
                 record_radii + block, radial_window, lanes);
+            if (radial_sampling && stats == NULL)
+                sampled_survivors += (unsigned long) __builtin_popcount(survivors);
             while (survivors != 0U) {
                 const int lane = __builtin_ctz(survivors);
                 const int record = block + lane;
@@ -1530,9 +1597,16 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             block += lanes;
         }
     }
-    if (record_radii != NULL && stats != NULL)
-        stats->radial_pruned += (unsigned long) count -
-            (stats->lower_bounds - lower_bounds_before);
+    unsigned long radial_pruned = 0;
+    if (radial_applied) {
+        radial_pruned = stats != NULL
+            ? (unsigned long) count - (stats->lower_bounds - lower_bounds_before)
+            : (radial_sampling ? (unsigned long) count - sampled_survivors : 0);
+        if (stats != NULL) stats->radial_pruned += radial_pruned;
+        if (radial_sampling)
+            trie_radial_auto_gate_observe(scratch->radial_auto_gate,
+                                          (unsigned long) count, radial_pruned);
+    }
     if (streaming) return bsf;
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
@@ -1594,8 +1668,11 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
             continue;
         }
         messi_distance_interval query_radius = { 0.0, 0.0 };
+        const int radial_may_run = node->record_raw_radii != NULL &&
+            (!index->settings->trie_leaf_ivf_radial_bound_auto ||
+             trie_radial_auto_gate_allows(scratch));
         const int needs_query_radius = index->settings->trie_leaf_ivf_raw_ball_bound ||
-                                       node->record_raw_radii != NULL;
+                                       radial_may_run;
         if (needs_query_radius)
             query_radius = trie_cluster_query_radius(node, cluster, query,
                                                      index->settings->timeseries_size);
@@ -1815,10 +1892,12 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
                                         const ts_type *transform, float bsf,
                                         const symbolic_trie_node *skip_leaf,
                                         trie_query_stats *result_stats,
-                                        file_position_type *result_position) {
+                                        file_position_type *result_position,
+                                        trie_radial_auto_gate *radial_auto_gate) {
     if (result_stats != NULL) memset(result_stats, 0, sizeof(*result_stats));
 #ifndef _OPENMP
     trie_query_scratch scratch = {0};
+    scratch.radial_auto_gate = radial_auto_gate;
     float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates);
@@ -1836,12 +1915,15 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     if (frontier == NULL || queues == NULL || worker_stats == NULL || worker_scratch == NULL) {
         free(frontier); free(queues); free(worker_stats); free(worker_scratch);
         trie_query_scratch scratch = {0};
+        scratch.radial_auto_gate = radial_auto_gate;
         float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                           result_stats, skip_leaf, &scratch, result_position);
         free(scratch.candidates); return distance;
     }
-    for (int i = 0; i < workers; ++i)
+    for (int i = 0; i < workers; ++i) {
+        worker_scratch[i].radial_auto_gate = radial_auto_gate;
         trie_prepare_record_lb_table(index->trie, index, transform, &worker_scratch[i]);
+    }
     for (int i = 0; i < queue_count; ++i) pthread_mutex_init(&queues[i].lock, NULL);
     pthread_rwlock_t bsf_lock = PTHREAD_RWLOCK_INITIALIZER;
     float shared_bsf = bsf;
@@ -1937,6 +2019,7 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     /* Queue allocation failed mid-search.  Re-run serially rather than ever
      * returning a partial result. */
     trie_query_scratch scratch = {0};
+    scratch.radial_auto_gate = radial_auto_gate;
     float distance = trie_search_node(index, index->trie->root, query, transform, shared_bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates); return distance;
@@ -1976,6 +2059,10 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
+        trie_radial_auto_gate radial_auto_gate;
+        const int radial_auto_initialized =
+            trie_radial_auto_gate_init(index, &radial_auto_gate);
+        scratch.radial_auto_gate = radial_auto_initialized ? &radial_auto_gate : NULL;
         trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
@@ -1997,7 +2084,9 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             }
             if (minimum_distance < bsf) bsf = minimum_distance;
             trie_query_stats parallel_stats = {0};
-            distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf, &parallel_stats, NULL);
+            distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf,
+                                                  &parallel_stats, NULL,
+                                                  scratch.radial_auto_gate);
             stats.checked_nodes += parallel_stats.checked_nodes;
             stats.lower_bounds += parallel_stats.lower_bounds;
             stats.exact_distances += parallel_stats.exact_distances;
@@ -2032,6 +2121,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.traversal_microseconds = stats.frontier_microseconds + stats.queue_microseconds +
                                            stats.candidate_heap_microseconds + stats.synchronization_microseconds;
         }
+        trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
+        scratch.radial_auto_gate = NULL;
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
         cumulative_microseconds += stats.total_microseconds;
         trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
@@ -2098,6 +2189,10 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
 #endif
                 failed = 1;
             } else {
+                trie_radial_auto_gate radial_auto_gate;
+                const int radial_auto_initialized =
+                    trie_radial_auto_gate_init(index, &radial_auto_gate);
+                scratch.radial_auto_gate = radial_auto_initialized ? &radial_auto_gate : NULL;
                 trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
                 /* One worker owns one query: avoid nested per-query tasks. */
                 unsigned long long search_start = trie_monotonic_microseconds();
@@ -2117,6 +2212,8 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                     stats[i].traversal_microseconds = stats[i].frontier_microseconds + stats[i].queue_microseconds +
                                                       stats[i].candidate_heap_microseconds + stats[i].synchronization_microseconds;
                 }
+                trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
+                scratch.radial_auto_gate = NULL;
                 stats[i].total_microseconds = trie_monotonic_microseconds() - query_start;
             }
         }
@@ -2144,15 +2241,20 @@ query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
                                         const ts_type *transform, float bsf) {
     query_result result = { FLT_MAX, NULL, 0, QUERY_RESULT_NO_POSITION };
     if (index == NULL || index->trie == NULL) return result;
+    trie_radial_auto_gate radial_auto_gate;
+    const int radial_auto_initialized = trie_radial_auto_gate_init(index, &radial_auto_gate);
     if (maxquerythread <= 1) {
         trie_query_scratch scratch = {0};
+        scratch.radial_auto_gate = radial_auto_initialized ? &radial_auto_gate : NULL;
         trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         result.distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                            NULL, NULL, &scratch, &result.record_position);
         free(scratch.candidates);
     }
     else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL, NULL,
-                                                       &result.record_position);
+                                                       &result.record_position,
+                                                       radial_auto_initialized ? &radial_auto_gate : NULL);
+    trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
     return result;
 }
 

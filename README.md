@@ -105,7 +105,7 @@ benchmark runners and Python API enable it by default.
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
 | Trie leaf refinement | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Same | Streaming for trie; pass `trie_streaming_leaf_scan=False` for the heap |
 | Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | Off; pass `trie_leaf_ivf=K` |
-| Trie IVF radial record bound | Off; use `--trie-leaf-ivf-radial-bound` | Same | Off; pass `trie_leaf_ivf_radial_bound=True` |
+| Trie IVF radial record bound | Off; use `--trie-leaf-ivf-radial-bound-auto` for the adaptive 25% gate or `--trie-leaf-ivf-radial-bound` unconditionally | Same | Off; pass `trie_leaf_ivf_radial_bound_auto=True` or `trie_leaf_ivf_radial_bound=True` |
 
 Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
 leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and
@@ -132,8 +132,8 @@ SAX tries remain on the fixed-fanout path. iSAX’s
 does not control trie alphabets.
 
 ```bash
-FILE_PATH=/vol/tmp/schaefpa/messi_datasets/deep1b.bin
-QUERIES_PATH=/vol/tmp/schaefpa/messi_datasets/$QUERY
+FILE_PATH=/home/tmp/schaefpa/messi_datasets/deep1b.bin
+QUERIES_PATH=/home/tmp/schaefpa/messi_datasets/$QUERY
 TS_SIZE=96
 
 COEFF_NUMBER=32

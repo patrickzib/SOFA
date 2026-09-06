@@ -50,7 +50,9 @@ Options:
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
   --trie-leaf-ivf-radial-bound
-                            Prune IVF records by centroid radius without reordering
+                            Always prune IVF records by centroid radius without reordering
+  --trie-leaf-ivf-radial-bound-auto
+                            Keep radial pruning only after a 25% sampled rejection rate
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -200,6 +202,7 @@ TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -221,8 +224,8 @@ MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
 # Keep the shell transcript with MESSI's CSV logs by default.  An explicit
 # MESSI_SHELL_LOG_DIR remains useful for CI or a separate transcript archive.
 MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-${MESSI_LOG_ROOT:-"$HOME/MESSI_logs"}}
-DATA_ROOT=${MESSI_DATA_ROOT:-/vol/tmp/schaefpa/messi_datasets}
-SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/vol/tmp/schaefpa/seismic}
+DATA_ROOT=${MESSI_DATA_ROOT:-/home/tmp/schaefpa/messi_datasets}
+SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/home/tmp/schaefpa/seismic}
 QUERY_ROOT=${MESSI_QUERY_ROOT:-}
 SEISBENCH_QUERY_ROOT=${MESSI_SEISBENCH_QUERY_ROOT:-}
 
@@ -264,7 +267,8 @@ while [[ $# -gt 0 ]]; do
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
-        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; shift ;;
+        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
+        --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -316,6 +320,7 @@ fi
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound-auto requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -332,6 +337,8 @@ if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
         die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound-auto requires --trie-leaf-ivf'
     is_positive_integer "$TRIE_RECORD_LB_DIMS" || die '--n-segments must be a positive integer'
     (( TRIE_RECORD_LB_DIMS >= 16 && TRIE_RECORD_LB_DIMS <= 64 )) || \
         die '--n-segments must be between 16 and 64 for trie runs'
@@ -454,6 +461,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF == 0 ]] && COMMON_ARGS+=(--no-trie-leaf-ivf)
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound)
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound-auto)
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet
                       --trie-min-fanout "$TRIE_MIN_FANOUT"

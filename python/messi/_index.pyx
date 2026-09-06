@@ -71,6 +71,7 @@ cdef class Index:
                   bint trie_record_mbr_suffix_bound=True,
                   int trie_leaf_ivf=0,
                   bint trie_leaf_ivf_radial_bound=False,
+                  bint trie_leaf_ivf_radial_bound_auto=False,
                   int trie_fanout=8,
                   bint trie_dynamic_alphabet=False,
                   int trie_min_fanout=2,
@@ -133,8 +134,8 @@ cdef class Index:
                 raise ValueError("trie_split_dimensions must be between 1 and trie_mbr_dimensions")
             if trie_leaf_ivf and (trie_leaf_ivf < 2 or trie_leaf_ivf > 64 or function_type not in (4, 5, 6)):
                 raise ValueError("trie_leaf_ivf requires SFA, SPARTAN, or PISA and a value between 2 and 64")
-            if trie_leaf_ivf_radial_bound and not trie_leaf_ivf:
-                raise ValueError("trie_leaf_ivf_radial_bound requires trie_leaf_ivf")
+            if (trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto) and not trie_leaf_ivf:
+                raise ValueError("trie radial bounds require trie_leaf_ivf")
             if trie_dynamic_alphabet:
                 if trie_fanout != 8:
                     raise ValueError("trie_fanout cannot be combined with trie_dynamic_alphabet")
@@ -145,8 +146,8 @@ cdef class Index:
         else:
             if resolved_trie_streaming_leaf_scan:
                 raise ValueError("trie_streaming_leaf_scan requires layout='trie'")
-            if trie_leaf_ivf_radial_bound:
-                raise ValueError("trie_leaf_ivf_radial_bound requires layout='trie'")
+            if trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto:
+                raise ValueError("trie radial bounds require layout='trie'")
             transform_dim = n_segments
             record_lb_dim = 0
             if n_segments <= 0 or n_segments > timeseries_size:
@@ -212,7 +213,8 @@ cdef class Index:
         params.trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound
         params.trie_streaming_leaf_scan = resolved_trie_streaming_leaf_scan
         params.trie_leaf_ivf = trie_leaf_ivf
-        params.trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound
+        params.trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto
+        params.trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto
         params.trie_fanout = trie_fanout
         params.trie_dynamic_alphabet = trie_dynamic_alphabet
         params.trie_min_fanout = trie_min_fanout
@@ -237,7 +239,8 @@ cdef class Index:
                         "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
                         "trie_streaming_leaf_scan": bool(resolved_trie_streaming_leaf_scan),
                         "trie_leaf_ivf": trie_leaf_ivf,
-                        "trie_leaf_ivf_radial_bound": bool(trie_leaf_ivf_radial_bound),
+                        "trie_leaf_ivf_radial_bound": bool(trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto),
+                        "trie_leaf_ivf_radial_bound_auto": bool(trie_leaf_ivf_radial_bound_auto),
                         "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,
                         "queue_count": queue_count or max_query_threads,

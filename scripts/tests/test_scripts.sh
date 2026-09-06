@@ -156,6 +156,20 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type tr
 fi
 pass 'trie IVF radial bound is opt-in, forwarded, and requires IVF'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound-auto --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound-auto'
+assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted automatic trie IVF radial bound for iSAX'
+fi
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted automatic trie IVF radial bound with IVF disabled'
+fi
+pass 'automatic trie IVF radial bound is forwarded and requires IVF'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-interval -1 --dry-run >/dev/null 2>&1; then
@@ -329,6 +343,16 @@ if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type
     fail 'suite accepted trie IVF radial bound with IVF disabled'
 fi
 pass 'suite forwards and validates trie IVF radial bound'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound-auto --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound-auto'
+assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted automatic trie IVF radial bound with IVF disabled'
+fi
+pass 'suite forwards and validates automatic trie IVF radial bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

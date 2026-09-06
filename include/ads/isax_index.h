@@ -108,6 +108,9 @@ typedef struct {
     char trie_leaf_ivf_raw_ball_bound;
     /* Opt-in per-record centroid-radius triangle bound. */
     char trie_leaf_ivf_radial_bound;
+    /* Calibrate the radial bound per query and keep it only when at least
+     * one quarter of sampled candidates are rejected. */
+    char trie_leaf_ivf_radial_bound_auto;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

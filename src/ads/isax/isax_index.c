@@ -252,6 +252,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->trie_leaf_ivf = 0;
     settings->trie_leaf_ivf_raw_ball_bound = 1;
     settings->trie_leaf_ivf_radial_bound = 0;
+    settings->trie_leaf_ivf_radial_bound_auto = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
@@ -2990,13 +2991,19 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                     settings->trie_leaf_ivf);
         if (settings->trie_leaf_ivf_radial_bound) {
 #if defined(__AVX512F__)
-            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order\n",
-                    settings->SIMD_flag ? "16-lane AVX-512" : "scalar scan");
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order%s\n",
+                    settings->SIMD_flag ? "16-lane AVX-512" : "scalar scan",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
 #elif ADS_HAVE_AVX2
-            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order\n",
-                    settings->SIMD_flag ? "8-lane AVX2" : "scalar scan");
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order%s\n",
+                    settings->SIMD_flag ? "8-lane AVX2" : "scalar scan",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
 #else
-            fprintf(stderr, "  radial bound  : float32 centroid radii, scalar scan, original IVF order\n");
+            fprintf(stderr, "  radial bound  : float32 centroid radii, scalar scan, original IVF order%s\n",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
 #endif
         }
     } else {

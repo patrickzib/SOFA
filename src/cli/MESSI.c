@@ -400,6 +400,7 @@ int main(int argc, char **argv) {
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     static int trie_leaf_ivf_radial_bound = 0;
+    static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
@@ -490,6 +491,7 @@ int main(int argc, char **argv) {
                 {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
+                {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
                 {"no-trie-streaming-leaf-scan", no_argument, 0, 1027},
                 {"trie-fanout", required_argument, 0, 1005},
@@ -580,6 +582,11 @@ int main(int argc, char **argv) {
                 break;
             case 1026:
                 trie_leaf_ivf_radial_bound = 1;
+                trie_leaf_ivf_radial_bound_auto = 0;
+                break;
+            case 1028:
+                trie_leaf_ivf_radial_bound = 1;
+                trie_leaf_ivf_radial_bound_auto = 1;
                 break;
             case 1024:
                 trie_streaming_leaf_scan = 1;
@@ -865,7 +872,8 @@ int main(int argc, char **argv) {
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; learned-transform default: 16)\n"
                        "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
-                       "  --trie-leaf-ivf-radial-bound  SIMD-prune IVF records by float32 centroid radius without reordering\n"
+                       "  --trie-leaf-ivf-radial-bound  Always SIMD-prune IVF records by float32 centroid radius\n"
+                       "  --trie-leaf-ivf-radial-bound-auto  Keep radial pruning only after a 25%% sampled rejection rate\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -1376,6 +1384,7 @@ int main(int argc, char **argv) {
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound;
+        index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);

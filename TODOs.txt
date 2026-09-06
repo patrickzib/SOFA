@@ -2,4 +2,4 @@ TODOs:
 
 - Incremental adding?
 
-- github actions for building on other systems
+- github actions for building on other sysantems
