@@ -790,7 +790,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     ifile = fopen(ifilename, "rb");
     COUNT_INPUT_TIME_END
-    double load_end = messi_monotonic_seconds();
     if (ifile == NULL) {
         fprintf(stderr, "File %s not found!\n", ifilename);
         exit(-1);
@@ -843,6 +842,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     } else {
         fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
     }
+    const double input_end = messi_monotonic_seconds();
     /* The legacy iSAX loader reads the complete base file before its workers
      * begin.  Reserve a visible portion of progress for that phase so a large
      * raw input does not appear stalled at 0%. */
@@ -865,6 +865,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     } else {
         messi_build_progress_update(&build_progress, 10.0);
     }
+    const double normalization_end = messi_monotonic_seconds();
     COUNT_INPUT_TIME_END
 
     pthread_mutex_t lock_record = PTHREAD_MUTEX_INITIALIZER, lockfbl = PTHREAD_MUTEX_INITIALIZER, lock_index = PTHREAD_MUTEX_INITIALIZER,
@@ -926,10 +927,13 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     COUNT_INDEXING_TIME_END
 
     messi_build_progress_finish(&build_progress);
-    fprintf(stderr,
-            ">>> iSAX build timing: load%s=%.3fs transform+insert+flush=%.3fs total=%.3fs\n",
-            apply_znorm ? "+znorm" : "", load_end - build_start,
-            build_end - load_end, build_end - build_start);
+    fprintf(stderr, ">>> iSAX build timing\n");
+    fprintf(stderr, "    load + convert             : %.3f s\n", input_end - build_start);
+    fprintf(stderr, "    z-normalization            : %.3f s%s\n",
+            normalization_end - input_end, apply_znorm ? "" : " (disabled)");
+    fprintf(stderr, "    transform + insert + flush : %.3f s\n",
+            build_end - normalization_end);
+    fprintf(stderr, "    total                      : %.3f s\n", build_end - build_start);
     fprintf(stderr, ">>> Finished indexing\n");
     COUNT_OUTPUT_TIME_END
 }
