@@ -2896,7 +2896,7 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
-        fprintf(stderr, "  iSAX bounds  : node MBR=%s\n",
+        fprintf(stderr, "  iSAX bounds   : node MBR=%s\n",
                 settings->isax_node_mbr ? "on" : "off");
         if (settings->isax_record_mbr_suffix_bound || settings->isax_record_lb_table) {
             fprintf(stderr, "  SOFA v2      : record suffix=%s, record-LB table=%s",

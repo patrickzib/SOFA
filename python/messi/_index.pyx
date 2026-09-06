@@ -17,7 +17,8 @@ from ._native cimport (
 ctypedef np.float32_t FLOAT32_t
 ctypedef np.int64_t INT64_t
 
-cdef int DEFAULT_PAA_SEGMENTS = 16
+cdef int DEFAULT_ISAX_SEGMENTS = 16
+cdef int DEFAULT_TRIE_RECORD_LB_SEGMENTS = 64
 cdef int MESSI_INDEX_ISAX = 0
 cdef int MESSI_INDEX_TRIE = 1
 
@@ -41,7 +42,7 @@ cdef class Index:
 
     def __cinit__(self,
                   int timeseries_size,
-                  int n_segments=DEFAULT_PAA_SEGMENTS,
+                  n_segments=None,
                   int sax_bit_cardinality=8,
                   int max_leaf_size=2000,
                   int min_leaf_size=10,
@@ -86,6 +87,7 @@ cdef class Index:
         cdef int index_type
         cdef int transform_dim
         cdef int record_lb_dim
+        cdef int resolved_n_segments
         cdef int resolved_sfa_n_coefficients
         cdef bint resolved_trie_streaming_leaf_scan
         cdef object layout_name
@@ -108,6 +110,14 @@ cdef class Index:
         if layout_name not in _LAYOUTS:
             raise ValueError("layout must be 'isax' or 'trie'")
         index_type = _LAYOUTS[layout_name]
+        if n_segments is None:
+            resolved_n_segments = (
+                DEFAULT_TRIE_RECORD_LB_SEGMENTS
+                if index_type == MESSI_INDEX_TRIE
+                else DEFAULT_ISAX_SEGMENTS
+            )
+        else:
+            resolved_n_segments = n_segments
         resolved_trie_streaming_leaf_scan = (
             index_type == MESSI_INDEX_TRIE
             if trie_streaming_leaf_scan is None
@@ -122,7 +132,7 @@ cdef class Index:
             raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), or 6 (PISA)")
 
         if index_type == MESSI_INDEX_TRIE:
-            record_lb_dim = trie_record_lb_dimensions or n_segments
+            record_lb_dim = trie_record_lb_dimensions or resolved_n_segments
             if record_lb_dim < 16 or record_lb_dim > 64:
                 raise ValueError("trie_record_lb_dimensions (or n_segments) must be between 16 and 64")
             transform_dim = trie_mbr_dimensions or min(128, timeseries_size)
@@ -148,9 +158,9 @@ cdef class Index:
                 raise ValueError("trie_streaming_leaf_scan requires layout='trie'")
             if trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto:
                 raise ValueError("trie radial bounds require layout='trie'")
-            transform_dim = n_segments
+            transform_dim = resolved_n_segments
             record_lb_dim = 0
-            if n_segments <= 0 or n_segments > timeseries_size:
+            if resolved_n_segments <= 0 or resolved_n_segments > timeseries_size:
                 raise ValueError("n_segments must be between 1 and timeseries_size")
         if dynamic_root_split_variance:
             if index_type != MESSI_INDEX_ISAX:

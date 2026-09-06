@@ -809,6 +809,8 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
         fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);
         exit(-1);
     }
+    /* Covers loading, optional normalization, and transform/insert/flush. */
+    messi_build_progress_init(&build_progress);
     index->sax_file = NULL;
 
     // long int ts_loaded = 0;
@@ -881,7 +883,6 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
                                                            index->settings->max_total_buffer_size +
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
-    messi_build_progress_init(&build_progress);
     // set the thread on decided cpu
     COUNT_OUTPUT_TIME_START
 
