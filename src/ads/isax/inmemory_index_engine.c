@@ -847,15 +847,28 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
     } else {
         fread(rawfile, sizeof(ts_type), index->settings->timeseries_size * ts_num, ifile);
     }
+    /* The legacy iSAX loader reads the complete base file before its workers
+     * begin.  Reserve a visible portion of progress for that phase so a large
+     * raw input does not appear stalled at 0%. */
+    messi_build_progress_update(&build_progress, 5.0);
 
     // apply z-normalization
     if (apply_znorm) {
         fprintf(stderr, ">>> Applying z-norm\n");
         long int ts_length = index->settings->timeseries_size;
+        const long int normalization_block = 1000000;
+        for (long int first = 0; first < ts_num; first += normalization_block) {
+            const long int count = (ts_num - first) < normalization_block
+                                       ? (ts_num - first) : normalization_block;
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
-        for (long int i = 0; i < ts_num; i++) {
-            znorm(&rawfile[i * ts_length], ts_length);
+            for (long int i = first; i < first + count; i++) {
+                znorm(&rawfile[i * ts_length], ts_length);
+            }
+            messi_build_progress_update(&build_progress,
+                5.0 + 5.0 * (double) (first + count) / (double) ts_num);
         }
+    } else {
+        messi_build_progress_update(&build_progress, 10.0);
     }
     COUNT_INPUT_TIME_END
 
@@ -1499,7 +1512,7 @@ void *index_creation_pRecBuf_worker(void *transferdata) {
             unsigned long completed = __sync_add_and_fetch(data->progress_records_completed,
                                                             progress_records_pending);
             messi_build_progress_update(data->build_progress,
-                80.0 * (double) completed / (double) data->progress_total_records);
+                10.0 + 70.0 * (double) completed / (double) data->progress_total_records);
             progress_records_pending = 0;
         }
     }

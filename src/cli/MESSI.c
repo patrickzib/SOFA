@@ -360,6 +360,7 @@ int main(int argc, char **argv) {
     static int queries_size = 10;
     static int time_series_size = 256;
     static int n_segments = 64;
+    static char n_segments_specified = 0;
     static int sax_cardinality = 8;
     static int leaf_size = 2000;
     static int min_leaf_size = 10;
@@ -718,6 +719,7 @@ int main(int argc, char **argv) {
 
             case 'B':
                 n_segments = atoi(optarg);
+                n_segments_specified = 1;
                 break;
 
             case 'l':
@@ -870,7 +872,7 @@ int main(int argc, char **argv) {
                        "  --timeseries-size N            Values per series\n"
                        "  --index-path PATH              Index output directory\n"
                        "  --index-type isax|trie         Layout (default: trie)\n"
-                       "  --n-segments N                 Record-bound dimensions (default: 64; trie: 16--64)\n"
+                       "  --n-segments N                 Symbolic dimensions (default: iSAX 16, trie 64; trie: 16--64)\n"
                        "  --sax-cardinality N            SAX bits per dimension\n"
                        "  --leaf-size N                  Maximum records per leaf\n"
                        "  --min-leaf-size N              Minimum iSAX query-leaf occupancy\n"
@@ -967,6 +969,11 @@ int main(int argc, char **argv) {
     }
     INIT_STATS();
     profile_query_phases = profile_query_phases_requested;
+    /* Keep the historic 64-dimension trie word, but use the conventional
+     * 16-segment SAX/iSAX baseline unless the caller explicitly overrides it. */
+    if (!n_segments_specified) {
+        n_segments = index_type == MESSI_INDEX_ISAX ? 16 : 64;
+    }
     if (enable_sofa_v2) {
         if (index_type != MESSI_INDEX_ISAX) {
             fprintf(stderr, "error: --enable-sofa-v2 requires --index-type isax.\n");
