@@ -1218,7 +1218,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double build_start = messi_monotonic_seconds();
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
-    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+    if (fseek(file, (long) index->settings->dataset_header_bytes, SEEK_SET) != 0) {
         fclose(file);
         return FAILURE;
     }
@@ -1241,7 +1241,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
 #endif
-            for (size_t i = 0; i < count; ++i) rawfile[offset + i] = (ts_type) input[i];
+            for (size_t i = 0; i < count; ++i)
+                rawfile[offset + i] = file_value_to_ts(input[i], filetype_int);
             messi_build_progress_update(&build_progress,
                 10.0 * (double) (offset + count) / (double) values);
         }
@@ -2035,7 +2036,7 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
-    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+    if (fseek(file, (long) index->settings->query_header_bytes, SEEK_SET) != 0) {
         fclose(file);
         return FAILURE;
     }
@@ -2054,7 +2055,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         int read_ok;
         if (filetype_int) {
             read_ok = fread(query_int, sizeof(*query_int), (size_t) ts_length, file) == (size_t) ts_length;
-            for (int j = 0; read_ok && j < ts_length; ++j) query[j] = (ts_type) query_int[j];
+            for (int j = 0; read_ok && j < ts_length; ++j)
+                query[j] = file_value_to_ts(query_int[j], filetype_int);
         } else {
             read_ok = fread(query, sizeof(*query), (size_t) ts_length, file) == (size_t) ts_length;
         }
@@ -2155,7 +2157,7 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
     if (file == NULL || queries == NULL || distances == NULL || stats == NULL) {
         if (file) fclose(file); free(queries); free(distances); free(stats); return FAILURE;
     }
-    if (fseek(file, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+    if (fseek(file, (long) index->settings->query_header_bytes, SEEK_SET) != 0) {
         fclose(file); free(queries); free(distances); free(stats); return FAILURE;
     }
     int read_ok = 1;
@@ -2167,7 +2169,8 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
 #endif
-            for (size_t i = 0; i < query_values; ++i) queries[i] = (ts_type) input[i];
+            for (size_t i = 0; i < query_values; ++i)
+                queries[i] = file_value_to_ts(input[i], filetype_int);
         }
         free(input);
     } else if (fread(queries, sizeof(*queries), query_values, file) != query_values) {

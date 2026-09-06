@@ -30,13 +30,27 @@ assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet_querie
 assert_contains "$OUTPUT" '--timeseries-size 256'
 assert_contains "$OUTPUT" '--dataset-size 100000000'
 assert_contains "$OUTPUT" '--filetype-int'
-assert_contains "$OUTPUT" '--input-header-bytes 8'
+assert_contains "$OUTPUT" '--dataset-header-bytes 8'
+assert_contains "$OUTPUT" '--query-header-bytes 8'
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seismic standard --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/seismic.bin'
 assert_contains "$OUTPUT" '--timeseries-size 256'
 assert_contains "$OUTPUT" '--dataset-size 100000000'
-assert_not_contains "$OUTPUT" '--input-header-bytes'
+assert_not_contains "$OUTPUT" '--dataset-header-bytes'
+assert_not_contains "$OUTPUT" '--query-header-bytes'
 pass 'seismic and headered SimSearchNet datasets have valid runner metadata'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--timeseries-size 128'
+assert_contains "$OUTPUT" '--filetype-int'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" spacev1b standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--timeseries-size 100'
+assert_contains "$OUTPUT" '--filetype-int8'
+assert_not_contains "$OUTPUT" '--filetype-int '
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" text-to-image standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--dataset-header-bytes 8'
+assert_not_contains "$OUTPUT" '--query-header-bytes'
+pass 'BigANN, SpaceV, and Text-to-Image encodings match their files'
 
 OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
@@ -80,7 +94,7 @@ pass 'trie standard profile excludes SAX from its method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --n-segments 32 --trie-split-dims 32 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
 assert_contains "$OUTPUT" '--n-segments 32'
 assert_contains "$OUTPUT" '--trie-split-dimensions 32'
 if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
@@ -195,7 +209,7 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
 assert_contains "$OUTPUT" '--queries-size 1'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 50'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
 assert_contains "$OUTPUT" '--histogram-type 2'
 assert_not_contains "$OUTPUT" '--histogram-type 1'
 pass 'high-frequency profile preserves BigANN flags and coefficients'
@@ -223,9 +237,9 @@ pass 'trie supports 128 MBR dimensions for 128-value series'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 100'
-pass 'trie MBR dimensions remain capped by the 100-value series length'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+pass 'BigANN trie MBR dimensions use the corrected 128-value series length'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
 assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
@@ -302,8 +316,13 @@ pass 'runner parses the symbolic-record-bound label into its compact suite summa
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
 assert_contains "$OUTPUT" 'text-to-image_noise_01.bin'
-assert_contains "$OUTPUT" 'turingANNs_noise_05.bin'
-pass 'migrated generated-query suite expands expected workloads'
+assert_not_contains "$OUTPUT" 'turingANNs_noise_05.bin'
+assert_not_contains "$OUTPUT" '--query-header-bytes 8'
+pass 'generated-query suite expands valid workloads and excludes local TuringANNS'
+
+OUTPUT=$(bash -c 'source "$1"; active_datasets' _ "$SCRIPT_DIR/lib/datasets.sh")
+assert_not_contains "$OUTPUT" 'turinganns'
+pass 'known-invalid local TuringANNS is excluded from the default suite'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--index-type trie'

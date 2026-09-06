@@ -134,7 +134,7 @@ void isax_query_binary_file_traditional(
 
     fseek(ifile, 0L, SEEK_END);
     file_position_type sz = (file_position_type) ftell(ifile);
-    const file_position_type input_header_bytes = index->settings->input_header_bytes;
+    const file_position_type input_header_bytes = index->settings->query_header_bytes;
     const file_position_type input_record_bytes =
         (file_position_type) index->settings->timeseries_size *
         (filetype_int ? sizeof(file_type) : sizeof(ts_type));
@@ -186,7 +186,7 @@ void isax_query_binary_file_traditional(
         if (filetype_int) {
             fread(ts_int32, sizeof(file_type), ts_length, ifile);
             for (int i = 0; i < ts_length; ++i) {
-                ts[i] = (ts_type) ts_int32[i];
+                ts[i] = file_value_to_ts(ts_int32[i], filetype_int);
             }
 
         } else {

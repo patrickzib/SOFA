@@ -164,7 +164,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
         return NULL;
     }
     int filetype_int = params->filetype_int;
-    if (filetype_int != 0 && filetype_int != 1) {
+    if (filetype_int < FILE_INPUT_FLOAT32 || filetype_int > FILE_INPUT_INT8) {
         filetype_int = 0;
     }
     wrapper->filetype_int = filetype_int;

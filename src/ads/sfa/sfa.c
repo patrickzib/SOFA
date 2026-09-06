@@ -517,7 +517,7 @@ void *set_bins_worker_dft(void *transferdata) {
     int filetype_int = bins_data->filetype_int;
     int apply_znorm = bins_data->apply_znorm;
     const unsigned long value_size = filetype_int ? sizeof(file_type) : sizeof(ts_type);
-    unsigned long start_index = index->settings->input_header_bytes +
+    unsigned long start_index = index->settings->dataset_header_bytes +
                                 start_number * ts_length * value_size;
 
     FILE *ifile;
@@ -559,7 +559,7 @@ void *set_bins_worker_dft(void *transferdata) {
             unsigned long position = start_number +
                                      (unsigned long) random_at_most_seed(&rng_state,
                                                                          (long int) span - 1);
-            fseek(ifile, (long) (index->settings->input_header_bytes +
+            fseek(ifile, (long) (index->settings->dataset_header_bytes +
                   position * ts_length * value_size), SEEK_SET);
         }
 
@@ -569,7 +569,7 @@ void *set_bins_worker_dft(void *transferdata) {
                 break;
             }
             for (int j = 0; j < ts_length; ++j) {
-                ts[j] = (ts_type) ts_orig1[j];
+                ts[j] = file_value_to_ts(ts_orig1[j], filetype_int);
             }
         } else {
             if (fread(ts_orig2, sizeof(ts_type), ts_length, ifile) != ts_length) {

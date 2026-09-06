@@ -4,12 +4,13 @@ import time
 
 import numpy as np
 
-def read(fp, dim, data_type=np.float32, count=100):
+def read(fp, dim, data_type=np.float32, count=100, header_bytes=0):
+    with open(fp, "rb") as source:
+        source.seek(header_bytes)
+        a = np.fromfile(source, dtype=data_type, count=dim * count)
     if data_type != np.float32:
-        a = np.fromfile(fp, dtype=data_type, count=dim*count)
         return a.reshape(-1, dim).copy().astype(np.float32, copy=False)
-    else:
-        return np.fromfile(fp, dtype=np.float32, count=dim*count).reshape(-1, dim)
+    return a.reshape(-1, dim)
 
 
 def z_normalize_rows(values, rows_per_batch=8192):
@@ -23,37 +24,40 @@ def z_normalize_rows(values, rows_per_batch=8192):
         block /= stddev[:, None]
 
 
-NORMAL_PATH = "/vol/tmp/schaefpa/messi_datasets/"
-SEISBENCH_PATH = "/vol/tmp/schaefpa/seismic/"
+NORMAL_PATH = "/home/tmp/schaefpa/messi_datasets/"
+SEISBENCH_PATH = "/home/tmp/schaefpa/seismic/"
 
 datasets = {
     # Vector datasets.  Keep these definitions aligned with
     # scripts/lib/datasets.sh: the benchmark reads the configured 100M-record
     # prefix from each raw collection.
-    "BIGANN": ["bigANN.bin", "bigANN_queries.bin", 100, 0, np.uint8],
-    "DEEP1b": ["deep1b.bin", "deep1b_queries.bin", 96, 0, np.float32],
-    "SIFT1b": ["sift1b.bin", "sift1b_queries.bin", 128, 0, np.float32],
-    "spacev1b": ["spacev1B.bin", "spacev1B_queries.bin", 100, 0, np.uint8],
-    "turinganns": ["turingANNs.bin", "turingANNs_queries.bin", 100, 0, np.uint8],
+    "BIGANN": ["bigANN.bin", "bigANN_queries.bin", 128, 0, np.uint8, 0, 0],
+    "DEEP1b": ["deep1b.bin", "deep1b_queries.bin", 96, 0, np.float32, 0, 0],
+    "SIFT1b": ["sift1b.bin", "sift1b_queries.bin", 128, 0, np.float32, 0, 0],
+    "spacev1b": ["spacev1B.bin", "spacev1B_queries.bin", 100, 0, np.int8, 0, 0],
+    "TEXTTOIMAGE": ["text-to-image.bin", "text-to-image_queries.bin", 200, 0, np.float32, 8, 0],
+    "turinganns": ["turingANNs.bin", "turingANNs_queries.bin", 100, 0, np.float32, 8, 8],
 
     # Time-series and SeisBench datasets intentionally remain opt-in here.
-    "ASTRO": ["astro.bin", "astro_queries.bin", 256, 0, np.float32],
-    "SALD": ["SALD.bin", "SALD_queries.bin", 128, 0, np.float32],
-    "SCEDC": ["SCEDC.bin", "SCEDC_queries.bin", 256, 0, np.float32],
+    "ASTRO": ["astro.bin", "astro_queries.bin", 256, 0, np.float32, 0, 0],
+    "SALD": ["SALD.bin", "SALD_queries.bin", 128, 0, np.float32, 0, 0],
+    "SCEDC": ["SCEDC.bin", "SCEDC_queries.bin", 256, 0, np.float32, 0, 0],
 
     # SeisBench
-    "ETHC": ["ETHZ.bin", "ETHZ_queries.bin", 256, 1, np.float32],
-    "ISC_EHB_DepthPhases": ["ISC_EHB_DepthPhases.bin", "ISC_EHB_DepthPhases_queries.bin", 256, 1, np.float32],
-    "LenDB": ["LenDB.bin", "LenDB_queries.bin", 256, 1, np.float32],
-    "Iquique": ["Iquique.bin", "Iquique_queries.bin", 256, 1, np.float32],
-    "NEIC": ["NEIC.bin", "NEIC_queries.bin", 256, 1, np.float32],
-    "OBS": ["OBS.bin", "OBS_queries.bin", 256, 1, np.float32],
-    "OBST2024": ["OBST2024.bin", "OBST2024_queries.bin", 256, 1, np.float32],
-    "PNW": ["PNW.bin", "PNW_queries.bin", 256, 1, np.float32],
-    "Meier2019JGR": ["Meier2019JGR.bin", "Meier2019JGR_queries.bin", 256, 1, np.float32],
-    "STEAD": ["STEAD.bin", "STEAD_queries.bin", 256, 1, np.float32],
-    "TXED": ["TXED.bin", "TXED_queries.bin", 256, 1, np.float32],
+    "ETHC": ["ETHZ.bin", "ETHZ_queries.bin", 256, 1, np.float32, 0, 0],
+    "ISC_EHB_DepthPhases": ["ISC_EHB_DepthPhases.bin", "ISC_EHB_DepthPhases_queries.bin", 256, 1, np.float32, 0, 0],
+    "LenDB": ["LenDB.bin", "LenDB_queries.bin", 256, 1, np.float32, 0, 0],
+    "Iquique": ["Iquique.bin", "Iquique_queries.bin", 256, 1, np.float32, 0, 0],
+    "NEIC": ["NEIC.bin", "NEIC_queries.bin", 256, 1, np.float32, 0, 0],
+    "OBS": ["OBS.bin", "OBS_queries.bin", 256, 1, np.float32, 0, 0],
+    "OBST2024": ["OBST2024.bin", "OBST2024_queries.bin", 256, 1, np.float32, 0, 0],
+    "PNW": ["PNW.bin", "PNW_queries.bin", 256, 1, np.float32, 0, 0],
+    "Meier2019JGR": ["Meier2019JGR.bin", "Meier2019JGR_queries.bin", 256, 1, np.float32, 0, 0],
+    "STEAD": ["STEAD.bin", "STEAD_queries.bin", 256, 1, np.float32, 0, 0],
+    "TXED": ["TXED.bin", "TXED_queries.bin", 256, 1, np.float32, 0, 0],
 }
+
+DEFAULT_DATASETS = [name for name in datasets if name != "turinganns"]
 
 # Mirrors DATASET_SIZE and APPLY_Z_NORM in scripts/lib/datasets.sh.  The
 # separate metadata keeps this competitor benchmark comparable to the runner
@@ -80,18 +84,29 @@ def parse_args():
     )
     parser.add_argument("--output-dir", default="logs_mini_batch2",
                         help="directory for CSV results (default: %(default)s)")
+    parser.add_argument("--data-root", default=os.environ.get("MESSI_DATA_ROOT", NORMAL_PATH))
+    parser.add_argument("--seisbench-root", default=os.environ.get("MESSI_SEISBENCH_ROOT", SEISBENCH_PATH))
+    parser.add_argument("--datasets", default=",".join(DEFAULT_DATASETS),
+                        help="comma-separated dataset IDs; TuringANNS is opt-in")
     args = parser.parse_args()
     if any(threads <= 0 for threads in args.threads):
         parser.error("--threads values must be positive")
+    args.datasets = [name.strip() for name in args.datasets.split(",") if name.strip()]
+    unknown = sorted(set(args.datasets).difference(datasets))
+    if unknown:
+        parser.error("unknown dataset IDs: " + ", ".join(unknown))
     return args
 
 
-def run_benchmark(all_threads, output_dir):
+def run_benchmark(args):
+    all_threads = args.threads
+    output_dir = args.output_dir
     os.makedirs(output_dir, exist_ok=True)
     faiss = None
     k = 1
-    for dataset, (file_data, file_queries, d, path_switch, data_type) in datasets.items():
-        path = NORMAL_PATH if path_switch == 0 else SEISBENCH_PATH
+    for dataset in args.datasets:
+        file_data, file_queries, d, path_switch, data_type, data_header, query_header = datasets[dataset]
+        path = args.data_root if path_switch == 0 else args.seisbench_root
         data_path = os.path.join(path, file_data)
         query_path = os.path.join(path, file_queries)
         missing = [candidate for candidate in (data_path, query_path) if not os.path.isfile(candidate)]
@@ -106,8 +121,10 @@ def run_benchmark(all_threads, output_dir):
                 raise RuntimeError("FAISS is required; install the Python package before running this benchmark") from exc
         print("Running: ", dataset)
         record_count, apply_znorm = dataset_properties[dataset]
-        data = read(data_path, dim=d, data_type=data_type, count=record_count)
-        queries = read(query_path, data_type=data_type, dim=d, count=100)
+        data = read(data_path, dim=d, data_type=data_type, count=record_count,
+                    header_bytes=data_header)
+        queries = read(query_path, data_type=data_type, dim=d, count=100,
+                       header_bytes=query_header)
         if apply_znorm:
             z_normalize_rows(data)
             z_normalize_rows(queries)
@@ -160,7 +177,7 @@ def run_benchmark(all_threads, output_dir):
 
 def main():
     args = parse_args()
-    run_benchmark(args.threads, args.output_dir)
+    run_benchmark(args)
 
 
 if __name__ == "__main__":

@@ -19,35 +19,40 @@ from pathlib import Path
 import numpy as np
 
 
-NORMAL_PATH = "/vol/tmp/schaefpa/messi_datasets"
-SEISBENCH_PATH = "/vol/tmp/schaefpa/seismic"
+NORMAL_PATH = "/home/tmp/schaefpa/messi_datasets"
+SEISBENCH_PATH = "/home/tmp/schaefpa/seismic"
 
 DATASETS = {
-    "BIGANN": ("bigANN.bin", "bigANN_queries.bin", 100, False, np.uint8),
-    "DEEP1b": ("deep1b.bin", "deep1b_queries.bin", 96, False, np.float32),
-    "SIFT1b": ("sift1b.bin", "sift1b_queries.bin", 128, False, np.float32),
-    "spacev1b": ("spacev1B.bin", "spacev1B_queries.bin", 100, False, np.uint8),
-    "turinganns": ("turingANNs.bin", "turingANNs_queries.bin", 100, False, np.uint8),
-    "ASTRO": ("astro.bin", "astro_queries.bin", 256, False, np.float32),
-    "SALD": ("SALD.bin", "SALD_queries.bin", 128, False, np.float32),
-    "SCEDC": ("SCEDC.bin", "SCEDC_queries.bin", 256, False, np.float32),
-    "ETHC": ("ETHZ.bin", "ETHZ_queries.bin", 256, True, np.float32),
-    "ISC_EHB_DepthPhases": ("ISC_EHB_DepthPhases.bin", "ISC_EHB_DepthPhases_queries.bin", 256, True, np.float32),
-    "LenDB": ("LenDB.bin", "LenDB_queries.bin", 256, True, np.float32),
-    "Iquique": ("Iquique.bin", "Iquique_queries.bin", 256, True, np.float32),
-    "NEIC": ("NEIC.bin", "NEIC_queries.bin", 256, True, np.float32),
-    "OBS": ("OBS.bin", "OBS_queries.bin", 256, True, np.float32),
-    "OBST2024": ("OBST2024.bin", "OBST2024_queries.bin", 256, True, np.float32),
-    "PNW": ("PNW.bin", "PNW_queries.bin", 256, True, np.float32),
-    "Meier2019JGR": ("Meier2019JGR.bin", "Meier2019JGR_queries.bin", 256, True, np.float32),
-    "STEAD": ("STEAD.bin", "STEAD_queries.bin", 256, True, np.float32),
-    "TXED": ("TXED.bin", "TXED_queries.bin", 256, True, np.float32),
+    # name: base, queries, dimensions, SeisBench root, dtype, base header, query header
+    "BIGANN": ("bigANN.bin", "bigANN_queries.bin", 128, False, np.uint8, 0, 0),
+    "DEEP1b": ("deep1b.bin", "deep1b_queries.bin", 96, False, np.float32, 0, 0),
+    "SIFT1b": ("sift1b.bin", "sift1b_queries.bin", 128, False, np.float32, 0, 0),
+    "spacev1b": ("spacev1B.bin", "spacev1B_queries.bin", 100, False, np.int8, 0, 0),
+    "TEXTTOIMAGE": ("text-to-image.bin", "text-to-image_queries.bin", 200, False, np.float32, 8, 0),
+    "turinganns": ("turingANNs.bin", "turingANNs_queries.bin", 100, False, np.float32, 8, 8),
+    "ASTRO": ("astro.bin", "astro_queries.bin", 256, False, np.float32, 0, 0),
+    "SALD": ("SALD.bin", "SALD_queries.bin", 128, False, np.float32, 0, 0),
+    "SCEDC": ("SCEDC.bin", "SCEDC_queries.bin", 256, False, np.float32, 0, 0),
+    "ETHC": ("ETHZ.bin", "ETHZ_queries.bin", 256, True, np.float32, 0, 0),
+    "ISC_EHB_DepthPhases": ("ISC_EHB_DepthPhases.bin", "ISC_EHB_DepthPhases_queries.bin", 256, True, np.float32, 0, 0),
+    "LenDB": ("LenDB.bin", "LenDB_queries.bin", 256, True, np.float32, 0, 0),
+    "Iquique": ("Iquique.bin", "Iquique_queries.bin", 256, True, np.float32, 0, 0),
+    "NEIC": ("NEIC.bin", "NEIC_queries.bin", 256, True, np.float32, 0, 0),
+    "OBS": ("OBS.bin", "OBS_queries.bin", 256, True, np.float32, 0, 0),
+    "OBST2024": ("OBST2024.bin", "OBST2024_queries.bin", 256, True, np.float32, 0, 0),
+    "PNW": ("PNW.bin", "PNW_queries.bin", 256, True, np.float32, 0, 0),
+    "Meier2019JGR": ("Meier2019JGR.bin", "Meier2019JGR_queries.bin", 256, True, np.float32, 0, 0),
+    "STEAD": ("STEAD.bin", "STEAD_queries.bin", 256, True, np.float32, 0, 0),
+    "TXED": ("TXED.bin", "TXED_queries.bin", 256, True, np.float32, 0, 0),
 }
+
+DEFAULT_DATASETS = [name for name in DATASETS if name != "turinganns"]
 
 DATASET_PROPERTIES = {
     "BIGANN": (100_000_000, True), "DEEP1b": (100_000_000, False),
     "SIFT1b": (100_000_000, False), "spacev1b": (100_000_000, True),
-    "turinganns": (100_000_000, True), "ASTRO": (100_000_000, False),
+    "TEXTTOIMAGE": (100_000_000, True), "turinganns": (100_000_000, True),
+    "ASTRO": (100_000_000, False),
     "SALD": (100_000_000, False), "SCEDC": (100_000_000, False),
     "ETHC": (4_999_932, False), "ISC_EHB_DepthPhases": (100_000_000, False),
     "LenDB": (37_345_260, False), "Iquique": (578_853, False),
@@ -58,8 +63,10 @@ DATASET_PROPERTIES = {
 }
 
 
-def read_vectors(path, dimensions, dtype, count):
-    values = np.fromfile(path, dtype=dtype, count=dimensions * count)
+def read_vectors(path, dimensions, dtype, count, header_bytes=0):
+    with path.open("rb") as source:
+        source.seek(header_bytes)
+        values = np.fromfile(source, dtype=dtype, count=dimensions * count)
     if values.size == 0 or values.size % dimensions:
         raise ValueError(f"{path}: expected complete {dimensions}-value rows")
     return values.reshape(-1, dimensions).astype(np.float32, copy=False)
@@ -82,7 +89,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Benchmark scikit-learn NearestNeighbors.")
     parser.add_argument("--data-root", default=os.environ.get("MESSI_DATA_ROOT", NORMAL_PATH))
     parser.add_argument("--seisbench-root", default=os.environ.get("MESSI_SEISBENCH_ROOT", SEISBENCH_PATH))
-    parser.add_argument("--datasets", default=",".join(DATASETS), help="comma-separated dataset IDs")
+    parser.add_argument("--datasets", default=",".join(DEFAULT_DATASETS),
+                        help="comma-separated dataset IDs; TuringANNS is opt-in")
     parser.add_argument("--threads", type=int, nargs="+", default=[64], metavar="N")
     parser.add_argument("--output-dir", default="logs_sklearn_nearest_neighbors")
     parser.add_argument("--record-count", type=int, help="override the configured indexed prefix")
@@ -99,7 +107,7 @@ def parse_args():
 
 
 def run_dataset(dataset, args):
-    data_file, query_file, dimensions, is_seisbench, dtype = DATASETS[dataset]
+    data_file, query_file, dimensions, is_seisbench, dtype, data_header, query_header = DATASETS[dataset]
     root = Path(args.seisbench_root if is_seisbench else args.data_root)
     data_path, query_path = root / data_file, root / query_file
     missing = [str(path) for path in (data_path, query_path) if not path.is_file()]
@@ -114,12 +122,12 @@ def run_dataset(dataset, args):
 
     report(f"  loading base: {data_path} ({requested_records:,} records, {dimensions} dimensions)")
     load_started = time.perf_counter()
-    data = read_vectors(data_path, dimensions, dtype, requested_records)
+    data = read_vectors(data_path, dimensions, dtype, requested_records, data_header)
     report(f"  base loaded: {data.shape[0]:,} records, {data.nbytes / 1024 ** 2:.1f} MiB "
            f"in {time.perf_counter() - load_started:.2f} s")
     report(f"  loading queries: {query_path} ({args.query_count:,} records)")
     query_load_started = time.perf_counter()
-    queries = read_vectors(query_path, dimensions, dtype, args.query_count)
+    queries = read_vectors(query_path, dimensions, dtype, args.query_count, query_header)
     report(f"  queries loaded: {queries.shape[0]:,} records in "
            f"{time.perf_counter() - query_load_started:.2f} s")
     if apply_znorm:

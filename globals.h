@@ -29,10 +29,24 @@
 ///// TYPES /////
 typedef unsigned char sax_type;
 typedef unsigned char file_type;
-// typedef signed char file_type;
 typedef float ts_type;
 typedef unsigned long long file_position_type;
 typedef unsigned long long root_mask_type;
+
+/* Dense input encoding.  Keep byte input stored as unsigned bytes and apply
+ * signedness only while converting to ts_type; this avoids duplicating every
+ * I/O buffer and preserves the historical --filetype-int behavior. */
+enum file_input_type {
+    FILE_INPUT_FLOAT32 = 0,
+    FILE_INPUT_UINT8 = 1,
+    FILE_INPUT_INT8 = 2
+};
+
+static inline ts_type file_value_to_ts(file_type value, int input_type) {
+    return input_type == FILE_INPUT_INT8
+        ? (ts_type) (int8_t) value
+        : (ts_type) value;
+}
 
 enum response {OUT_OF_MEMORY_FAILURE, FAILURE, SUCCESS};
 enum insertion_mode {PARTIAL = 1, 

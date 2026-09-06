@@ -79,8 +79,16 @@ The regular suite includes `seismic` and `simsearchnet`. Both use the first
 100 million base records for comparability with the other suite datasets.
 SimSearchNet is 256-dimensional uint8 data in the ANN benchmark binary format;
 its dataset and query files have an 8-byte `(count, dimensions)` header, which
-the runner skips automatically. `--input-header-bytes` can override this for
-custom files.
+the runner skips automatically. BigANN is 128-dimensional uint8, while SpaceV
+is 100-dimensional signed int8. Text-to-Image uses float32 with an 8-byte base
+header and a raw local query file. `--dataset-header-bytes` and
+`--query-header-bytes` override the offsets independently;
+`--input-header-bytes` remains a shorthand for setting both.
+
+TuringANNS is excluded from the default regular and generated-query suites
+because the currently observed local `turingANNs.bin` is not the canonical
+100-dimensional float32 collection. It remains selectable explicitly after
+installing the correct headered base and query files.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
 directory inside terminal leaves with at least 4 K records. It is enabled by

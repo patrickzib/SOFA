@@ -32,7 +32,9 @@ Options:
   --query-file PATH       Override the query path for regular-suite runs
   --dataset-size N        Override dataset records; accepts count suffixes
   --query-size N          Override queries per run; accepts count suffixes
-  --input-header-bytes N  Override bytes before dataset/query vector payloads
+  --dataset-header-bytes N  Override bytes before base-vector payloads
+  --query-header-bytes N  Override bytes before query-vector payloads
+  --input-header-bytes N  Compatibility shorthand setting both offsets
   --leaf-size N           Maximum records per leaf; accepts count suffixes
   --min-leaf-size N       iSAX query-leaf threshold; trie does not enforce it
   --sample-size N         Override binning sample size; accepts count suffixes
@@ -121,6 +123,8 @@ QUERY_FILE=
 DATASET_SIZE=
 QUERY_SIZE=
 INPUT_HEADER_BYTES=
+DATASET_HEADER_BYTES=
+QUERY_HEADER_BYTES=
 LEAF_SIZE=
 MIN_LEAF_SIZE=
 SAMPLE_SIZE=
@@ -185,6 +189,8 @@ while [[ $# -gt 0 ]]; do
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE=$2; shift 2 ;;
         --input-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; INPUT_HEADER_BYTES=$2; shift 2 ;;
+        --dataset-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_HEADER_BYTES=$2; shift 2 ;;
+        --query-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_HEADER_BYTES=$2; shift 2 ;;
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
@@ -311,6 +317,8 @@ run_one() {
     [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
     [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
     [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
+    [[ -n $DATASET_HEADER_BYTES ]] && command+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+    [[ -n $QUERY_HEADER_BYTES ]] && command+=(--query-header-bytes "$QUERY_HEADER_BYTES")
     [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
     command+=(--sample-type "$SAMPLE_TYPE")
     [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
@@ -400,9 +408,6 @@ run_query_suite() {
                 'text-to-image|generated/text-to-image_noise_005.bin|TEXTTOIMAGE_ne_005'
                 'text-to-image|generated/text-to-image_noise_01.bin|TEXTTOIMAGE_ne_01'
                 'text-to-image|generated/text-to-image_noise_025.bin|TEXTTOIMAGE_ne_025'
-                'turinganns|generated/turingANNs_noise_01.bin|turingANNs_ne_01'
-                'turinganns|generated/turingANNs_noise_025.bin|turingANNs_ne_025'
-                'turinganns|generated/turingANNs_noise_05.bin|turingANNs_ne_05'
             )
             ;;
         hard-queries)
@@ -454,6 +459,8 @@ run_query_suite() {
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
             [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
             [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
+            [[ -n $DATASET_HEADER_BYTES ]] && command+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+            [[ -n $QUERY_HEADER_BYTES ]] && command+=(--query-header-bytes "$QUERY_HEADER_BYTES")
             [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
             command+=(--sample-type "$SAMPLE_TYPE")
             [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
@@ -493,6 +500,9 @@ run_query_suite() {
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods")
+            # generate_queries.py writes dense headerless query payloads even
+            # when the source base file uses the ANN xbin header.
+            [[ $SUITE == generated-queries ]] && command+=(--query-header-bytes 0)
             if [[ $INDEX_TYPE == isax ]]; then
                 $ENABLE_SOFA_V2 && command+=(--enable-sofa-v2)
                 $ISAX_NODE_MBR && command+=(--isax-node-mbr)

@@ -387,7 +387,8 @@ int main(int argc, char **argv) {
     static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
     static int filetype_int = 0;
-    static unsigned long input_header_bytes = 0;
+    static unsigned long dataset_header_bytes = 0;
+    static unsigned long query_header_bytes = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
@@ -483,6 +484,9 @@ int main(int argc, char **argv) {
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
                 {"input-header-bytes",  required_argument, 0, 1029},
+                {"dataset-header-bytes",required_argument, 0, 1030},
+                {"query-header-bytes",  required_argument, 0, 1031},
+                {"filetype-int8",       no_argument,       0, 1032},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
@@ -577,9 +581,33 @@ int main(int argc, char **argv) {
                     fprintf(stderr, "Error: --input-header-bytes must be a nonnegative integer.\n");
                     return EXIT_FAILURE;
                 }
-                input_header_bytes = value;
+                dataset_header_bytes = value;
+                query_header_bytes = value;
                 break;
             }
+            case 1030: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --dataset-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                dataset_header_bytes = value;
+                break;
+            }
+            case 1031: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --query-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                query_header_bytes = value;
+                break;
+            }
+            case 1032:
+                filetype_int = FILE_INPUT_INT8;
+                break;
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
                 trie_record_mbr_suffix_bound_specified = 1;
@@ -798,7 +826,7 @@ int main(int argc, char **argv) {
                 n_coefficients = atoi(optarg);
                 break;
             case 'E':
-                filetype_int = 1;
+                filetype_int = FILE_INPUT_UINT8;
                 break;
             case 'F':
                 apply_znorm = 1;
@@ -865,8 +893,11 @@ int main(int argc, char **argv) {
                        "  --sampling-seed N              Random sampling seed (default: 1)\n"
                        "  --histogram-type 1|2           Equi-depth (default) or equi-width\n"
                        "  --sfa-n-coefficients N         SFA candidate coefficients (even; n-segments..series length)\n"
-                       "  --filetype-int                 Read int input and convert to float\n"
-                       "  --input-header-bytes N         Skip N bytes before vector data in dataset and queries\n"
+                       "  --filetype-int                 Read uint8 input and convert to float\n"
+                       "  --filetype-int8                Read signed int8 input and convert to float\n"
+                       "  --dataset-header-bytes N       Skip N bytes before base vectors\n"
+                       "  --query-header-bytes N         Skip N bytes before query vectors\n"
+                       "  --input-header-bytes N         Compatibility shorthand: set both header offsets\n"
                        "  --apply-z-norm                 Z-normalize base and queries\n"
                        "  --is-norm                      Input is already normalized (SFA ignores DC)\n"
                        "\n"
@@ -1069,7 +1100,7 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     if (!clamp_query_count_to_file(queries, time_series_size, filetype_int,
-                                   input_header_bytes, &queries_size)) {
+                                   query_header_bytes, &queries_size)) {
         return EXIT_FAILURE;
     }
 
@@ -1393,7 +1424,8 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
-        index_settings->input_header_bytes = input_header_bytes;
+        index_settings->dataset_header_bytes = dataset_header_bytes;
+        index_settings->query_header_bytes = query_header_bytes;
         index_settings->index_type = index_type;
         index_settings->isax_node_mbr = isax_node_mbr;
         index_settings->isax_record_mbr_suffix_bound = isax_record_mbr_suffix_bound;

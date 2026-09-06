@@ -17,7 +17,9 @@ Options:
   --query-file PATH         Override the query filename/path
   --dataset-size N          Override dataset records; accepts 100m, 1mio, 20k
   --query-size N            Queries; accepts count suffixes (default: 100; high-frequency: 1)
-  --input-header-bytes N    Bytes before vector payloads in dataset and queries
+  --dataset-header-bytes N  Bytes before base-vector payload
+  --query-header-bytes N    Bytes before query-vector payload
+  --input-header-bytes N    Compatibility shorthand setting both offsets
   --leaf-size N             Maximum records per leaf; accepts count suffixes (default: 20000)
   --min-leaf-size N         iSAX query-leaf threshold; trie does not enforce it
   --k N                     Required by the knn profile
@@ -181,6 +183,8 @@ QUERY_OVERRIDE=
 DATASET_SIZE_OVERRIDE=
 QUERY_SIZE_OVERRIDE=
 INPUT_HEADER_BYTES_OVERRIDE=
+DATASET_HEADER_BYTES_OVERRIDE=
+QUERY_HEADER_BYTES_OVERRIDE=
 LEAF_SIZE=20000
 MIN_LEAF_SIZE=
 K_SIZE=
@@ -243,6 +247,8 @@ while [[ $# -gt 0 ]]; do
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE_OVERRIDE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE_OVERRIDE=$2; shift 2 ;;
         --input-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; INPUT_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
+        --dataset-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
+        --query-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --k) [[ $# -ge 2 ]] || die "$1 requires a value"; K_SIZE=$2; shift 2 ;;
@@ -299,13 +305,19 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ -n $DATASET_OVERRIDE ]] && DATASET_FILE=$DATASET_OVERRIDE
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
-[[ -n $INPUT_HEADER_BYTES_OVERRIDE ]] && INPUT_HEADER_BYTES=$INPUT_HEADER_BYTES_OVERRIDE
+if [[ -n $INPUT_HEADER_BYTES_OVERRIDE ]]; then
+    DATASET_HEADER_BYTES=$INPUT_HEADER_BYTES_OVERRIDE
+    QUERY_HEADER_BYTES=$INPUT_HEADER_BYTES_OVERRIDE
+fi
+[[ -n $DATASET_HEADER_BYTES_OVERRIDE ]] && DATASET_HEADER_BYTES=$DATASET_HEADER_BYTES_OVERRIDE
+[[ -n $QUERY_HEADER_BYTES_OVERRIDE ]] && QUERY_HEADER_BYTES=$QUERY_HEADER_BYTES_OVERRIDE
 
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonnegative integer'
-is_nonnegative_integer "$INPUT_HEADER_BYTES" || die '--input-header-bytes must be a nonnegative integer'
+is_nonnegative_integer "$DATASET_HEADER_BYTES" || die '--dataset-header-bytes must be a nonnegative integer'
+is_nonnegative_integer "$QUERY_HEADER_BYTES" || die '--query-header-bytes must be a nonnegative integer'
 [[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
     die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
@@ -423,9 +435,11 @@ IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 COMMON_ARGS=(
     --dataset "$DATASET_PATH"
 )
-(( INPUT_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--input-header-bytes "$INPUT_HEADER_BYTES")
+(( DATASET_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+(( QUERY_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--query-header-bytes "$QUERY_HEADER_BYTES")
 $APPLY_Z_NORM && COMMON_ARGS+=(--apply-z-norm)
 $FILETYPE_INT && COMMON_ARGS+=(--filetype-int)
+$FILETYPE_INT8 && COMMON_ARGS+=(--filetype-int8)
 COMMON_ARGS+=(
     --in-memory
     --index-type "$INDEX_TYPE"

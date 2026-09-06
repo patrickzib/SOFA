@@ -95,7 +95,7 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
         fprintf(stderr, "File %s not found!\n", ifilename);
         return FAILURE;
     }
-    if (fseek(ifile, (long) index->settings->input_header_bytes, SEEK_SET) != 0) {
+    if (fseek(ifile, (long) index->settings->dataset_header_bytes, SEEK_SET) != 0) {
         fclose(ifile);
         return FAILURE;
     }
@@ -166,7 +166,7 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                 const size_t offset = (size_t) (position - first) * ts_length;
                 if (filetype_int) {
                     for (unsigned long j = 0; j < ts_length; ++j)
-                        destination[j] = (ts_type) int_block[offset + j];
+                        destination[j] = file_value_to_ts(int_block[offset + j], filetype_int);
                 } else {
                     memcpy(destination, float_block + offset, ts_length * sizeof(*destination));
                 }
@@ -191,7 +191,8 @@ static enum response spartan_collect_samples(isax_index *index, const char *ifil
                 if (fread(ts_orig1, sizeof(file_type), ts_length, ifile) != ts_length) {
                     free(ts_orig1); free(positions); fclose(ifile); return FAILURE;
                 }
-                for (unsigned long j = 0; j < ts_length; ++j) ts[j] = (ts_type) ts_orig1[j];
+                for (unsigned long j = 0; j < ts_length; ++j)
+                    ts[j] = file_value_to_ts(ts_orig1[j], filetype_int);
             } else if (fread(ts, sizeof(ts_type), ts_length, ifile) != ts_length) {
                 free(ts_orig1); free(positions); fclose(ifile); return FAILURE;
             }

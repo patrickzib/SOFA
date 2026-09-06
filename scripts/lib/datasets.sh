@@ -73,7 +73,9 @@ load_dataset() {
     COEFF_NUMBER=64
     APPLY_Z_NORM=false
     FILETYPE_INT=false
-    INPUT_HEADER_BYTES=0
+    FILETYPE_INT8=false
+    DATASET_HEADER_BYTES=0
+    QUERY_HEADER_BYTES=0
 
     case "$dataset" in
         astro)
@@ -84,9 +86,9 @@ load_dataset() {
         bigann|bigann_norm)
             DATASET_ID=bigann
             DATASET_FILE=bigANN.bin; QUERY_FILE=bigANN_queries.bin
-            TS_SIZE=100; DATASET_SIZE=100000000
+            TS_SIZE=128; DATASET_SIZE=100000000
             APPLY_Z_NORM=true; FILETYPE_INT=true
-            [[ $profile == high-frequency ]] && COEFF_NUMBER=50
+            [[ $profile == high-frequency ]] && COEFF_NUMBER=64
             ;;
         deep1b)
             DATASET_FILE=deep1b.bin; QUERY_FILE=deep1b_queries.bin
@@ -115,23 +117,23 @@ load_dataset() {
             DATASET_FILE=SimSearchNet.bin; QUERY_FILE=SimSearchNet_queries.bin
             TS_SIZE=256; DATASET_SIZE=100000000
             APPLY_Z_NORM=true; FILETYPE_INT=true
-            INPUT_HEADER_BYTES=8
+            DATASET_HEADER_BYTES=8; QUERY_HEADER_BYTES=8
             ;;
         spacev1b)
             DATASET_FILE=spacev1B.bin; QUERY_FILE=spacev1B_queries.bin
             TS_SIZE=100; DATASET_SIZE=100000000
-            APPLY_Z_NORM=true; FILETYPE_INT=true
+            APPLY_Z_NORM=true; FILETYPE_INT8=true
             ;;
         text-to-image|text_to_image)
             DATASET_ID=text-to-image
             DATASET_FILE=text-to-image.bin; QUERY_FILE=text-to-image_queries.bin
             TS_SIZE=200; DATASET_SIZE=100000000
-            APPLY_Z_NORM=true
+            APPLY_Z_NORM=true; DATASET_HEADER_BYTES=8
             ;;
         turinganns)
             DATASET_FILE=turingANNs.bin; QUERY_FILE=turingANNs_queries.bin
             TS_SIZE=100; DATASET_SIZE=100000000
-            APPLY_Z_NORM=true; FILETYPE_INT=true
+            APPLY_Z_NORM=true; DATASET_HEADER_BYTES=8; QUERY_HEADER_BYTES=8
             ;;
         seismic)
             DATASET_FILE=seismic.bin; QUERY_FILE=seismic_queries.bin
@@ -222,7 +224,9 @@ load_dataset() {
 }
 
 active_datasets() {
-    printf '%s\n' bigann sald sift1b deep1b scedc astro seismic simsearchnet spacev1b turinganns
+    # TuringANNS remains runnable explicitly, but is excluded until the local
+    # files have been replaced with the canonical float32 distribution.
+    printf '%s\n' bigann sald sift1b deep1b scedc astro seismic simsearchnet spacev1b
 }
 
 seisbench_datasets() {
