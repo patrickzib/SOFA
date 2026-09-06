@@ -91,6 +91,22 @@ static FILE *open_logfile_or_tmp(const char *path) {
     return file;
 }
 
+/* Preserve argv as a proper CSV row so the exact invocation is available in
+ * addition to the resolved settings below. */
+static void write_settings_command(FILE *file, int argc, char **argv) {
+    fputs("command", file);
+    for (int i = 0; i < argc; ++i) {
+        fputc(',', file);
+        fputc('"', file);
+        for (const char *cursor = argv[i]; *cursor != '\0'; ++cursor) {
+            if (*cursor == '"') fputc('"', file);
+            fputc(*cursor, file);
+        }
+        fputc('"', file);
+    }
+    fputc('\n', file);
+}
+
 static int ensure_directory(const char *path) {
     char directory[FILENAME_LENGTH];
     size_t length = strlen(path);
@@ -1390,11 +1406,6 @@ int main(int argc, char **argv) {
 
         SET_LOGFILE(logfile_query);
 
-        fprintf(logfile,
-                "MESSI SETTINGS\nFunction type,%d\nSIMD,%u\ntimeseries length,%d\npaa segments,%d\nisax-cardinality,%d\nleaf size,%d\nsample-size,%d\nsample type,%d\n",
-                function_type, SIMD_flag, time_series_size, n_segments, sax_cardinality, leaf_size, sample_size,
-                sample_type);
-
         if (!inmemory_flag && (function_type == 3 || function_type == 4 || function_type == 5 || function_type == 6)) {
             fprintf(stderr, "warning: function_type %d requires in-memory mode; enabling --inmemory.\n",
                     function_type);
@@ -1455,6 +1466,65 @@ int main(int argc, char **argv) {
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 
+        /* Record the resolved configuration rather than the small legacy
+         * subset.  This is the authoritative, reproducible description of
+         * both iSAX and trie benchmark runs. */
+        fputs("MESSI SETTINGS\n", logfile);
+        write_settings_command(logfile, argc, argv);
+        fprintf(logfile,
+                "dataset,%s\nqueries,%s\nindex path,%s\n"
+                "layout,%s\nin-memory,%d\n"
+                "dataset size,%ld\nqueries size,%d\ntimeseries length,%d\n"
+                "function type,%d\nSIMD,%u\n"
+                "input type,%s\ndataset header bytes,%lu\nquery header bytes,%lu\n"
+                "apply z-norm,%d\ninput is normalized,%d\n"
+                "symbolic dimensions,%d\nrecord lower-bound dimensions,%d\n"
+                "SAX cardinality bits,%d\nleaf size,%d\nminimum leaf size,%d\n"
+                "initial leaf buffer size,%d\nmaximum total buffer size,%d\n"
+                "initial first-buffer-layer size,%d\nloaded leaves,%d\n"
+                "threads,%d\nqueue count,%d\nrequested NUMA nodes,%d\n"
+                "tight bound,%d\naggressive check,%d\nminimum distance,%.9g\n"
+                "node split criterion,%d\nroot split mode,%s\nuniform root bits,%d\n"
+                "histogram type,%d\nsample size,%d\nsample type,%d\nsampling seed,%u\n"
+                "SFA coefficients,%d\nquery report interval,%d\nprofile query phases,%d\n"
+                "use existing index,%d\ncompletion type,%d\nserial scan,%d\ntop-k,%d\nk,%d\n"
+                "iSAX node MBR,%d\niSAX record-MBR suffix bound,%d\n"
+                "iSAX record-LB table,%d\niSAX MBR dimensions,%d\n"
+                "trie query batch,%d\ntrie record-MBR suffix bound,%d\n"
+                "trie streaming leaf scan,%d\ntrie leaf IVF groups,%d\n"
+                "trie leaf IVF raw-ball bound,%d\ntrie leaf IVF radial bound,%d\n"
+                "trie leaf IVF radial bound auto,%d\ntrie fanout,%d\n"
+                "trie dynamic alphabet,%d\ntrie minimum fanout,%d\n"
+                "trie maximum fanout,%d\ntrie alphabet budget bits,%d\n",
+                dataset, queries, index_path,
+                index_type == MESSI_INDEX_TRIE ? "trie" : "isax", inmemory_flag,
+                dataset_size, queries_size, time_series_size,
+                function_type, SIMD_flag,
+                filetype_int == FILE_INPUT_INT8 ? "int8" :
+                    (filetype_int == FILE_INPUT_UINT8 ? "uint8" : "float32"),
+                dataset_header_bytes, query_header_bytes,
+                apply_znorm, is_norm,
+                index_settings->n_segments, index_settings->trie_bound_dimensions,
+                sax_cardinality, leaf_size, min_leaf_size,
+                initial_lbl_size, flush_limit, initial_fbl_size, total_loaded_leaves,
+                maxquerythread, N_PQUEUE, requested_numa_nodes,
+                tight_bound, aggressive_check, minimum_distance,
+                node_split_criterion,
+                root_split_mode == MESSI_ROOT_SPLIT_VARIANCE ? "variance" :
+                    (root_split_mode == MESSI_ROOT_SPLIT_UNIFORM ? "uniform" : "default"),
+                dynamic_index,
+                histogram_type, sample_size, sample_type, sampling_seed,
+                n_coefficients, query_report_interval, profile_query_phases,
+                use_index, complete_type, serial_scan, topk, k_size,
+                isax_node_mbr, isax_record_mbr_suffix_bound,
+                isax_record_lb_table, isax_mbr_dimensions,
+                trie_query_batch, trie_record_mbr_suffix_bound,
+                trie_streaming_leaf_scan, trie_leaf_ivf,
+                trie_leaf_ivf_raw_ball_bound, trie_leaf_ivf_radial_bound,
+                trie_leaf_ivf_radial_bound_auto, trie_fanout,
+                trie_dynamic_alphabet, trie_min_fanout,
+                trie_max_fanout, trie_alphabet_budget_bits);
+        fflush(logfile);
 
         if (!inmemory_flag) {
             idx = isax_index_init(index_settings);

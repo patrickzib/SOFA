@@ -311,11 +311,18 @@ extern int query_report_interval;
             } \
         } while (0);
         //#define PRINT_STATS(result_distance) printf("%d\t",loaded_nodes);
-        #define INIT_INDEX_STATS_FILE(ifile)  fprintf(ifile, "binning,indexing total, transformation, indexing,total time,index file size\n%.0f,%.0f,%ld,%ld,%.0f,", total_binning_time, total_indexing_time,\
-        TOTAL_TRANSFORMATION_PART_TIME, TOTAL_INDEXING_PART_TIME, (total_binning_time+total_indexing_time));
-        /* Preserve the established iSAX CSV layout: existing notebooks use
-         * these column names.  Trie populates the common query metrics and
-         * leaves unavailable disk-engine timings at zero. */
+        /* One self-contained index-construction record.  All durations are
+         * microseconds.  In-memory benchmarks do not persist an index file,
+         * so deliberately do not advertise a fictitious size. */
+        #define INIT_INDEX_STATS_FILE(ifile) \
+            fprintf((ifile), \
+                    "layout,function type,indexed records,series length,symbolic dimensions,record lower-bound dimensions,binning us,index construction wall us,total construction wall us\n" \
+                    "%s,%d,%ld,%d,%d,%d,%.0f,%.0f,%.0f\n", \
+                    (idx)->settings->index_type == MESSI_INDEX_TRIE ? "trie" : "isax", \
+                    (idx)->settings->function_type, (long) (idx)->total_records, \
+                    (idx)->settings->timeseries_size, (idx)->settings->n_segments, \
+                    (idx)->settings->trie_bound_dimensions, total_binning_time, \
+                    total_indexing_time, total_binning_time + total_indexing_time)
         #define INIT_SAVE_FILE(ifile) fprintf(ifile, "querying time, init time, tree pass time, pq insert time, pq remove time, lb dist time, real dist time, nodes, checked_nodes, bytes_accessed, loaded_nodes, loaded_records, real dist calc, lb dist calc, approximate_distance, distance, total\n");
         #define SAVE_STATS(result_distance) fprintf(LOGFILE,"%.0f, %.0f, %.0f, %lu, %lu, %lu, %lu, %d, %d, %ld, %d, %lld, %lu, %lu, %lf, %lf, %.0f\n", \
         total_querying_time, total_init_time, \

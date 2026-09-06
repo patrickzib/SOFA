@@ -1216,6 +1216,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
                                   int filetype_int, int apply_znorm) {
     if (index == NULL || index->settings == NULL || ts_num <= 0) return FAILURE;
     double build_start = messi_monotonic_seconds();
+    COUNT_INDEXING_TIME_START
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
     if (fseek(file, (long) index->settings->dataset_header_bytes, SEEK_SET) != 0) {
@@ -1427,6 +1428,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     double split_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
+    COUNT_INDEXING_TIME_END
     messi_build_progress_finish(&build_progress);
     fprintf(stderr, ">>> trie build timing\n");
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
