@@ -22,6 +22,7 @@ Options:
   --index-type TYPE       Index layout: trie (default) or isax
   --enable-sofa-v2        Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
   --isax-node-mbr         Enable iSAX node MBR bounds
+  --isax-n-segments N     iSAX/SAX PAA segments (default: 16)
   --isax-record-mbr-suffix-bound
                           Enable learned iSAX record-MBR suffix bounds
   --isax-mbr-dims N       Extended iSAX MBR dimensions (default: 32)
@@ -135,6 +136,7 @@ TRIE_FANOUT=8
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=64
 TRIE_RECORD_LB_DIMS_SPECIFIED=false
+ISAX_N_SEGMENTS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_STREAMING_LEAF_SCAN=true
@@ -179,6 +181,7 @@ while [[ $# -gt 0 ]]; do
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
         --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
+        --isax-n-segments) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_N_SEGMENTS=$2; shift 2 ;;
         --isax-record-mbr-suffix-bound) ISAX_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --isax-mbr-dims|--isax-mbr-dimensions) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_MBR_DIMS=$2; shift 2 ;;
         --isax-record-lb-table) ISAX_RECORD_LB_TABLE=true; shift ;;
@@ -358,6 +361,7 @@ run_one() {
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
     if [[ $INDEX_TYPE == isax ]]; then
+        command+=(--isax-n-segments "$ISAX_N_SEGMENTS")
         $ENABLE_SOFA_V2 && command+=(--enable-sofa-v2)
         $ISAX_NODE_MBR && command+=(--isax-node-mbr)
         $ISAX_RECORD_MBR_SUFFIX_BOUND && command+=(--isax-record-mbr-suffix-bound)

@@ -32,6 +32,7 @@ Options:
   --index-type TYPE         Index layout: trie (default) or isax
   --enable-sofa-v2          Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
   --isax-node-mbr           Enable iSAX node MBR bounds
+  --isax-n-segments N       iSAX/SAX PAA segments (default: 16)
   --isax-record-mbr-suffix-bound
                             Enable learned iSAX record-MBR suffix bounds
   --isax-mbr-dims N         Extended iSAX MBR dimensions (default: 32)
@@ -200,6 +201,7 @@ TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
 TRIE_RECORD_LB_DIMS=64
 TRIE_RECORD_LB_DIMS_SPECIFIED=false
+ISAX_N_SEGMENTS=16
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_STREAMING_LEAF_SCAN=true
@@ -261,6 +263,7 @@ while [[ $# -gt 0 ]]; do
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
         --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
         --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
+        --isax-n-segments) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_N_SEGMENTS=$2; shift 2 ;;
         --isax-record-mbr-suffix-bound) ISAX_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --isax-mbr-dims|--isax-mbr-dimensions) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_MBR_DIMS=$2; shift 2 ;;
         --isax-record-lb-table) ISAX_RECORD_LB_TABLE=true; shift ;;
@@ -332,6 +335,7 @@ fi
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || die '--trie-query-batch requires --index-type trie'
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
+is_positive_integer "$ISAX_N_SEGMENTS" || die '--isax-n-segments must be a positive integer'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
 [[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
@@ -463,6 +467,7 @@ COMMON_ARGS+=(
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--n-segments "$TRIE_RECORD_LB_DIMS")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-split-dimensions "$TRIE_SPLIT_DIMS")
 if [[ $INDEX_TYPE == isax ]]; then
+    COMMON_ARGS+=(--n-segments "$ISAX_N_SEGMENTS")
     $ENABLE_SOFA_V2 && COMMON_ARGS+=(--enable-sofa-v2)
     $ISAX_NODE_MBR && COMMON_ARGS+=(--isax-node-mbr)
     $ISAX_RECORD_MBR_SUFFIX_BOUND && COMMON_ARGS+=(--isax-record-mbr-suffix-bound)

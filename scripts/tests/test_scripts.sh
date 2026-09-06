@@ -22,7 +22,13 @@ assert_contains "$OUTPUT" '--tight-bound'
 assert_contains "$OUTPUT" '--sample-type 2'
 assert_not_contains "$OUTPUT" '--sample-type 3'
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
+assert_contains "$OUTPUT" '--n-segments 16'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --index-type isax \
+    --isax-n-segments 32 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--n-segments 32'
+pass 'iSAX/SAX segment count defaults to 16 and can be overridden'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" simsearchnet standard --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet.bin'
