@@ -16,6 +16,9 @@ SPEC.loader.exec_module(generate_queries)
 
 
 class GenerateQueriesTest(unittest.TestCase):
+    def test_text_to_image_is_not_generated_by_default(self):
+        self.assertNotIn("text-to-image", generate_queries.DEFAULT_DATASETS)
+
     def test_spacev_preserves_signed_int8_and_writes_no_header(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

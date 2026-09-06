@@ -315,14 +315,16 @@ pass 'runner parses the symbolic-record-bound label into its compact suite summa
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
-assert_contains "$OUTPUT" 'text-to-image_noise_01.bin'
+assert_not_contains "$OUTPUT" 'text-to-image_noise_01.bin'
 assert_not_contains "$OUTPUT" 'turingANNs_noise_05.bin'
 assert_not_contains "$OUTPUT" '--query-header-bytes 8'
-pass 'generated-query suite expands valid workloads and excludes local TuringANNS'
+pass 'generated-query suite expands default workloads and excludes opt-in datasets'
 
 OUTPUT=$(bash -c 'source "$1"; active_datasets' _ "$SCRIPT_DIR/lib/datasets.sh")
 assert_not_contains "$OUTPUT" 'turinganns'
-pass 'known-invalid local TuringANNS is excluded from the default suite'
+assert_not_contains "$OUTPUT" 'simsearchnet'
+assert_not_contains "$OUTPUT" 'text-to-image'
+pass 'opt-in datasets are excluded from the default suite'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--index-type trie'

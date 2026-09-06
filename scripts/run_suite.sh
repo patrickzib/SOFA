@@ -405,9 +405,6 @@ run_query_suite() {
                 'spacev1b|generated/spacev1B_noise_025.bin|SPACEV1B_ne_025'
                 'spacev1b|generated/spacev1B_noise_05.bin|SPACEV1B_ne_05'
                 'spacev1b|generated/spacev1B_noise_1.bin|SPACEV1B_ne_1'
-                'text-to-image|generated/text-to-image_noise_005.bin|TEXTTOIMAGE_ne_005'
-                'text-to-image|generated/text-to-image_noise_01.bin|TEXTTOIMAGE_ne_01'
-                'text-to-image|generated/text-to-image_noise_025.bin|TEXTTOIMAGE_ne_025'
             )
             ;;
         hard-queries)

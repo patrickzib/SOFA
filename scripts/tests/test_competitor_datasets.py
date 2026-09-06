@@ -48,10 +48,11 @@ class CompetitorDatasetMetadataTests(unittest.TestCase):
             ("seismic.bin", "seismic_queries.bin", 256, False, np.float32, 0, 0),
         )
 
-    def test_new_datasets_are_default_and_use_100m_prefixes(self):
+    def test_dataset_defaults_and_100m_prefixes(self):
+        for name in ("simsearchnet", "TEXTTOIMAGE"):
+            self.assertNotIn(name, FAISS.DEFAULT_DATASETS)
+            self.assertNotIn(name, SKLEARN.DEFAULT_DATASETS)
         for name in ("simsearchnet", "seismic"):
-            self.assertIn(name, FAISS.DEFAULT_DATASETS)
-            self.assertIn(name, SKLEARN.DEFAULT_DATASETS)
             self.assertEqual(FAISS.dataset_properties[name][0], 100_000_000)
             self.assertEqual(SKLEARN.DATASET_PROPERTIES[name][0], 100_000_000)
 

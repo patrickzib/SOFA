@@ -59,7 +59,10 @@ datasets = {
     "TXED": ["TXED.bin", "TXED_queries.bin", 256, 1, np.float32, 0, 0],
 }
 
-DEFAULT_DATASETS = [name for name in datasets if name != "turinganns"]
+DEFAULT_DATASETS = [
+    name for name in datasets
+    if name not in {"turinganns", "simsearchnet", "TEXTTOIMAGE"}
+]
 
 # Mirrors DATASET_SIZE and APPLY_Z_NORM in scripts/lib/datasets.sh.  The
 # separate metadata keeps this competitor benchmark comparable to the runner
@@ -91,7 +94,7 @@ def parse_args():
     parser.add_argument("--data-root", default=os.environ.get("MESSI_DATA_ROOT", NORMAL_PATH))
     parser.add_argument("--seisbench-root", default=os.environ.get("MESSI_SEISBENCH_ROOT", SEISBENCH_PATH))
     parser.add_argument("--datasets", default=",".join(DEFAULT_DATASETS),
-                        help="comma-separated dataset IDs; TuringANNS is opt-in")
+                        help="comma-separated dataset IDs; TuringANNS, SimSearchNet, and Text-to-Image are opt-in")
     args = parser.parse_args()
     if any(threads <= 0 for threads in args.threads):
         parser.error("--threads values must be positive")

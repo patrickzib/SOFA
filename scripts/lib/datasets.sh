@@ -226,7 +226,7 @@ load_dataset() {
 active_datasets() {
     # TuringANNS remains runnable explicitly, but is excluded until the local
     # files have been replaced with the canonical float32 distribution.
-    printf '%s\n' bigann sald sift1b deep1b scedc astro seismic simsearchnet spacev1b
+    printf '%s\n' bigann sald sift1b deep1b scedc astro seismic spacev1b
 }
 
 seisbench_datasets() {

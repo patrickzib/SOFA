@@ -43,7 +43,7 @@ DATASETS = {
         100, np.dtype("i1"), 0, (0.25, 0.5, 1.0)
     ),
 }
-DEFAULT_DATASETS = [name for name in DATASETS if name != "turingANNs"]
+DEFAULT_DATASETS = [name for name in DATASETS if name not in {"turingANNs", "text-to-image"}]
 
 
 def read_source(path: Path, spec: DatasetSpec) -> np.ndarray:
