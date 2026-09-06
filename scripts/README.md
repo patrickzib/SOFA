@@ -12,6 +12,7 @@ scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
 scripts/run_dataset.sh bigann knn --threads 36 --queue-number 36 --k 20
 scripts/run_dataset.sh sald sampling --threads 36 --queue-number 36 --sample-factor 0.2
 scripts/run_dataset.sh astro high-frequency --threads 36 --queue-number 36 --dry-run
+scripts/run_dataset.sh simsearchnet standard --threads 36
 ```
 
 The profiles preserve the existing experiment matrices. With the default trie
@@ -60,9 +61,9 @@ Command-line path options take precedence over these environment variables:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `MESSI_BINARY` | repository `bin/MESSI` | MESSI executable |
-| `MESSI_DATA_ROOT` | `/vol/tmp/schaefpa/messi_datasets` | main datasets and queries |
+| `MESSI_DATA_ROOT` | `/home/tmp/schaefpa/messi_datasets` | main datasets and queries |
 | `MESSI_QUERY_ROOT` | main data root | optional separate main query root |
-| `MESSI_SEISBENCH_ROOT` | `/vol/tmp/schaefpa/seismic` | SeisBench datasets and queries |
+| `MESSI_SEISBENCH_ROOT` | `/home/tmp/schaefpa/seismic` | SeisBench datasets and queries |
 | `MESSI_SEISBENCH_QUERY_ROOT` | SeisBench root | optional separate SeisBench query root |
 | `MESSI_LOG_ROOT` | `$HOME/MESSI_logs` | logs produced by MESSI |
 | `MESSI_SHELL_LOG_DIR` | `MESSI_LOG_ROOT` | combined runner transcript for each dataset/profile run |
@@ -74,16 +75,55 @@ Relative dataset and query overrides are resolved below the applicable data
 root. Absolute overrides are used unchanged. `--dry-run` prints shell-escaped
 commands and performs no benchmark or log archival.
 
+The regular suite includes `seismic` and `simsearchnet`. Both use the first
+100 million base records for comparability with the other suite datasets.
+SimSearchNet is 256-dimensional uint8 data in the ANN benchmark binary format;
+its dataset and query files have an 8-byte `(count, dimensions)` header, which
+the runner skips automatically. BigANN is 128-dimensional uint8, while SpaceV
+is 100-dimensional signed int8. Text-to-Image uses float32 with an 8-byte base
+header and a raw local query file. `--dataset-header-bytes` and
+`--query-header-bytes` override the offsets independently;
+`--input-header-bytes` remains a shorthand for setting both.
+
+TuringANNS is excluded from the default regular and generated-query suites
+because the currently observed local `turingANNs.bin` is not the canonical
+100-dimensional float32 collection. It remains selectable explicitly after
+installing the correct headered base and query files.
+
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
 directory inside terminal leaves with at least 4 K records. It is enabled by
 default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
-`--trie-streaming-leaf-scan` provides an A/B alternative to the default
-best-first record heap. It computes each record's lower bound and immediately
-runs exact distance when that bound passes, so an improved BSF affects the very
-next record. Cluster and leaf traversal ordering is unchanged.
+`--trie-leaf-ivf-radial-bound` stores each record's distance from its raw-space
+IVF centroid as a contiguous float32 array. Records remain in their existing
+IVF-cluster order. During a leaf scan, AVX-512 classifies 16 radii per load and
+AVX2 classifies 8; the survivor mask is processed in record order before the
+symbolic record bound. Rejected records skip both the symbolic bound and exact
+distance. The option adds one float per record in eligible leaves but performs
+no radius sorting or two-front traversal.
+
+Use `--trie-leaf-ivf-radial-bound-auto` for the conservative adaptive mode.
+It measures at least 64 K radial candidates of each query (rounded to whole
+concurrently scanned IVF ranges) and bypasses the bound for the remaining
+ranges when fewer than 25% were rejected. The calibration is shared across
+query workers and stops all adaptive accounting after its one query-level
+decision. The existing
+`--trie-leaf-ivf-radial-bound` option remains unconditional.
+
+The query summary attributes pruning to the first successful bound: node MBR,
+leaf-IVF symbolic MBR, leaf-IVF raw ball, per-record radial bound, then the
+symbolic record bound. Each line reports an average count per query, its
+stage-local pruning rate, and its share of all indexed records, so overlapping
+bounds are not double-counted.
+
+Trie leaf refinement streams by default: it computes each record's lower bound
+and immediately runs exact distance when that bound passes, so an improved BSF
+affects the very next record. Cluster and leaf traversal ordering is unchanged.
+Use `--no-trie-streaming-leaf-scan` to restore the best-first record heap for
+A/B benchmarks; `--trie-streaming-leaf-scan` remains as an explicit spelling
+of the default.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path

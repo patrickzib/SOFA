@@ -83,6 +83,13 @@ messi_index *messi_index_create(const messi_index_params *params) {
 
     const messi_index_type index_type = params->index_type == MESSI_INDEX_TRIE
                                             ? MESSI_INDEX_TRIE : MESSI_INDEX_ISAX;
+    const int radial_bound_requested = params->trie_leaf_ivf_radial_bound ||
+                                       params->trie_leaf_ivf_radial_bound_auto;
+    if (radial_bound_requested &&
+        (index_type != MESSI_INDEX_TRIE || params->trie_leaf_ivf == 0)) {
+        free(wrapper);
+        return NULL;
+    }
     isax_index_settings *settings = isax_index_settings_init(
         root_directory,
         params->timeseries_size,
@@ -127,6 +134,10 @@ messi_index *messi_index_create(const messi_index_params *params) {
     settings->trie_streaming_leaf_scan =
         index_type == MESSI_INDEX_TRIE && params->trie_streaming_leaf_scan;
     settings->trie_leaf_ivf = params->trie_leaf_ivf;
+    settings->trie_leaf_ivf_radial_bound =
+        index_type == MESSI_INDEX_TRIE && radial_bound_requested;
+    settings->trie_leaf_ivf_radial_bound_auto =
+        index_type == MESSI_INDEX_TRIE && params->trie_leaf_ivf_radial_bound_auto;
     settings->trie_fanout = params->trie_fanout == 0 ? 8 : params->trie_fanout;
     settings->trie_dynamic_alphabet = params->trie_dynamic_alphabet;
     settings->trie_min_bits = fanout_to_bits(params->trie_min_fanout == 0
@@ -153,7 +164,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
         return NULL;
     }
     int filetype_int = params->filetype_int;
-    if (filetype_int != 0 && filetype_int != 1) {
+    if (filetype_int < FILE_INPUT_FLOAT32 || filetype_int > FILE_INPUT_INT8) {
         filetype_int = 0;
     }
     wrapper->filetype_int = filetype_int;

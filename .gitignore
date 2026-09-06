@@ -352,6 +352,7 @@ cython_debug/
 # Autotools artifacts
 ar-lib
 config.h
+!scripts/benchmark_config/config.h
 config.log
 config.status
 configure~

@@ -17,6 +17,9 @@ Options:
   --query-file PATH         Override the query filename/path
   --dataset-size N          Override dataset records; accepts 100m, 1mio, 20k
   --query-size N            Queries; accepts count suffixes (default: 100; high-frequency: 1)
+  --dataset-header-bytes N  Bytes before base-vector payload
+  --query-header-bytes N    Bytes before query-vector payload
+  --input-header-bytes N    Compatibility shorthand setting both offsets
   --leaf-size N             Maximum records per leaf; accepts count suffixes (default: 20000)
   --min-leaf-size N         iSAX query-leaf threshold; trie does not enforce it
   --k N                     Required by the knn profile
@@ -42,11 +45,17 @@ Options:
   --no-trie-record-mbr-suffix-bound
                             Disable trie record-MBR suffix pruning
   --trie-streaming-leaf-scan
-                            Refine each passing record immediately instead of using the record heap
+                            Refine each passing record immediately (default)
+  --no-trie-streaming-leaf-scan
+                            Use the record lower-bound heap instead
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves (default: 16)
   --no-trie-leaf-ivf        Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
+  --trie-leaf-ivf-radial-bound
+                            Always prune IVF records by centroid radius without reordering
+  --trie-leaf-ivf-radial-bound-auto
+                            Keep radial pruning only after a 25% sampled rejection rate
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet  Use one global variance-weighted alphabet allocation
   --trie-min-fanout N      Minimum dynamic trie fanout (default: 2)
@@ -173,6 +182,9 @@ DATASET_OVERRIDE=
 QUERY_OVERRIDE=
 DATASET_SIZE_OVERRIDE=
 QUERY_SIZE_OVERRIDE=
+INPUT_HEADER_BYTES_OVERRIDE=
+DATASET_HEADER_BYTES_OVERRIDE=
+QUERY_HEADER_BYTES_OVERRIDE=
 LEAF_SIZE=20000
 MIN_LEAF_SIZE=
 K_SIZE=
@@ -190,10 +202,13 @@ TRIE_RECORD_LB_DIMS=64
 TRIE_RECORD_LB_DIMS_SPECIFIED=false
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
-TRIE_STREAMING_LEAF_SCAN=false
+TRIE_STREAMING_LEAF_SCAN=true
+TRIE_STREAMING_LEAF_SCAN_SPECIFIED=false
 TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
+TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
@@ -215,8 +230,8 @@ MESSI_EXECUTABLE=${MESSI_BINARY:-"$SCRIPT_DIR/../bin/MESSI"}
 # Keep the shell transcript with MESSI's CSV logs by default.  An explicit
 # MESSI_SHELL_LOG_DIR remains useful for CI or a separate transcript archive.
 MESSI_SHELL_LOG_DIR=${MESSI_SHELL_LOG_DIR:-${MESSI_LOG_ROOT:-"$HOME/MESSI_logs"}}
-DATA_ROOT=${MESSI_DATA_ROOT:-/vol/tmp/schaefpa/messi_datasets}
-SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/vol/tmp/schaefpa/seismic}
+DATA_ROOT=${MESSI_DATA_ROOT:-/home/tmp/schaefpa/messi_datasets}
+SEISBENCH_ROOT=${MESSI_SEISBENCH_ROOT:-/home/tmp/schaefpa/seismic}
 QUERY_ROOT=${MESSI_QUERY_ROOT:-}
 SEISBENCH_QUERY_ROOT=${MESSI_SEISBENCH_QUERY_ROOT:-}
 
@@ -231,6 +246,9 @@ while [[ $# -gt 0 ]]; do
         --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_OVERRIDE=$2; shift 2 ;;
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE_OVERRIDE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE_OVERRIDE=$2; shift 2 ;;
+        --input-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; INPUT_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
+        --dataset-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
+        --query-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_HEADER_BYTES_OVERRIDE=$2; shift 2 ;;
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --k) [[ $# -ge 2 ]] || die "$1 requires a value"; K_SIZE=$2; shift 2 ;;
@@ -253,10 +271,13 @@ while [[ $# -gt 0 ]]; do
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
-        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; shift ;;
+        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
+        --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
+        --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -284,11 +305,19 @@ load_dataset "$DATASET_ARG" "$PROFILE"
 [[ -n $DATASET_OVERRIDE ]] && DATASET_FILE=$DATASET_OVERRIDE
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
+if [[ -n $INPUT_HEADER_BYTES_OVERRIDE ]]; then
+    DATASET_HEADER_BYTES=$INPUT_HEADER_BYTES_OVERRIDE
+    QUERY_HEADER_BYTES=$INPUT_HEADER_BYTES_OVERRIDE
+fi
+[[ -n $DATASET_HEADER_BYTES_OVERRIDE ]] && DATASET_HEADER_BYTES=$DATASET_HEADER_BYTES_OVERRIDE
+[[ -n $QUERY_HEADER_BYTES_OVERRIDE ]] && QUERY_HEADER_BYTES=$QUERY_HEADER_BYTES_OVERRIDE
 
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonnegative integer'
+is_nonnegative_integer "$DATASET_HEADER_BYTES" || die '--dataset-header-bytes must be a nonnegative integer'
+is_nonnegative_integer "$QUERY_HEADER_BYTES" || die '--query-header-bytes must be a nonnegative integer'
 [[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
     die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
@@ -304,9 +333,11 @@ fi
 [[ -z $TRIE_MBR_DIMS || $INDEX_TYPE == trie ]] || die '--trie-mbr-dims requires --index-type trie'
 [[ $TRIE_RECORD_LB_DIMS_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || die '--trie-record-mbr-suffix-bound requires --index-type trie'
-[[ $TRIE_STREAMING_LEAF_SCAN == false || $INDEX_TYPE == trie ]] || die '--trie-streaming-leaf-scan requires --index-type trie'
+[[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound-auto requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || die '--trie-dynamic-alphabet requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || die 'choose at most one of --trie-query-parallel and --trie-query-batch'
@@ -321,6 +352,10 @@ MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must b
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound-auto requires --trie-leaf-ivf'
     is_positive_integer "$TRIE_RECORD_LB_DIMS" || die '--n-segments must be a positive integer'
     (( TRIE_RECORD_LB_DIMS >= 16 && TRIE_RECORD_LB_DIMS <= 64 )) || \
         die '--n-segments must be between 16 and 64 for trie runs'
@@ -400,8 +435,11 @@ IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 COMMON_ARGS=(
     --dataset "$DATASET_PATH"
 )
+(( DATASET_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+(( QUERY_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--query-header-bytes "$QUERY_HEADER_BYTES")
 $APPLY_Z_NORM && COMMON_ARGS+=(--apply-z-norm)
 $FILETYPE_INT && COMMON_ARGS+=(--filetype-int)
+$FILETYPE_INT8 && COMMON_ARGS+=(--filetype-int8)
 COMMON_ARGS+=(
     --in-memory
     --index-type "$INDEX_TYPE"
@@ -436,11 +474,14 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == true ]] && COMMON_ARGS+=(--trie-record-mbr-suffix-bound)
     [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && COMMON_ARGS+=(--no-trie-record-mbr-suffix-bound)
     [[ $TRIE_STREAMING_LEAF_SCAN == true ]] && COMMON_ARGS+=(--trie-streaming-leaf-scan)
+    [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && COMMON_ARGS+=(--no-trie-streaming-leaf-scan)
 fi
 if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
     [[ $TRIE_LEAF_IVF == 0 ]] && COMMON_ARGS+=(--no-trie-leaf-ivf)
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound)
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound-auto)
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet
                       --trie-min-fanout "$TRIE_MIN_FANOUT"
@@ -468,7 +509,7 @@ collect_run_summary() {
     local method=$1 transcript=$2 fields method_name binning layout leaf_cap fanout wall lower lower_pct exact exact_pct
     fields=$(awk '
         /^  wall time[[:space:]]*:/ { wall = $4 " " $5 }
-        /^  lower bounds[[:space:]]*:/ {
+        /^  (symbolic record bounds|lower bounds)[[:space:]]*:/ {
             line = $0; sub(/^.*:[[:space:]]*/, "", line)
             marker = index(line, " (")
             if (marker != 0) {

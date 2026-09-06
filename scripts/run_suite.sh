@@ -32,6 +32,9 @@ Options:
   --query-file PATH       Override the query path for regular-suite runs
   --dataset-size N        Override dataset records; accepts count suffixes
   --query-size N          Override queries per run; accepts count suffixes
+  --dataset-header-bytes N  Override bytes before base-vector payloads
+  --query-header-bytes N  Override bytes before query-vector payloads
+  --input-header-bytes N  Compatibility shorthand setting both offsets
   --leaf-size N           Maximum records per leaf; accepts count suffixes
   --min-leaf-size N       iSAX query-leaf threshold; trie does not enforce it
   --sample-size N         Override binning sample size; accepts count suffixes
@@ -46,11 +49,17 @@ Options:
   --no-trie-record-mbr-suffix-bound
                           Disable trie record-MBR suffix pruning
   --trie-streaming-leaf-scan
-                          Refine each passing record immediately instead of using the record heap
+                          Refine each passing record immediately (default)
+  --no-trie-streaming-leaf-scan
+                          Use the record lower-bound heap instead
   --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves (default: 16)
   --no-trie-leaf-ivf       Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
+  --trie-leaf-ivf-radial-bound
+                          Always prune IVF records by centroid radius without reordering
+  --trie-leaf-ivf-radial-bound-auto
+                          Keep radial pruning only after a 25% sampled rejection rate
   --trie-fanout 2|4|8      Trie symbolic split fanout (default: 8)
   --trie-dynamic-alphabet Use one global variance-weighted alphabet allocation
   --trie-min-fanout N     Minimum dynamic trie fanout (default: 2)
@@ -88,6 +97,7 @@ dataset_label() {
     case "$1" in
         bigann) printf 'BIGANN' ;; sald) printf 'SALD' ;; sift1b) printf 'SIFT1b' ;;
         deep1b) printf 'DEEP1b' ;; scedc) printf 'SCEDC' ;; astro) printf 'ASTRO' ;;
+        seismic) printf 'SEISMIC' ;; simsearchnet) printf 'SIMSEARCHNET' ;;
         ethc) printf 'ETHC' ;; isc_ehb_depthphases) printf 'ISC_EHB_DepthPhases' ;;
         lendb) printf 'LenDB' ;; iquique) printf 'Iquique' ;; neic) printf 'NEIC' ;;
         obs) printf 'OBS' ;; obst2024) printf 'OBST2024' ;; pnw) printf 'PNW' ;;
@@ -112,6 +122,9 @@ DATASET_FILE=
 QUERY_FILE=
 DATASET_SIZE=
 QUERY_SIZE=
+INPUT_HEADER_BYTES=
+DATASET_HEADER_BYTES=
+QUERY_HEADER_BYTES=
 LEAF_SIZE=
 MIN_LEAF_SIZE=
 SAMPLE_SIZE=
@@ -124,10 +137,13 @@ TRIE_RECORD_LB_DIMS=64
 TRIE_RECORD_LB_DIMS_SPECIFIED=false
 TRIE_SPLIT_DIMS=
 TRIE_RECORD_MBR_SUFFIX_BOUND=
-TRIE_STREAMING_LEAF_SCAN=false
+TRIE_STREAMING_LEAF_SCAN=true
+TRIE_STREAMING_LEAF_SCAN_SPECIFIED=false
 TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
+TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_DYNAMIC_ALPHABET=false
 TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
@@ -172,6 +188,9 @@ while [[ $# -gt 0 ]]; do
         --query-file) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_FILE=$2; shift 2 ;;
         --dataset-size) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_SIZE=$2; shift 2 ;;
         --query-size) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_SIZE=$2; shift 2 ;;
+        --input-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; INPUT_HEADER_BYTES=$2; shift 2 ;;
+        --dataset-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_HEADER_BYTES=$2; shift 2 ;;
+        --query-header-bytes) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_HEADER_BYTES=$2; shift 2 ;;
         --leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; LEAF_SIZE=$2; shift 2 ;;
         --min-leaf-size) [[ $# -ge 2 ]] || die "$1 requires a value"; MIN_LEAF_SIZE=$2; shift 2 ;;
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
@@ -183,10 +202,13 @@ while [[ $# -gt 0 ]]; do
         --trie-split-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_SPLIT_DIMS=$2; shift 2 ;;
         --trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=true; shift ;;
         --no-trie-record-mbr-suffix-bound) TRIE_RECORD_MBR_SUFFIX_BOUND=false; shift ;;
-        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; shift ;;
+        --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
+        --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
+        --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -229,8 +251,8 @@ esac
     die '--n-segments requires --index-type trie'
 [[ -z $TRIE_RECORD_MBR_SUFFIX_BOUND || $INDEX_TYPE == trie ]] || \
     die '--trie-record-mbr-suffix-bound requires --index-type trie'
-[[ $TRIE_STREAMING_LEAF_SCAN == false || $INDEX_TYPE == trie ]] || \
-    die '--trie-streaming-leaf-scan requires --index-type trie'
+[[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || \
+    die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $INDEX_TYPE == trie ]] || \
     die '--trie-query-parallel requires --index-type trie'
 [[ $TRIE_QUERY_BATCH == false || $INDEX_TYPE == trie ]] || \
@@ -242,10 +264,18 @@ esac
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || \
     die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-leaf-ivf-radial-bound requires --index-type trie'
+[[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || \
+    die '--trie-leaf-ivf-radial-bound-auto requires --index-type trie'
 [[ $TRIE_DYNAMIC_ALPHABET == false || $INDEX_TYPE == trie ]] || \
     die '--trie-dynamic-alphabet requires --index-type trie'
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
+        die '--trie-leaf-ivf-radial-bound-auto requires --trie-leaf-ivf'
 fi
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
     [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
@@ -286,6 +316,9 @@ run_one() {
     [[ -n $QUERY_FILE ]] && command+=(--query-file "$QUERY_FILE")
     [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
     [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+    [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
+    [[ -n $DATASET_HEADER_BYTES ]] && command+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+    [[ -n $QUERY_HEADER_BYTES ]] && command+=(--query-header-bytes "$QUERY_HEADER_BYTES")
     [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
     command+=(--sample-type "$SAMPLE_TYPE")
     [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
@@ -302,9 +335,12 @@ run_one() {
         $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
         [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
         $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
+        [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
         [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
         [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
         [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+        [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
+        [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
         if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
             command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                       --trie-max-fanout "$TRIE_MAX_FANOUT"
@@ -372,9 +408,6 @@ run_query_suite() {
                 'text-to-image|generated/text-to-image_noise_005.bin|TEXTTOIMAGE_ne_005'
                 'text-to-image|generated/text-to-image_noise_01.bin|TEXTTOIMAGE_ne_01'
                 'text-to-image|generated/text-to-image_noise_025.bin|TEXTTOIMAGE_ne_025'
-                'turinganns|generated/turingANNs_noise_01.bin|turingANNs_ne_01'
-                'turinganns|generated/turingANNs_noise_025.bin|turingANNs_ne_025'
-                'turinganns|generated/turingANNs_noise_05.bin|turingANNs_ne_05'
             )
             ;;
         hard-queries)
@@ -425,6 +458,9 @@ run_query_suite() {
             [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
             [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
+            [[ -n $INPUT_HEADER_BYTES ]] && command+=(--input-header-bytes "$INPUT_HEADER_BYTES")
+            [[ -n $DATASET_HEADER_BYTES ]] && command+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
+            [[ -n $QUERY_HEADER_BYTES ]] && command+=(--query-header-bytes "$QUERY_HEADER_BYTES")
             [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
             command+=(--sample-type "$SAMPLE_TYPE")
             [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
@@ -440,8 +476,13 @@ run_query_suite() {
                 [[ -n $TRIE_SPLIT_DIMS ]] && command+=(--trie-split-dims "$TRIE_SPLIT_DIMS")
                 $TRIE_RECORD_MBR_SUFFIX_BOUND && command+=(--trie-record-mbr-suffix-bound)
                 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
-                [[ -n $TRIE_LEAF_IVF ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+                $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
+                [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
+                [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+                [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
                 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+                [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
+                [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
                 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
                     command+=(--trie-dynamic-alphabet --trie-min-fanout "$TRIE_MIN_FANOUT"
                               --trie-max-fanout "$TRIE_MAX_FANOUT"
@@ -459,6 +500,9 @@ run_query_suite() {
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
             command+=(--query-file "$query" --methods "$methods")
+            # generate_queries.py writes dense headerless query payloads even
+            # when the source base file uses the ANN xbin header.
+            [[ $SUITE == generated-queries ]] && command+=(--query-header-bytes 0)
             if [[ $INDEX_TYPE == isax ]]; then
                 $ENABLE_SOFA_V2 && command+=(--enable-sofa-v2)
                 $ISAX_NODE_MBR && command+=(--isax-node-mbr)

@@ -83,6 +83,10 @@ typedef struct {
     int sample_type;
     unsigned int sampling_seed;
     int n_coefficients;
+    /* Bytes preceding dense vector payloads.  These are separate because
+     * several ANN distributions use a headered base but raw query files. */
+    unsigned long dataset_header_bytes;
+    unsigned long query_header_bytes;
     int node_split_criterion;
     messi_index_type index_type;
     /* Optional iSAX SOFA v2 bounds.  The primary iSAX word/tree always
@@ -99,12 +103,18 @@ typedef struct {
     int trie_split_dimensions;
     char trie_record_mbr_suffix_bound;
     /* Refine passing records immediately instead of ordering them in a
-     * per-leaf lower-bound heap.  Intended for direct A/B benchmarking. */
+     * per-leaf lower-bound heap.  This is the trie default; clearing it
+     * restores the heap for A/B benchmarking. */
     char trie_streaming_leaf_scan;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
+    /* Opt-in per-record centroid-radius triangle bound. */
+    char trie_leaf_ivf_radial_bound;
+    /* Calibrate the radial bound per query and keep it only when at least
+     * one quarter of sampled candidates are rejected. */
+    char trie_leaf_ivf_radial_bound_auto;
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

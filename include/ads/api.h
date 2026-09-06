@@ -44,6 +44,8 @@ typedef struct {
     char trie_record_mbr_suffix_bound;
     char trie_streaming_leaf_scan;
     int trie_leaf_ivf;
+    char trie_leaf_ivf_radial_bound;
+    char trie_leaf_ivf_radial_bound_auto;
     int trie_fanout;
     char trie_dynamic_alphabet;
     int trie_min_fanout;

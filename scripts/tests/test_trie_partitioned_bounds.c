@@ -9,6 +9,7 @@
 #include "ads/lower_bound_simd.h"
 #include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
+#include "ads/trie/radial_bound.h"
 
 void sfa_from_fft(isax_index *index, const ts_type *cur_transform, sax_type *cur_sfa_word);
 
@@ -17,6 +18,68 @@ static unsigned int state = 1;
 static unsigned int next_random(void) {
     state = state * 1664525U + 1013904223U;
     return state;
+}
+
+static int test_radial_bound(void) {
+    enum { MAX_DIMENSIONS = 256 };
+    float query[MAX_DIMENSIONS], record[MAX_DIMENSIONS], centroid[MAX_DIMENSIONS];
+    const int dimensions[] = { 1, 2, 8, 32, 100, 256 };
+    int pruned = 0;
+
+    for (size_t dimension_index = 0;
+         dimension_index < sizeof(dimensions) / sizeof(dimensions[0]);
+         ++dimension_index) {
+        const int count = dimensions[dimension_index];
+        for (int trial = 0; trial < 2000; ++trial) {
+            double query_squared = 0.0, record_squared = 0.0;
+            long double exact_squared = 0.0L;
+            for (int i = 0; i < count; ++i) {
+                centroid[i] = ((float) (next_random() & 0xffffU) - 32768.0f) / 64.0f;
+                query[i] = ((float) (next_random() & 0xffffU) - 32768.0f) / 64.0f;
+                record[i] = ((float) (next_random() & 0xffffU) - 32768.0f) / 64.0f;
+                const double query_delta = (double) query[i] - centroid[i];
+                const double record_delta = (double) record[i] - centroid[i];
+                const long double exact_delta = (long double) query[i] - record[i];
+                query_squared += query_delta * query_delta;
+                record_squared += record_delta * record_delta;
+                exact_squared += exact_delta * exact_delta;
+            }
+            const messi_distance_interval query_radius =
+                messi_distance_interval_from_squared(query_squared, count);
+            const float record_radius = (float) sqrt(record_squared);
+            const float lower = messi_radial_lower_bound_squared(query_radius, record_radius);
+            if ((long double) lower > exact_squared) {
+                fprintf(stderr,
+                        "radial lower bound exceeded exact distance: dimensions=%d trial=%d lower=%g exact=%Lg\n",
+                        count, trial, lower, exact_squared);
+                return 0;
+            }
+            const float covering_bsf = nextafterf((float) exact_squared, INFINITY);
+            const messi_radial_window window =
+                messi_radial_window_from_bsf(query_radius, covering_bsf);
+            if (!messi_radial_radius_in_window(record_radius, window)) {
+                fprintf(stderr,
+                        "radial float window rejected a possible result: dimensions=%d trial=%d bsf=%g exact=%Lg\n",
+                        count, trial, covering_bsf, exact_squared);
+                return 0;
+            }
+            if (lower > 0.0f) ++pruned;
+        }
+    }
+
+    const messi_distance_interval zero = messi_distance_interval_from_squared(0.0, 256);
+    if (zero.lower != 0.0 || zero.upper != 0.0 ||
+        messi_radial_lower_bound_squared(zero, 0.0f) != 0.0f ||
+        !messi_radial_radius_in_window(
+            0.0f, messi_radial_window_from_bsf(zero, 0.0f))) {
+        fprintf(stderr, "radial zero-distance bound is not exact\n");
+        return 0;
+    }
+    if (pruned == 0) {
+        fprintf(stderr, "radial lower-bound test did not exercise pruning\n");
+        return 0;
+    }
+    return 1;
 }
 
 static sax_type linear_spartan_symbol(const ts_type *boundaries, int count, ts_type value) {
@@ -33,6 +96,7 @@ int main(void) {
     sax_type sax_min[DIMENSIONS], sax_max[DIMENSIONS], cardinalities[DIMENSIONS];
 
     memset(&index, 0, sizeof(index));
+    if (!test_radial_bound()) return 1;
     memset(&settings, 0, sizeof(settings));
     settings.n_segments = DIMENSIONS;
     settings.sax_bit_cardinality = 8;

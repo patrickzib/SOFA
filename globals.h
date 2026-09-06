@@ -29,10 +29,24 @@
 ///// TYPES /////
 typedef unsigned char sax_type;
 typedef unsigned char file_type;
-// typedef signed char file_type;
 typedef float ts_type;
 typedef unsigned long long file_position_type;
 typedef unsigned long long root_mask_type;
+
+/* Dense input encoding.  Keep byte input stored as unsigned bytes and apply
+ * signedness only while converting to ts_type; this avoids duplicating every
+ * I/O buffer and preserves the historical --filetype-int behavior. */
+enum file_input_type {
+    FILE_INPUT_FLOAT32 = 0,
+    FILE_INPUT_UINT8 = 1,
+    FILE_INPUT_INT8 = 2
+};
+
+static inline ts_type file_value_to_ts(file_type value, int input_type) {
+    return input_type == FILE_INPUT_INT8
+        ? (ts_type) (int8_t) value
+        : (ts_type) value;
+}
 
 enum response {OUT_OF_MEMORY_FAILURE, FAILURE, SUCCESS};
 enum insertion_mode {PARTIAL = 1, 
@@ -188,9 +202,23 @@ extern int query_report_interval;
         unsigned long int trie_cluster_bounds;
         unsigned long int trie_cluster_pruned;
         unsigned long int trie_cluster_records_pruned;
+        unsigned long int trie_cluster_symbolic_pruned;
+        unsigned long int trie_cluster_symbolic_records_pruned;
+        unsigned long int trie_cluster_raw_ball_bounds;
+        unsigned long int trie_cluster_raw_ball_pruned;
+        unsigned long int trie_cluster_raw_ball_records_pruned;
+        unsigned long int trie_radial_candidates;
+        unsigned long int trie_radial_pruned;
         unsigned long int trie_cluster_bounds_all;
         unsigned long int trie_cluster_pruned_all;
         unsigned long int trie_cluster_records_pruned_all;
+        unsigned long int trie_cluster_symbolic_pruned_all;
+        unsigned long int trie_cluster_symbolic_records_pruned_all;
+        unsigned long int trie_cluster_raw_ball_bounds_all;
+        unsigned long int trie_cluster_raw_ball_pruned_all;
+        unsigned long int trie_cluster_raw_ball_records_pruned_all;
+        unsigned long int trie_radial_candidates_all;
+        unsigned long int trie_radial_pruned_all;
 
         #define INIT_STATS() total_input_time = 0;\
                             total_output_time = 0;\
@@ -215,9 +243,23 @@ extern int query_report_interval;
                             trie_cluster_bounds=0;\
                             trie_cluster_pruned=0;\
                             trie_cluster_records_pruned=0;\
+                            trie_cluster_symbolic_pruned=0;\
+                            trie_cluster_symbolic_records_pruned=0;\
+                            trie_cluster_raw_ball_bounds=0;\
+                            trie_cluster_raw_ball_pruned=0;\
+                            trie_cluster_raw_ball_records_pruned=0;\
+                            trie_radial_candidates=0;\
+                            trie_radial_pruned=0;\
                             trie_cluster_bounds_all=0;\
                             trie_cluster_pruned_all=0;\
                             trie_cluster_records_pruned_all=0;\
+                            trie_cluster_symbolic_pruned_all=0;\
+                            trie_cluster_symbolic_records_pruned_all=0;\
+                            trie_cluster_raw_ball_bounds_all=0;\
+                            trie_cluster_raw_ball_pruned_all=0;\
+                            trie_cluster_raw_ball_records_pruned_all=0;\
+                            trie_radial_candidates_all=0;\
+                            trie_radial_pruned_all=0;\
                             total_querying_time_all=0.0;\
                             bytes_accessed_all=0;\
                             approximate_all = 0.0;\
@@ -299,6 +341,20 @@ extern int query_report_interval;
         trie_cluster_pruned = 0;\
         trie_cluster_records_pruned_all += trie_cluster_records_pruned;\
         trie_cluster_records_pruned = 0;\
+        trie_cluster_symbolic_pruned_all += trie_cluster_symbolic_pruned;\
+        trie_cluster_symbolic_pruned = 0;\
+        trie_cluster_symbolic_records_pruned_all += trie_cluster_symbolic_records_pruned;\
+        trie_cluster_symbolic_records_pruned = 0;\
+        trie_cluster_raw_ball_bounds_all += trie_cluster_raw_ball_bounds;\
+        trie_cluster_raw_ball_bounds = 0;\
+        trie_cluster_raw_ball_pruned_all += trie_cluster_raw_ball_pruned;\
+        trie_cluster_raw_ball_pruned = 0;\
+        trie_cluster_raw_ball_records_pruned_all += trie_cluster_raw_ball_records_pruned;\
+        trie_cluster_raw_ball_records_pruned = 0;\
+        trie_radial_candidates_all += trie_radial_candidates;\
+        trie_radial_candidates = 0;\
+        trie_radial_pruned_all += trie_radial_pruned;\
+        trie_radial_pruned = 0;\
         checked_nodes_all += checked_nodes;\
         checked_nodes = 0;\
         loaded_nodes_all += loaded_nodes;\

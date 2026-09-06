@@ -128,6 +128,7 @@ static void format_compact_count(double value, char *buffer, size_t buffer_size)
 /* Keep every query engine, including the trie engines, from discovering a
  * short query file only after an expensive index build. */
 static int clamp_query_count_to_file(const char *path, int timeseries_size,
+                                     int filetype_int, unsigned long header_bytes,
                                      int *query_count) {
     FILE *file;
     long file_size;
@@ -147,8 +148,14 @@ static int clamp_query_count_to_file(const char *path, int timeseries_size,
         return 0;
     }
     fclose(file);
-    record_size = (size_t) timeseries_size * sizeof(ts_type);
-    available = (unsigned long long) file_size / record_size;
+    if ((unsigned long long) file_size < header_bytes) {
+        fprintf(stderr, "error: query file is smaller than its %lu-byte header: %s\n",
+                header_bytes, path);
+        return 0;
+    }
+    record_size = (size_t) timeseries_size *
+                  (filetype_int ? sizeof(file_type) : sizeof(ts_type));
+    available = ((unsigned long long) file_size - header_bytes) / record_size;
     if (available == 0) {
         fprintf(stderr, "error: query file contains no complete records: %s\n", path);
         return 0;
@@ -380,6 +387,8 @@ int main(int argc, char **argv) {
     static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
     static int filetype_int = 0;
+    static unsigned long dataset_header_bytes = 0;
+    static unsigned long query_header_bytes = 0;
     static int apply_znorm = 0;
     static int dynamic_index = 1;
     static messi_root_split_mode root_split_mode = MESSI_ROOT_SPLIT_DEFAULT;
@@ -394,10 +403,13 @@ int main(int argc, char **argv) {
     static int trie_split_dimensions = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
-    static int trie_streaming_leaf_scan = 0;
+    static int trie_streaming_leaf_scan = 1;
+    static int trie_streaming_leaf_scan_specified = 0;
     static int trie_leaf_ivf = 0;
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
+    static int trie_leaf_ivf_radial_bound = 0;
+    static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
     static int isax_node_mbr = 1;
@@ -471,6 +483,10 @@ int main(int argc, char **argv) {
                 {"sample-type",         required_argument, 0,    'C'},
                 {"sfa-n-coefficients",  required_argument, 0,    'D'},
                 {"filetype-int",        no_argument,       0,    'E'},
+                {"input-header-bytes",  required_argument, 0, 1029},
+                {"dataset-header-bytes",required_argument, 0, 1030},
+                {"query-header-bytes",  required_argument, 0, 1031},
+                {"filetype-int8",       no_argument,       0, 1032},
                 {"apply-z-norm",        no_argument,       0,    'F'},
                 {"node-split-criterion",required_argument, 0,   'G'},
                 {"dynamic-root-split-uniform", required_argument, 0, 'K'},
@@ -487,7 +503,10 @@ int main(int argc, char **argv) {
                 {"trie-leaf-ivf", required_argument, 0, 1014},
                 {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
+                {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
+                {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
+                {"no-trie-streaming-leaf-scan", no_argument, 0, 1027},
                 {"trie-fanout", required_argument, 0, 1005},
                 {"trie-dynamic-alphabet", no_argument, 0, 1009},
                 {"trie-min-fanout", required_argument, 0, 1010},
@@ -555,6 +574,40 @@ int main(int argc, char **argv) {
             case 1008:
                 SIMD_flag = 0;
                 break;
+            case 1029: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --input-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                dataset_header_bytes = value;
+                query_header_bytes = value;
+                break;
+            }
+            case 1030: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --dataset-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                dataset_header_bytes = value;
+                break;
+            }
+            case 1031: {
+                char *end = NULL;
+                unsigned long value = strtoul(optarg, &end, 10);
+                if (optarg[0] == '\0' || end == optarg || *end != '\0') {
+                    fprintf(stderr, "Error: --query-header-bytes must be a nonnegative integer.\n");
+                    return EXIT_FAILURE;
+                }
+                query_header_bytes = value;
+                break;
+            }
+            case 1032:
+                filetype_int = FILE_INPUT_INT8;
+                break;
             case 1013:
                 trie_record_mbr_suffix_bound = 1;
                 trie_record_mbr_suffix_bound_specified = 1;
@@ -574,8 +627,21 @@ int main(int argc, char **argv) {
             case 1023:
                 trie_leaf_ivf_raw_ball_bound = 0;
                 break;
+            case 1026:
+                trie_leaf_ivf_radial_bound = 1;
+                trie_leaf_ivf_radial_bound_auto = 0;
+                break;
+            case 1028:
+                trie_leaf_ivf_radial_bound = 1;
+                trie_leaf_ivf_radial_bound_auto = 1;
+                break;
             case 1024:
                 trie_streaming_leaf_scan = 1;
+                trie_streaming_leaf_scan_specified = 1;
+                break;
+            case 1027:
+                trie_streaming_leaf_scan = 0;
+                trie_streaming_leaf_scan_specified = 1;
                 break;
             case 1017:
                 isax_node_mbr = 1;
@@ -760,7 +826,7 @@ int main(int argc, char **argv) {
                 n_coefficients = atoi(optarg);
                 break;
             case 'E':
-                filetype_int = 1;
+                filetype_int = FILE_INPUT_UINT8;
                 break;
             case 'F':
                 apply_znorm = 1;
@@ -827,7 +893,11 @@ int main(int argc, char **argv) {
                        "  --sampling-seed N              Random sampling seed (default: 1)\n"
                        "  --histogram-type 1|2           Equi-depth (default) or equi-width\n"
                        "  --sfa-n-coefficients N         SFA candidate coefficients (even; n-segments..series length)\n"
-                       "  --filetype-int                 Read int input and convert to float\n"
+                       "  --filetype-int                 Read uint8 input and convert to float\n"
+                       "  --filetype-int8                Read signed int8 input and convert to float\n"
+                       "  --dataset-header-bytes N       Skip N bytes before base vectors\n"
+                       "  --query-header-bytes N         Skip N bytes before query vectors\n"
+                       "  --input-header-bytes N         Compatibility shorthand: set both header offsets\n"
                        "  --apply-z-norm                 Z-normalize base and queries\n"
                        "  --is-norm                      Input is already normalized (SFA ignores DC)\n"
                        "\n"
@@ -848,10 +918,13 @@ int main(int argc, char **argv) {
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
-                       "  --trie-streaming-leaf-scan  Refine each passing record immediately (no record heap)\n"
+                       "  --trie-streaming-leaf-scan  Refine each passing record immediately (default)\n"
+                       "  --no-trie-streaming-leaf-scan  Use the record lower-bound heap instead\n"
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; learned-transform default: 16)\n"
                        "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
+                       "  --trie-leaf-ivf-radial-bound  Always SIMD-prune IVF records by float32 centroid radius\n"
+                       "  --trie-leaf-ivf-radial-bound-auto  Keep radial pruning only after a 25%% sampled rejection rate\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
                        "  --trie-min-fanout N            Dynamic fanout lower bound\n"
@@ -952,6 +1025,10 @@ int main(int argc, char **argv) {
             fprintf(stderr, "error: --trie-leaf-ivf requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
             return EXIT_FAILURE;
         }
+        if (trie_leaf_ivf_radial_bound && trie_leaf_ivf == 0) {
+            fprintf(stderr, "error: --trie-leaf-ivf-radial-bound requires --trie-leaf-ivf.\n");
+            return EXIT_FAILURE;
+        }
         if (trie_dynamic_alphabet && trie_fanout_specified) {
             fprintf(stderr, "error: --trie-dynamic-alphabet cannot be combined with --trie-fanout.\n");
             return EXIT_FAILURE;
@@ -980,12 +1057,16 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-record-mbr-suffix-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
-    if (trie_streaming_leaf_scan && index_type != MESSI_INDEX_TRIE) {
-        fprintf(stderr, "error: --trie-streaming-leaf-scan requires --index-type trie.\n");
+    if (trie_streaming_leaf_scan_specified && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: trie streaming leaf-scan options require --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (trie_leaf_ivf && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-leaf-ivf requires --index-type trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (trie_leaf_ivf_radial_bound && index_type != MESSI_INDEX_TRIE) {
+        fprintf(stderr, "error: --trie-leaf-ivf-radial-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
     if (index_type != MESSI_INDEX_ISAX &&
@@ -1018,7 +1099,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --dynamic-root-split-variance is supported by SFA (4), SPARTAN (5), and PISA (6).\n");
         return EXIT_FAILURE;
     }
-    if (!clamp_query_count_to_file(queries, time_series_size, &queries_size)) {
+    if (!clamp_query_count_to_file(queries, time_series_size, filetype_int,
+                                   query_header_bytes, &queries_size)) {
         return EXIT_FAILURE;
     }
 
@@ -1342,6 +1424,8 @@ int main(int argc, char **argv) {
         }
 
         index_settings->node_split_criterion = node_split_criterion;
+        index_settings->dataset_header_bytes = dataset_header_bytes;
+        index_settings->query_header_bytes = query_header_bytes;
         index_settings->index_type = index_type;
         index_settings->isax_node_mbr = isax_node_mbr;
         index_settings->isax_record_mbr_suffix_bound = isax_record_mbr_suffix_bound;
@@ -1353,6 +1437,8 @@ int main(int argc, char **argv) {
         index_settings->trie_streaming_leaf_scan = trie_streaming_leaf_scan;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
+        index_settings->trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound;
+        index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
@@ -1644,39 +1730,61 @@ int main(int argc, char **argv) {
             const double exact_distance_percent = dataset_size > 0
                                                   ? 100.0 * avg_exact_distances / dataset_size
                                                   : 0.0;
-            /* In a trie, every record that survives node and optional leaf
-             * cluster MBRs receives exactly one record lower-bound evaluation.
-             * Keep those stages separate: a cluster-pruned record deliberately
-             * has no per-record lower-bound call. */
+            /* First-wins attribution: a record rejected by a node, IVF
+             * symbolic MBR, raw ball, or radial bound is not also credited to
+             * a later stage.  Only radial survivors receive a symbolic record
+             * lower-bound evaluation. */
             const double avg_cluster_records_pruned = queries_size > 0
                 ? (double) trie_cluster_records_pruned_all / queries_size : 0.0;
+            const double avg_cluster_symbolic_records_pruned = queries_size > 0
+                ? (double) trie_cluster_symbolic_records_pruned_all / queries_size : 0.0;
+            const double avg_cluster_raw_ball_records_pruned = queries_size > 0
+                ? (double) trie_cluster_raw_ball_records_pruned_all / queries_size : 0.0;
+            const double avg_radial_candidates = queries_size > 0
+                ? (double) trie_radial_candidates_all / queries_size : 0.0;
+            const double avg_radial_pruned = queries_size > 0
+                ? (double) trie_radial_pruned_all / queries_size : 0.0;
+            /* No new per-record counter: every symbolic record LB either
+             * reaches exact distance or prunes the record (including heap
+             * entries skipped after BSF improves). */
+            const double avg_record_bound_pruned = avg_lower_bounds > avg_exact_distances
+                ? avg_lower_bounds - avg_exact_distances : 0.0;
             const double node_mbr_skipped =
-                (double) dataset_size > avg_lower_bounds + avg_cluster_records_pruned
-                    ? (double) dataset_size - avg_lower_bounds - avg_cluster_records_pruned
+                (double) dataset_size > avg_lower_bounds + avg_radial_pruned + avg_cluster_records_pruned
+                    ? (double) dataset_size - avg_lower_bounds - avg_radial_pruned - avg_cluster_records_pruned
                     : 0.0;
-            const double record_bound_pruned = avg_exact_distances < avg_lower_bounds
-                                                   ? avg_lower_bounds - avg_exact_distances
-                                                   : 0.0;
             const double node_mbr_percent = dataset_size > 0
                                                 ? 100.0 * node_mbr_skipped / dataset_size
                                                 : 0.0;
             const double record_bound_candidate_percent = avg_lower_bounds > 0.0
-                                                              ? 100.0 * record_bound_pruned / avg_lower_bounds
+                                                              ? 100.0 * avg_record_bound_pruned / avg_lower_bounds
                                                               : 0.0;
             const double record_bound_index_percent = dataset_size > 0
-                                                          ? 100.0 * record_bound_pruned / dataset_size
+                                                          ? 100.0 * avg_record_bound_pruned / dataset_size
                                                           : 0.0;
             const double total_pruned_percent = dataset_size > 0
                                                    ? 100.0 * ((double) dataset_size - avg_exact_distances) /
                                                          dataset_size
                                                    : 0.0;
             char nodes[32], lower_bounds[32], exact_distances[32], index_nodes[32], indexed_series[32];
+            char node_pruned[32], cluster_symbolic_records[32], cluster_raw_ball_records[32];
+            char radial_records[32], record_bound_records[32], total_pruned[32];
             char wall_time[32];
             format_compact_count(avg_checked_nodes, nodes, sizeof(nodes));
             format_compact_count(avg_lower_bounds, lower_bounds, sizeof(lower_bounds));
             format_compact_count(avg_exact_distances, exact_distances, sizeof(exact_distances));
             format_compact_count(total_tree_nodes, index_nodes, sizeof(index_nodes));
             format_compact_count(dataset_size, indexed_series, sizeof(indexed_series));
+            format_compact_count(node_mbr_skipped, node_pruned, sizeof(node_pruned));
+            format_compact_count(avg_cluster_symbolic_records_pruned,
+                                 cluster_symbolic_records, sizeof(cluster_symbolic_records));
+            format_compact_count(avg_cluster_raw_ball_records_pruned,
+                                 cluster_raw_ball_records, sizeof(cluster_raw_ball_records));
+            format_compact_count(avg_radial_pruned, radial_records, sizeof(radial_records));
+            format_compact_count(avg_record_bound_pruned,
+                                 record_bound_records, sizeof(record_bound_records));
+            format_compact_count((double) dataset_size - avg_exact_distances,
+                                 total_pruned, sizeof(total_pruned));
             if (query_wall_seconds < 1.0)
                 snprintf(wall_time, sizeof(wall_time), "%.3f ms", 1000.0 * query_wall_seconds);
             else
@@ -1689,7 +1797,7 @@ int main(int argc, char **argv) {
                    "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
                    nodes, checked_node_percent, index_nodes);
             fprintf(stderr,
-                   "  lower bounds     : %s/query (%.2f%% of %s indexed series)\n"
+                   "  symbolic record bounds: %s/query (%.2f%% of %s indexed series)\n"
                    "  exact distances  : %s/query (%.2f%% of %s indexed series)\n",
                    lower_bounds, lower_bound_percent, indexed_series,
                    exact_distances, exact_distance_percent, indexed_series);
@@ -1697,24 +1805,47 @@ int main(int argc, char **argv) {
                 const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
                     ? "prefix + MBR suffix" : "symbolic record bound";
                 fprintf(stderr, "  pruning breakdown:\n"
-                       "    %-20s : %.2f%% indexed series skipped before leaf scanning\n",
-                       "node MBRs", node_mbr_percent);
+                       "    %-20s : %s records/query (%.2f%% of indexed series)\n",
+                       "node MBRs", node_pruned, node_mbr_percent);
                 if (trie_cluster_bounds_all != 0) {
-                    const double cluster_prune_percent =
-                        100.0 * (double) trie_cluster_pruned_all / trie_cluster_bounds_all;
-                    const double cluster_record_skip_percent = dataset_size > 0
-                        ? 100.0 * avg_cluster_records_pruned / dataset_size : 0.0;
+                    const double cluster_symbolic_prune_percent =
+                        100.0 * (double) trie_cluster_symbolic_pruned_all / trie_cluster_bounds_all;
+                    const double cluster_symbolic_record_percent = dataset_size > 0
+                        ? 100.0 * avg_cluster_symbolic_records_pruned / dataset_size : 0.0;
                     fprintf(stderr,
-                            "    %-20s : %.2f%% cluster bounds pruned (%.2f%% of indexed series)\n",
-                            "leaf cluster bounds", cluster_prune_percent,
-                            cluster_record_skip_percent);
+                            "    %-20s : %s records/query (%.2f%% of clusters; %.2f%% indexed)\n",
+                            "leaf IVF symbolic", cluster_symbolic_records,
+                            cluster_symbolic_prune_percent,
+                            cluster_symbolic_record_percent);
+                }
+                if (trie_cluster_raw_ball_bounds_all != 0) {
+                    const double cluster_raw_ball_prune_percent =
+                        100.0 * (double) trie_cluster_raw_ball_pruned_all /
+                            trie_cluster_raw_ball_bounds_all;
+                    const double cluster_raw_ball_record_percent = dataset_size > 0
+                        ? 100.0 * avg_cluster_raw_ball_records_pruned / dataset_size : 0.0;
+                    fprintf(stderr,
+                            "    %-20s : %s records/query (%.2f%% of surviving clusters; %.2f%% indexed)\n",
+                            "leaf IVF raw ball", cluster_raw_ball_records,
+                            cluster_raw_ball_prune_percent,
+                            cluster_raw_ball_record_percent);
+                }
+                if (trie_radial_candidates_all != 0) {
+                    const double radial_prune_percent = avg_radial_candidates > 0.0
+                        ? 100.0 * avg_radial_pruned / avg_radial_candidates : 0.0;
+                    const double radial_index_percent = dataset_size > 0
+                        ? 100.0 * avg_radial_pruned / dataset_size : 0.0;
+                    fprintf(stderr,
+                            "    %-20s : %s records/query (%.2f%% of candidates; %.2f%% indexed)\n",
+                            "record radial", radial_records, radial_prune_percent,
+                            radial_index_percent);
                 }
                 fprintf(stderr,
-                       "    %-20s : %.2f%% of records reaching record bounds pruned (%.2f%% of indexed series)\n"
-                       "    %-20s : %.2f%% indexed series pruned before exact distance\n",
-                       record_bound_name, record_bound_candidate_percent,
+                       "    %-20s : %s records/query (%.2f%% of candidates; %.2f%% indexed)\n"
+                       "    %-20s : %s records/query (%.2f%% of indexed series)\n",
+                       record_bound_name, record_bound_records, record_bound_candidate_percent,
                        record_bound_index_percent,
-                       "total", total_pruned_percent);
+                       "total", total_pruned, total_pruned_percent);
             }
             if (profile_query_phases) {
                 fprintf(stderr, "  phase profile (accumulated worker ms/query):\n"

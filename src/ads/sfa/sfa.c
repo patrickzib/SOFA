@@ -514,9 +514,11 @@ void *set_bins_worker_dft(void *transferdata) {
         return NULL;
     }
 
-    unsigned long start_index = start_number * ts_length * sizeof(ts_type);
     int filetype_int = bins_data->filetype_int;
     int apply_znorm = bins_data->apply_znorm;
+    const unsigned long value_size = filetype_int ? sizeof(file_type) : sizeof(ts_type);
+    unsigned long start_index = index->settings->dataset_header_bytes +
+                                start_number * ts_length * value_size;
 
     FILE *ifile;
     ifile = fopen(bins_data->filename, "rb");
@@ -557,7 +559,8 @@ void *set_bins_worker_dft(void *transferdata) {
             unsigned long position = start_number +
                                      (unsigned long) random_at_most_seed(&rng_state,
                                                                          (long int) span - 1);
-            fseek(ifile, (position * ts_length * sizeof(ts_type)), SEEK_SET);
+            fseek(ifile, (long) (index->settings->dataset_header_bytes +
+                  position * ts_length * value_size), SEEK_SET);
         }
 
         if (filetype_int) {
@@ -566,7 +569,7 @@ void *set_bins_worker_dft(void *transferdata) {
                 break;
             }
             for (int j = 0; j < ts_length; ++j) {
-                ts[j] = (ts_type) ts_orig1[j];
+                ts[j] = file_value_to_ts(ts_orig1[j], filetype_int);
             }
         } else {
             if (fread(ts_orig2, sizeof(ts_type), ts_length, ifile) != ts_length) {
@@ -614,7 +617,7 @@ void *set_bins_worker_dft(void *transferdata) {
 
         // skip elements for uniform sampling
         if (index->settings->sample_type == 2) {
-            fseek(ifile, skip_elements * ts_length * sizeof(ts_type), SEEK_CUR);
+            fseek(ifile, (long) (skip_elements * ts_length * value_size), SEEK_CUR);
             position_count += (1 + skip_elements);
         }
 

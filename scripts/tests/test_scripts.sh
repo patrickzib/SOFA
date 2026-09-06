@@ -24,6 +24,34 @@ assert_not_contains "$OUTPUT" '--sample-type 3'
 assert_not_contains "$OUTPUT" '--dynamic-root-split-variance'
 pass 'standard profile emits the complete method matrix with uniform binning samples'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" simsearchnet standard --threads 36 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet.bin'
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/SimSearchNet_queries.bin'
+assert_contains "$OUTPUT" '--timeseries-size 256'
+assert_contains "$OUTPUT" '--dataset-size 100000000'
+assert_contains "$OUTPUT" '--filetype-int'
+assert_contains "$OUTPUT" '--dataset-header-bytes 8'
+assert_contains "$OUTPUT" '--query-header-bytes 8'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seismic standard --threads 36 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/seismic.bin'
+assert_contains "$OUTPUT" '--timeseries-size 256'
+assert_contains "$OUTPUT" '--dataset-size 100000000'
+assert_not_contains "$OUTPUT" '--dataset-header-bytes'
+assert_not_contains "$OUTPUT" '--query-header-bytes'
+pass 'seismic and headered SimSearchNet datasets have valid runner metadata'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--timeseries-size 128'
+assert_contains "$OUTPUT" '--filetype-int'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" spacev1b standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--timeseries-size 100'
+assert_contains "$OUTPUT" '--filetype-int8'
+assert_not_contains "$OUTPUT" '--filetype-int '
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" text-to-image standard --threads 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--dataset-header-bytes 8'
+assert_not_contains "$OUTPUT" '--query-header-bytes'
+pass 'BigANN, SpaceV, and Text-to-Image encodings match their files'
+
 OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
 assert_contains "$OUTPUT" '--threads 7'
@@ -32,6 +60,7 @@ assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
 assert_contains "$OUTPUT" '--n-segments 64'
 assert_contains "$OUTPUT" '--trie-split-dimensions 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'runner defaults to the trie benchmark profile and physical-core thread count'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
@@ -65,7 +94,7 @@ pass 'trie standard profile excludes SAX from its method matrix'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --n-segments 32 --trie-split-dims 32 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
 assert_contains "$OUTPUT" '--n-segments 32'
 assert_contains "$OUTPUT" '--trie-split-dimensions 32'
 if "$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
@@ -127,7 +156,11 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
     --trie-streaming-leaf-scan --dry-run >/dev/null 2>&1; then
     fail 'runner accepted trie streaming leaf scan for iSAX'
 fi
-pass 'trie streaming leaf scan is forwarded and scoped to trie'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --no-trie-streaming-leaf-scan --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--no-trie-streaming-leaf-scan'
+assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
+pass 'trie streaming leaf scan defaults on, supports heap opt-out, and is scoped to trie'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
@@ -137,6 +170,33 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type is
     fail 'runner accepted trie leaf IVF for iSAX'
 fi
 pass 'trie leaf IVF is forwarded and scoped to trie'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie IVF radial bound for iSAX'
+fi
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted trie IVF radial bound with IVF disabled'
+fi
+pass 'trie IVF radial bound is opt-in, forwarded, and requires IVF'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound-auto --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound-auto'
+assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
+    --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted automatic trie IVF radial bound for iSAX'
+fi
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted automatic trie IVF radial bound with IVF disabled'
+fi
+pass 'automatic trie IVF radial bound is forwarded and requires IVF'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --query-report-interval 10 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--query-report-interval 10'
@@ -149,7 +209,7 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
 assert_contains "$OUTPUT" '--queries-size 1'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 50'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
 assert_contains "$OUTPUT" '--histogram-type 2'
 assert_not_contains "$OUTPUT" '--histogram-type 1'
 pass 'high-frequency profile preserves BigANN flags and coefficients'
@@ -177,9 +237,9 @@ pass 'trie supports 128 MBR dimensions for 128-value series'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-mbr-dimensions 100'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 100'
-pass 'trie MBR dimensions remain capped by the 100-value series length'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+pass 'BigANN trie MBR dimensions use the corrected 128-value series length'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
 assert_contains "$OUTPUT" 'exceeds dataset size 100 K; using dataset size'
@@ -241,7 +301,7 @@ FAKE_MESSI="$TEMP_ROOT/fake_messi"
 printf '%s\n' '#!/usr/bin/env bash' \
     'printf "%s\\n" "=== Query summary ===" >&2' \
     'printf "%s\\n" "  wall time        : 3.090 s (30.900 ms/query)" >&2' \
-    'printf "%s\\n" "  lower bounds     : 24.35 M/query (24.35% of 100.00 M indexed series)" >&2' \
+    'printf "%s\\n" "  symbolic record bounds: 24.35 M/query (24.35% of 100.00 M indexed series)" >&2' \
     'printf "%s\\n" "  exact distances  : 567.00 K/query (0.57% of 100.00 M indexed series)" >&2' \
     > "$FAKE_MESSI"
 chmod +x "$FAKE_MESSI"
@@ -251,13 +311,18 @@ assert_contains "$OUTPUT" '=== Benchmark summary: dataset=astro, profile=high-fr
 assert_contains "$OUTPUT" 'iSAX    SPARTAN   width'
 assert_contains "$OUTPUT" '24.35 M/query'
 [[ $OUTPUT =~ 24\.35\ M/query[[:space:]]+24\.35% ]] || fail 'suite summary columns are out of order'
-pass 'runner prints a compact suite summary from query results'
+pass 'runner parses the symbolic-record-bound label into its compact suite summary'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 36 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" 'spacev1B_noise_025.bin'
 assert_contains "$OUTPUT" 'text-to-image_noise_01.bin'
-assert_contains "$OUTPUT" 'turingANNs_noise_05.bin'
-pass 'migrated generated-query suite expands expected workloads'
+assert_not_contains "$OUTPUT" 'turingANNs_noise_05.bin'
+assert_not_contains "$OUTPUT" '--query-header-bytes 8'
+pass 'generated-query suite expands valid workloads and excludes local TuringANNS'
+
+OUTPUT=$(bash -c 'source "$1"; active_datasets' _ "$SCRIPT_DIR/lib/datasets.sh")
+assert_not_contains "$OUTPUT" 'turinganns'
+pass 'known-invalid local TuringANNS is excluded from the default suite'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--index-type trie'
@@ -270,6 +335,7 @@ assert_contains "$OUTPUT" '--queue-number 7'
 assert_contains "$OUTPUT" '--index-type trie'
 assert_contains "$OUTPUT" '--n-segments 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'suite defaults to trie and the available physical-core count'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
@@ -291,12 +357,35 @@ pass 'suite forwards the trie record/MBR suffix bound'
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-streaming-leaf-scan --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
-pass 'suite forwards trie streaming leaf refinement'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --no-trie-streaming-leaf-scan --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--no-trie-streaming-leaf-scan'
+assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
+pass 'suite defaults to streaming leaf refinement and forwards heap opt-out'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 pass 'suite forwards trie leaf IVF'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound'
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted trie IVF radial bound with IVF disabled'
+fi
+pass 'suite forwards and validates trie IVF radial bound'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound-auto --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound-auto'
+assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type trie \
+    --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound-auto --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted automatic trie IVF radial bound with IVF disabled'
+fi
+pass 'suite forwards and validates automatic trie IVF radial bound'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro \
     --index-type trie --trie-dynamic-alphabet --dry-run 2>/dev/null)

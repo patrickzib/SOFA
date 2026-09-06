@@ -134,8 +134,13 @@ void isax_query_binary_file_traditional(
 
     fseek(ifile, 0L, SEEK_END);
     file_position_type sz = (file_position_type) ftell(ifile);
-    file_position_type total_records = sz / index->settings->ts_byte_size;
-    fseek(ifile, 0L, SEEK_SET);
+    const file_position_type input_header_bytes = index->settings->query_header_bytes;
+    const file_position_type input_record_bytes =
+        (file_position_type) index->settings->timeseries_size *
+        (filetype_int ? sizeof(file_type) : sizeof(ts_type));
+    file_position_type total_records = sz >= input_header_bytes
+        ? (sz - input_header_bytes) / input_record_bytes : 0;
+    fseek(ifile, (long) input_header_bytes, SEEK_SET);
     if (total_records < q_num) {
         fprintf(stderr, "File %s has only %llu records!\n", ifilename, total_records);
         exit(-1);
@@ -181,7 +186,7 @@ void isax_query_binary_file_traditional(
         if (filetype_int) {
             fread(ts_int32, sizeof(file_type), ts_length, ifile);
             for (int i = 0; i < ts_length; ++i) {
-                ts[i] = (ts_type) ts_int32[i];
+                ts[i] = file_value_to_ts(ts_int32[i], filetype_int);
             }
 
         } else {

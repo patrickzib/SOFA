@@ -241,6 +241,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->function_type = function_type;
     settings->histogram_type = histogram_type;
     settings->n_coefficients = n_coefficients;
+    settings->dataset_header_bytes = 0;
+    settings->query_header_bytes = 0;
     settings->sampling_seed = 1;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
@@ -251,10 +253,12 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_ivf = 0;
     settings->trie_leaf_ivf_raw_ball_bound = 1;
+    settings->trie_leaf_ivf_radial_bound = 0;
+    settings->trie_leaf_ivf_radial_bound_auto = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;
-    settings->trie_streaming_leaf_scan = 0;
+    settings->trie_streaming_leaf_scan = 1;
     settings->trie_fanout = 8;
     settings->trie_dynamic_alphabet = 0;
     settings->trie_min_bits = 1;
@@ -2860,6 +2864,12 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     else if (settings->sample_type == 3) sampling = "random";
 
     fprintf(stderr, "=== MESSI index configuration ===\n");
+    if (settings->dataset_header_bytes != 0)
+        fprintf(stderr, "  dataset header: skip %lu bytes\n",
+                settings->dataset_header_bytes);
+    if (settings->query_header_bytes != 0)
+        fprintf(stderr, "  query header  : skip %lu bytes\n",
+                settings->query_header_bytes);
     if (settings->raw_filename) {
         fprintf(stderr, "  dataset       : %s\n", settings->raw_filename);
     }
@@ -2987,6 +2997,23 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         if (settings->trie_leaf_ivf)
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);
+        if (settings->trie_leaf_ivf_radial_bound) {
+#if defined(__AVX512F__)
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order%s\n",
+                    settings->SIMD_flag ? "16-lane AVX-512" : "scalar scan",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
+#elif ADS_HAVE_AVX2
+            fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order%s\n",
+                    settings->SIMD_flag ? "8-lane AVX2" : "scalar scan",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
+#else
+            fprintf(stderr, "  radial bound  : float32 centroid radii, scalar scan, original IVF order%s\n",
+                    settings->trie_leaf_ivf_radial_bound_auto
+                        ? ", auto >=25% rejection after 64 K candidates" : "");
+#endif
+        }
     } else {
         fprintf(stderr, "  query bounds  : tight=%s, aggressive=%s, loaded leaves=%d\n",
                 settings->tight_bound ? "on" : "off",
