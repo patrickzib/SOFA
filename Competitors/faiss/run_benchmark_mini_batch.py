@@ -34,6 +34,7 @@ datasets = {
     "BIGANN": ["bigANN.bin", "bigANN_queries.bin", 128, 0, np.uint8, 0, 0],
     "DEEP1b": ["deep1b.bin", "deep1b_queries.bin", 96, 0, np.float32, 0, 0],
     "SIFT1b": ["sift1b.bin", "sift1b_queries.bin", 128, 0, np.float32, 0, 0],
+    "simsearchnet": ["SimSearchNet.bin", "SimSearchNet_queries.bin", 256, 0, np.uint8, 8, 8],
     "spacev1b": ["spacev1B.bin", "spacev1B_queries.bin", 100, 0, np.int8, 0, 0],
     "TEXTTOIMAGE": ["text-to-image.bin", "text-to-image_queries.bin", 200, 0, np.float32, 8, 0],
     "turinganns": ["turingANNs.bin", "turingANNs_queries.bin", 100, 0, np.float32, 8, 8],
@@ -42,6 +43,7 @@ datasets = {
     "ASTRO": ["astro.bin", "astro_queries.bin", 256, 0, np.float32, 0, 0],
     "SALD": ["SALD.bin", "SALD_queries.bin", 128, 0, np.float32, 0, 0],
     "SCEDC": ["SCEDC.bin", "SCEDC_queries.bin", 256, 0, np.float32, 0, 0],
+    "seismic": ["seismic.bin", "seismic_queries.bin", 256, 0, np.float32, 0, 0],
 
     # SeisBench
     "ETHC": ["ETHZ.bin", "ETHZ_queries.bin", 256, 1, np.float32, 0, 0],
@@ -64,10 +66,12 @@ DEFAULT_DATASETS = [name for name in datasets if name != "turinganns"]
 # even for SeisBench datasets that contain fewer than 100M records.
 dataset_properties = {
     "BIGANN": (100_000_000, True), "DEEP1b": (100_000_000, False),
-    "SIFT1b": (100_000_000, False), "spacev1b": (100_000_000, True),
+    "SIFT1b": (100_000_000, False), "simsearchnet": (100_000_000, True),
+    "spacev1b": (100_000_000, True),
     "TEXTTOIMAGE": (100_000_000, True), "turinganns": (100_000_000, True),
     "ASTRO": (100_000_000, False), "SALD": (100_000_000, False),
-    "SCEDC": (100_000_000, False), "ETHC": (4_999_932, False),
+    "SCEDC": (100_000_000, False), "seismic": (100_000_000, False),
+    "ETHC": (4_999_932, False),
     "ISC_EHB_DepthPhases": (100_000_000, False), "LenDB": (37_345_260, False),
     "Iquique": (578_853, False), "NEIC": (93_473_541, False),
     "OBS": (15_508_794, False), "OBST2024": (4_160_286, False),
