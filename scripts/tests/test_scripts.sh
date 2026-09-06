@@ -408,6 +408,37 @@ OUTPUT=$(MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SCRIPT_DIR/run_suite.sh" stan
 assert_contains "$OUTPUT" 'Skipping dataset=astro profile=standard run=36'
 pass 'suite skips workloads with existing result archives'
 
+DIDS_SCRIPT="$REPO_ROOT/Competitors/dids_scripts/run_dids.sh"
+OUTPUT=$("$DIDS_SCRIPT" bigann --threads 1 --dry-run)
+assert_contains "$OUTPUT" 'dids_benchmark_128'
+assert_contains "$OUTPUT" '--dimension 128'
+assert_contains "$OUTPUT" '--scalar-type uint8'
+assert_contains "$OUTPUT" '/home/tmp/schaefpa/messi_datasets/bigANN.bin'
+
+OUTPUT=$("$DIDS_SCRIPT" spacev1b --threads 1 --dry-run)
+assert_contains "$OUTPUT" '--dimension 100'
+assert_contains "$OUTPUT" '--scalar-type int8'
+
+OUTPUT=$("$DIDS_SCRIPT" text-to-image --threads 1 --dry-run)
+assert_contains "$OUTPUT" '--base-header u32-count-dim'
+assert_contains "$OUTPUT" '--query-header raw'
+
+OUTPUT=$("$DIDS_SCRIPT" simsearchnet --threads 1 --dry-run)
+assert_contains "$OUTPUT" '--base-header u32-count-dim'
+assert_contains "$OUTPUT" '--query-header u32-count-dim'
+
+OUTPUT=$("$DIDS_SCRIPT" turinganns --threads 1 --dry-run)
+assert_contains "$OUTPUT" '--scalar-type float32'
+assert_contains "$OUTPUT" '--base-header u32-count-dim'
+assert_contains "$OUTPUT" '--query-header u32-count-dim'
+
+OUTPUT=$(bash -c 'source "$1"; active_datasets' _ "$REPO_ROOT/Competitors/dids_scripts/lib/datasets.sh")
+assert_not_contains "$OUTPUT" 'seismic'
+assert_not_contains "$OUTPUT" 'simsearchnet'
+assert_not_contains "$OUTPUT" 'text-to-image'
+assert_not_contains "$OUTPUT" 'turinganns'
+pass 'DIDS dataset metadata and defaults match the evaluation loaders'
+
 if command -v shellcheck >/dev/null 2>&1; then
     mapfile -t SHELL_SCRIPTS < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
     shellcheck -x "${SHELL_SCRIPTS[@]}"

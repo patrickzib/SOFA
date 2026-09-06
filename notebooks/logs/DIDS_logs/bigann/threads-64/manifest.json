@@ -1,8 +1,8 @@
 {
   "competitor": "dids",
   "dataset_id": "bigann",
-  "dimension": 100,
-  "sax_length": 20,
+  "dimension": 128,
+  "sax_length": 16,
   "base_count": 100000000,
   "query_count": 100,
   "scalar_type": "uint8",
@@ -10,13 +10,13 @@
   "query_header": "raw",
   "preprocessing": "z-normalize",
   "metric": "squared_l2",
-  "timestamp_utc": "2026-08-27T14:05:44Z",
+  "timestamp_utc": "2026-09-06T14:05:37Z",
   "compiler": "15.1.0",
   "threads": 64,
   "k": 1,
   "approximate_nodes": 200,
-  "base_file": "/vol/tmp/schaefpa/messi_datasets/bigANN.bin",
-  "query_file": "/vol/tmp/schaefpa/messi_datasets/bigANN_queries.bin",
-  "index_dir": "/tmp/dids-index.vde36Q/bigann/dim-100-sax-20",
-  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_100", "--mode", "all", "--dataset-id", "bigann", "--dimension", "100", "--base-file", "/vol/tmp/schaefpa/messi_datasets/bigANN.bin", "--base-count", "100000000", "--query-file", "/vol/tmp/schaefpa/messi_datasets/bigANN_queries.bin", "--query-count", "100", "--scalar-type", "uint8", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "z-normalize", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "200", "--ref-objects", "10000", "--leaf-size", "2000", "--read-buffer", "10000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.vde36Q/bigann/dim-100-sax-20", "--output-dir", "/vol/home-vol3/wbi/schaefpa/dids_results/dids/bigann/threads-64"]
+  "base_file": "/home/tmp/schaefpa/messi_datasets/bigANN.bin",
+  "query_file": "/home/tmp/schaefpa/messi_datasets/bigANN_queries.bin",
+  "index_dir": "/tmp/dids-index.fdn356/bigann/dim-128-sax-16",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_128", "--mode", "all", "--dataset-id", "bigann", "--dimension", "128", "--base-file", "/home/tmp/schaefpa/messi_datasets/bigANN.bin", "--base-count", "100000000", "--query-file", "/home/tmp/schaefpa/messi_datasets/bigANN_queries.bin", "--query-count", "100", "--scalar-type", "uint8", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "z-normalize", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "200", "--ref-objects", "10000", "--leaf-size", "2000", "--read-buffer", "200000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.fdn356/bigann/dim-128-sax-16", "--output-dir", "/vol/home-vol3/wbi/schaefpa/dids_results/dids/bigann/threads-64"]
 }
