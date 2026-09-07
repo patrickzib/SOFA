@@ -81,8 +81,8 @@ typedef struct symbolic_trie_node {
 
 struct symbolic_trie_index {
     symbolic_trie_node *root;
-    /* All record words are slices of this one allocation.  Leaf splits move
-     * pointers into it, so teardown has one free rather than one per series. */
+    /* Splits and IVF move pointers into this arena. After construction the
+     * arena is repacked in leaf scan order; ownership remains one allocation. */
     sax_type *word_arena;
     int dimensions;
     int bound_dimensions;
@@ -325,6 +325,35 @@ static void trie_node_destroy(symbolic_trie_node *node) {
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
     free(node->cluster_raw_centroids); free(node->cluster_raw_radii);
     free(node->record_raw_radii); free(node);
+}
+
+/* Copy only words: positions, IVF offsets, and radii already share the final
+ * record order. The old arena stays alive until every pointer is redirected. */
+static sax_type *trie_compact_leaf_words(symbolic_trie_node *node, int dimensions,
+                                        sax_type *destination) {
+    if (node == NULL) return destination;
+    if (!node->leaf) {
+        for (int i = 0; i < node->split_fanout; ++i)
+            destination = trie_compact_leaf_words(node->children[i], dimensions, destination);
+        return destination;
+    }
+    for (int i = 0; i < node->size; ++i) {
+        memcpy(destination, node->words[i], (size_t) dimensions * sizeof(*destination));
+        node->words[i] = destination;
+        destination += dimensions;
+    }
+    return destination;
+}
+
+static int trie_compact_words(struct symbolic_trie_index *trie, size_t records) {
+    if (trie->dimensions <= 0 || records > SIZE_MAX / sizeof(sax_type) / (size_t) trie->dimensions)
+        return 0;
+    sax_type *packed = malloc(records * (size_t) trie->dimensions * sizeof(*packed));
+    if (packed == NULL) return 0; /* No pointers have changed on failure. */
+    trie_compact_leaf_words(trie->root, trie->dimensions, packed);
+    free(trie->word_arena);
+    trie->word_arena = packed;
+    return 1;
 }
 
 static unsigned long trie_node_count(const symbolic_trie_node *node) {
@@ -1426,6 +1455,10 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
                                    &child_slots,
                                    &largest_child_share);
     double split_end = messi_monotonic_seconds();
+    /* Clustering is the final operation that reorders records within leaves. */
+    if (!trie_compact_words(trie, (size_t) ts_num))
+        fprintf(stderr, "warning: unable to compact trie words; retaining original arena layout.\n");
+    const double compact_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
     COUNT_INDEXING_TIME_END
@@ -1434,7 +1467,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     fprintf(stderr, "    read       : %.3f s\n", read_end - build_start);
     fprintf(stderr, "    transform  : %.3f s\n", transform_end - read_end);
     fprintf(stderr, "    split      : %.3f s\n", split_end - transform_end);
-    fprintf(stderr, "    total      : %.3f s\n", split_end - build_start);
+    fprintf(stderr, "    compact    : %.3f s\n", compact_end - split_end);
+    fprintf(stderr, "    total      : %.3f s\n", compact_end - build_start);
     if (internal_nodes != 0) {
         char internal_count[32];
         fprintf(stderr, ">>> trie split diagnostics\n");
