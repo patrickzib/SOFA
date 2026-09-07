@@ -56,6 +56,8 @@ typedef struct symbolic_trie_node {
     sax_type *min_word;
     sax_type *max_word;
     sax_type **words;
+    /* Optional dimension-major blocks of the bound prefix, sixteen records each. */
+    sax_type *batch_words;
     file_position_type *positions;
     int size;
     int capacity;
@@ -321,7 +323,7 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
 static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
-    free(node->words); free(node->positions); free(node->min_word); free(node->max_word);
+    free(node->words); free(node->batch_words); free(node->positions); free(node->min_word); free(node->max_word);
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
     free(node->cluster_raw_centroids); free(node->cluster_raw_radii);
     free(node->record_raw_radii); free(node);
@@ -361,6 +363,30 @@ static unsigned long trie_node_count(const symbolic_trie_node *node) {
     unsigned long count = 1;
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) count += trie_node_count(node->children[i]);
     return count;
+}
+
+static unsigned long trie_prepare_batch_words(symbolic_trie_node *node, int dimensions) {
+    if (node == NULL) return 0;
+    unsigned long failed = 0;
+    if (!node->leaf) {
+        for (int i = 0; i < node->split_fanout; ++i)
+            failed += trie_prepare_batch_words(node->children[i], dimensions);
+        return failed;
+    }
+    if (node->size < MESSI_RECORD_LB_BATCH_SIZE) return 0;
+    const size_t blocks = ((size_t) node->size + 15) / 16;
+    if (blocks > SIZE_MAX / 16 / (size_t) dimensions) return 1;
+    const size_t bytes = blocks * 16 * (size_t) dimensions;
+    sax_type *packed = malloc(bytes);
+    if (packed == NULL) return 1;
+    memset(packed, 0, bytes);
+    for (size_t b = 0; b < blocks; ++b)
+        for (int d = 0; d < dimensions; ++d)
+            for (int lane = 0; lane < 16 && b * 16 + lane < (size_t) node->size; ++lane)
+                packed[(b * dimensions + d) * 16 + lane] = node->words[b * 16 + lane][d];
+    free(node->batch_words);
+    node->batch_words = packed;
+    return 0;
 }
 
 /* Compute split quality from the completed tree so parallel construction does
@@ -1458,6 +1484,13 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     /* Clustering is the final operation that reorders records within leaves. */
     if (!trie_compact_words(trie, (size_t) ts_num))
         fprintf(stderr, "warning: unable to compact trie words; retaining original arena layout.\n");
+    if (index->settings->SIMD_flag && messi_record_lb_batch_lanes() > 1 &&
+        index->settings->sax_bit_cardinality == 8 && trie->bound_dimensions >= 16 &&
+        trie->bound_dimensions <= MESSI_RECORD_LB_MAX_DIMENSIONS) {
+        const unsigned long failed_leaves = trie_prepare_batch_words(trie->root, trie->bound_dimensions);
+        if (failed_leaves)
+            fprintf(stderr, "warning: unable to transpose %lu trie leaves; using record-wise bounds there.\n", failed_leaves);
+    }
     const double compact_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
@@ -1487,6 +1520,19 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     return SUCCESS;
 }
 
+static float trie_refine_record_distance(isax_index *index, const symbolic_trie_node *node,
+                                         int record, const ts_type *query, float bsf,
+                                         trie_query_stats *stats, file_position_type *best_position) {
+    if (stats != NULL) ++stats->exact_distances;
+    const float distance = trie_exact_distance(query, rawfile + node->positions[record],
+                                               index->settings->timeseries_size, bsf, stats);
+    if (distance < bsf) {
+        if (best_position != NULL) *best_position = node->positions[record];
+        return distance;
+    }
+    return bsf;
+}
+
 static float trie_refine_streaming_record(isax_index *index, const symbolic_trie_node *node,
                                           int record, float mbr_suffix,
                                           const ts_type *query, const ts_type *transform,
@@ -1504,14 +1550,7 @@ static float trie_refine_streaming_record(isax_index *index, const symbolic_trie
     if (lower > bsf) {
         return bsf;
     }
-    if (stats != NULL) ++stats->exact_distances;
-    const float distance = trie_exact_distance(query, rawfile + node->positions[record],
-                                               index->settings->timeseries_size, bsf, stats);
-    if (distance < bsf) {
-        if (best_position != NULL) *best_position = node->positions[record];
-        return distance;
-    }
-    return bsf;
+    return trie_refine_record_distance(index, node, record, query, bsf, stats, best_position);
 }
 
 static inline int trie_radial_simd_lanes(const isax_index *index) {
@@ -1583,7 +1622,56 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
     int radial_window_valid = 0;
     unsigned long sampled_survivors = 0;
 
-    if (!radial_applied) {
+    if (node->batch_words != NULL && scratch != NULL && scratch->record_lb_table_ready &&
+        index->settings->SIMD_flag && messi_record_lb_batch_lanes() > 1) {
+        const int lanes = messi_record_lb_batch_lanes();
+        if (radial_applied && stats != NULL) stats->radial_candidates += (unsigned long) count;
+        for (int record = offset; record < end;) {
+            const int first = record % lanes;
+            const int base = record - first;
+            const int take = end - record < lanes - first ? end - record : lanes - first;
+            unsigned int active = ((1U << take) - 1U) << first;
+            const unsigned long long batch_start = streaming && profile_query_phases && stats != NULL
+                                                       ? trie_monotonic_microseconds() : 0;
+            if (radial_applied) {
+                if (!radial_window_valid || radial_window_bsf != bsf) {
+                    radial_window = messi_radial_window_from_bsf(query_radius, bsf);
+                    radial_window_bsf = bsf;
+                    radial_window_valid = 1;
+                }
+                if (radial_lanes == lanes && first == 0 && take == lanes)
+                    active &= trie_radial_survivor_mask(record_radii + base, radial_window, lanes);
+                else for (int lane = first; lane < first + take; ++lane)
+                    if (!messi_radial_radius_in_window(record_radii[base + lane], radial_window))
+                        active &= ~(1U << lane);
+                if (radial_sampling && stats == NULL)
+                    sampled_survivors += (unsigned long) __builtin_popcount(active);
+            }
+            if (stats != NULL) stats->lower_bounds += (unsigned long) __builtin_popcount(active);
+            float lower[16];
+            const int dimensions = index->trie->bound_dimensions;
+            const sax_type *symbols = node->batch_words +
+                (size_t) (base / 16) * dimensions * 16 + base % 16;
+            unsigned int survivors = messi_record_lb_table_batch(scratch->record_lb_table, symbols,
+                dimensions, bsf - mbr_suffix, active, lower);
+            if (batch_start != 0)
+                stats->record_bound_microseconds += trie_monotonic_microseconds() - batch_start;
+            while (survivors != 0U) {
+                const int lane = __builtin_ctz(survivors);
+                survivors &= survivors - 1U;
+                const float bound = mbr_suffix + lower[lane];
+                /* Earlier survivors can tighten BSF within this same batch. */
+                if (bound > bsf) continue;
+                if (streaming)
+                    bsf = trie_refine_record_distance(index, node, base + lane, query, bsf, stats, best_position);
+                else {
+                    scratch->candidates[candidate_count].lower_bound = bound;
+                    scratch->candidates[candidate_count++].record_index = base + lane;
+                }
+            }
+            record += take;
+        }
+    } else if (!radial_applied) {
         for (int record = offset; record < end; ++record) {
             if (streaming) {
                 bsf = trie_refine_streaming_record(index, node, record, mbr_suffix,
@@ -1808,6 +1896,20 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
         node = next;
     }
     return node;
+}
+
+/* CLI and API queries share the same fully searched seed leaf and initial BSF. */
+static float trie_seed_search(isax_index *index, const ts_type *query,
+                               const ts_type *transform, const sax_type *word,
+                               trie_query_stats *stats, trie_query_scratch *scratch,
+                               const symbolic_trie_node **seed_leaf,
+                               file_position_type *position) {
+    *seed_leaf = trie_seed_leaf(index, word, transform, stats);
+    const float bsf = *seed_leaf == NULL ? FLT_MAX :
+        trie_search_node(index, *seed_leaf, query, transform, FLT_MAX,
+                          stats, NULL, scratch, position);
+    if (stats != NULL) stats->approximate_distance = bsf;
+    return bsf;
 }
 
 /* The single-query engine deliberately mirrors the iSAX MESSI engine: first
@@ -2113,10 +2215,8 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
         unsigned long long search_start = trie_monotonic_microseconds();
-        const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform, &stats);
-        float bsf = seed_leaf == NULL ? FLT_MAX :
-                trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats, NULL, &scratch, NULL);
-        stats.approximate_distance = bsf;
+        const symbolic_trie_node *seed_leaf;
+        float bsf = trie_seed_search(index, query, transform, word, &stats, &scratch, &seed_leaf, NULL);
         float distance;
         if (maxquerythread > 1) {
             if (profile_query_phases) {
@@ -2246,10 +2346,8 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
                 trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
                 /* One worker owns one query: avoid nested per-query tasks. */
                 unsigned long long search_start = trie_monotonic_microseconds();
-                const symbolic_trie_node *seed_leaf = trie_seed_leaf(index, word, transform, &stats[i]);
-                float bsf = seed_leaf == NULL ? FLT_MAX :
-                        trie_search_node(index, seed_leaf, query, transform, FLT_MAX, &stats[i], NULL, &scratch, NULL);
-                stats[i].approximate_distance = bsf;
+                const symbolic_trie_node *seed_leaf;
+                float bsf = trie_seed_search(index, query, transform, word, &stats[i], &scratch, &seed_leaf, NULL);
                 if (minimum_distance < bsf) bsf = minimum_distance;
                 distances[i] = trie_search_node(index, index->trie->root, query, transform, bsf,
                                                 &stats[i], seed_leaf, &scratch, NULL);
@@ -2290,20 +2388,34 @@ enum response symbolic_trie_query_file_batch(isax_index *index, const char *path
 query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
                                         const ts_type *transform, float bsf) {
     query_result result = { FLT_MAX, NULL, 0, QUERY_RESULT_NO_POSITION };
-    if (index == NULL || index->trie == NULL) return result;
+    if (index == NULL || index->trie == NULL || query == NULL || transform == NULL) return result;
+    /* The API already computed the transform; only symbolize it for routing. */
+    sax_type word[index->trie->dimensions];
+    if (index->settings->function_type == 3)
+        sax_from_paa((ts_type *) transform, word, index->settings);
+    else if (index->settings->function_type == 5)
+        spartan_from_pca(index, transform, word);
+    else if (index->settings->function_type == 4 || index->settings->function_type == 6)
+        sfa_from_fft(index, transform, word);
+    else return result;
     trie_radial_auto_gate radial_auto_gate;
     const int radial_auto_initialized = trie_radial_auto_gate_init(index, &radial_auto_gate);
+    trie_query_scratch scratch = {0};
+    scratch.radial_auto_gate = radial_auto_initialized ? &radial_auto_gate : NULL;
+    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
+    const symbolic_trie_node *seed_leaf;
+    const float seed_bsf = trie_seed_search(index, query, transform, word, NULL, &scratch,
+                                           &seed_leaf, &result.record_position);
+    if (bsf < seed_bsf) result.record_position = QUERY_RESULT_NO_POSITION;
+    else bsf = seed_bsf;
     if (maxquerythread <= 1) {
-        trie_query_scratch scratch = {0};
-        scratch.radial_auto_gate = radial_auto_initialized ? &radial_auto_gate : NULL;
-        trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         result.distance = trie_search_node(index, index->trie->root, query, transform, bsf,
-                                           NULL, NULL, &scratch, &result.record_position);
-        free(scratch.candidates);
+                                           NULL, seed_leaf, &scratch, &result.record_position);
     }
-    else result.distance = trie_parallel_exact_search(index, query, transform, bsf, NULL, NULL,
+    else result.distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf, NULL,
                                                        &result.record_position,
                                                        radial_auto_initialized ? &radial_auto_gate : NULL);
+    free(scratch.candidates);
     trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
     return result;
 }

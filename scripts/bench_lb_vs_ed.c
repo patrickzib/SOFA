@@ -215,6 +215,64 @@ static double median_exact_distance(const benchmark_options *options, int length
     return median;
 }
 
+/* Compare compact row-major and blocked column-major words in identical record
+ * order. Packing is build-time work and is excluded from the query timings. */
+static int benchmark_record_batches(const benchmark_options *options) {
+    const size_t blocks = (options->candidates + 15) / 16;
+    sax_type *rows = malloc(blocks * 16 * MAX_DIMS);
+    sax_type *columns = calloc(blocks * 16, MAX_DIMS);
+    double *samples = malloc(options->trials * sizeof(*samples));
+    if (!rows || !columns || !samples) { free(rows); free(columns); free(samples); return 0; }
+    for (size_t r = 0; r < options->candidates; ++r) {
+        memcpy(rows + r * MAX_DIMS, words + (size_t) order[r] * MAX_DIMS, MAX_DIMS);
+        for (int d = 0; d < MAX_DIMS; ++d)
+            columns[((r / 16) * MAX_DIMS + d) * 16 + r % 16] = rows[r * MAX_DIMS + d];
+    }
+    const int lanes = messi_record_lb_batch_lanes();
+    const float limits[] = {0.5f, 8.0f, 32.0f, FLT_MAX};
+    puts("record_layout,dimensions,bsf,ns_per_record,pruned_percent");
+    for (int dimensions = 16; dimensions <= MAX_DIMS; dimensions *= 2)
+        for (size_t l = 0; l < sizeof(limits) / sizeof(*limits); ++l)
+            for (int transposed = 0; transposed <= 1; ++transposed) {
+                size_t pruned = 0;
+                for (int trial = 0; trial < options->trials; ++trial) {
+                    float total = 0.0f;
+                    pruned = 0;
+                    const float limit = limits[l];
+                    const double start = now_seconds();
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) num_threads(options->threads) reduction(+:total,pruned)
+#endif
+                    for (size_t r = 0; r < options->candidates; r += lanes) {
+                        const int valid = options->candidates - r < (size_t) lanes
+                                              ? (int) (options->candidates - r) : lanes;
+                        if (transposed) {
+                            float distances[16];
+                            const unsigned int survivors = messi_record_lb_table_batch(record_table,
+                                columns + (r / 16) * MAX_DIMS * 16 + r % 16,
+                                dimensions, limit, (1U << valid) - 1U, distances);
+                            pruned += valid - __builtin_popcount(survivors);
+                            for (int lane = 0; lane < valid; ++lane)
+                                if (survivors & (1U << lane)) total += distances[lane];
+                        } else for (int lane = 0; lane < valid; ++lane) {
+                            const float distance = messi_record_lb_table_sum(record_table,
+                                rows + (r + lane) * MAX_DIMS, dimensions, limit, 1);
+                            pruned += distance > limit;
+                            if (distance <= limit) total += distance;
+                        }
+                    }
+                    samples[trial] = now_seconds() - start;
+                    result_sink = total;
+                }
+                qsort(samples, options->trials, sizeof(*samples), compare_double);
+                printf("%s,%d,%g,%.3f,%.3f\n", transposed ? "transposed" : "row_major",
+                    dimensions, limits[l], samples[options->trials / 2] * 1e9 / options->candidates,
+                    100.0 * pruned / options->candidates);
+            }
+    free(rows); free(columns); free(samples);
+    return 1;
+}
+
 static const char *simd_backend(void) {
 #if defined(__AVX512F__)
     return "AVX-512";
@@ -295,8 +353,9 @@ int main(int argc, char **argv) {
         }
     }
 
+    const int batches_ok = benchmark_record_batches(&options);
     free(order);
     free(series);
     free(words);
-    return result_sink == -1.0f;
+    return !batches_ok || result_sink == -1.0f;
 }
