@@ -99,7 +99,8 @@ default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
-`--trie-leaf-ivf-radial-bound` stores each record's distance from its raw-space
+`--trie-leaf-ivf-radial-bound` is enabled by default with trie leaf IVF; use
+`--no-trie-leaf-ivf-radial-bound` to disable it. It stores each record's distance from its raw-space
 IVF centroid as a contiguous float32 array. Records remain in their existing
 IVF-cluster order. During a leaf scan, AVX-512 classifies 16 radii per load and
 AVX2 classifies 8; the survivor mask is processed in record order before the

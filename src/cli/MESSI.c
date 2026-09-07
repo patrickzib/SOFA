@@ -426,6 +426,7 @@ int main(int argc, char **argv) {
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     static int trie_leaf_ivf_radial_bound = 0;
+    static int trie_leaf_ivf_radial_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
      * SOFA v2 adds the optional record-level extensions below. */
@@ -521,6 +522,7 @@ int main(int argc, char **argv) {
                 {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
+                {"no-trie-leaf-ivf-radial-bound", no_argument, 0, 1033},
                 {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
                 {"no-trie-streaming-leaf-scan", no_argument, 0, 1027},
@@ -645,12 +647,19 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf_raw_ball_bound = 0;
                 break;
             case 1026:
+                trie_leaf_ivf_radial_bound_specified = 1;
                 trie_leaf_ivf_radial_bound = 1;
                 trie_leaf_ivf_radial_bound_auto = 0;
                 break;
             case 1028:
+                trie_leaf_ivf_radial_bound_specified = 1;
                 trie_leaf_ivf_radial_bound = 1;
                 trie_leaf_ivf_radial_bound_auto = 1;
+                break;
+            case 1033:
+                trie_leaf_ivf_radial_bound_specified = 1;
+                trie_leaf_ivf_radial_bound = 0;
+                trie_leaf_ivf_radial_bound_auto = 0;
                 break;
             case 1024:
                 trie_streaming_leaf_scan = 1;
@@ -941,7 +950,8 @@ int main(int argc, char **argv) {
                        "  --trie-leaf-ivf K              Flat leaf IVF groups (2--64; learned-transform default: 16)\n"
                        "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
-                       "  --trie-leaf-ivf-radial-bound  Always SIMD-prune IVF records by float32 centroid radius\n"
+                       "  --trie-leaf-ivf-radial-bound  Always SIMD-prune IVF records by float32 centroid radius (default with IVF)\n"
+                       "  --no-trie-leaf-ivf-radial-bound  Disable record-radius pruning\n"
                        "  --trie-leaf-ivf-radial-bound-auto  Keep radial pruning only after a 25%% sampled rejection rate\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
                        "  --trie-dynamic-alphabet        Variance-weighted alphabet allocation\n"
@@ -1021,6 +1031,8 @@ int main(int argc, char **argv) {
         if (!trie_leaf_ivf_specified &&
             (function_type == 4 || function_type == 5 || function_type == 6))
             trie_leaf_ivf = 16;
+        if (!trie_leaf_ivf_radial_bound_specified)
+            trie_leaf_ivf_radial_bound = trie_leaf_ivf != 0;
         if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
         if (function_type < 3 || function_type > 6) {
             fprintf(stderr, "error: --index-type trie supports function types 3 (SAX), 4 (SFA), 5 (SPARTAN), and 6 (PISA).\n");

@@ -188,7 +188,27 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type tr
     --no-trie-leaf-ivf --trie-leaf-ivf-radial-bound --dry-run >/dev/null 2>&1; then
     fail 'runner accepted trie IVF radial bound with IVF disabled'
 fi
-pass 'trie IVF radial bound is opt-in, forwarded, and requires IVF'
+pass 'explicit trie IVF radial bound is forwarded and requires IVF'
+
+for runner in dataset suite; do
+    if [[ $runner == dataset ]]; then
+        RADIAL_COMMAND=("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie --dry-run)
+    else
+        RADIAL_COMMAND=("$SCRIPT_DIR/run_suite.sh" standard --datasets astro --threads 1 --index-type trie --dry-run)
+    fi
+    OUTPUT=$("${RADIAL_COMMAND[@]}" 2>/dev/null)
+    assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+    assert_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+    OUTPUT=$("${RADIAL_COMMAND[@]}" --no-trie-leaf-ivf-radial-bound 2>/dev/null)
+    assert_contains "$OUTPUT" '--no-trie-leaf-ivf-radial-bound'
+    assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+    OUTPUT=$("${RADIAL_COMMAND[@]}" --no-trie-leaf-ivf 2>/dev/null)
+    assert_not_contains "$OUTPUT" ' --trie-leaf-ivf-radial-bound '
+    OUTPUT=$("${RADIAL_COMMAND[@]}" --trie-leaf-ivf-radial-bound-auto --no-trie-leaf-ivf-radial-bound 2>/dev/null)
+    assert_not_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound-auto'
+    assert_contains "$OUTPUT" '--no-trie-leaf-ivf-radial-bound'
+done
+pass 'dataset and suite default to IVF16 plus radial pruning and preserve explicit opt-outs'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound-auto --dry-run 2>/dev/null)

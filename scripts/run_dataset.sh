@@ -54,7 +54,9 @@ Options:
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
   --trie-leaf-ivf-radial-bound
-                            Always prune IVF records by centroid radius without reordering
+                            Always prune IVF records by centroid radius (default with IVF)
+  --no-trie-leaf-ivf-radial-bound
+                            Disable per-record centroid-radius pruning
   --trie-leaf-ivf-radial-bound-auto
                             Keep radial pruning only after a 25% sampled rejection rate
   --trie-fanout 2|4|8       Trie symbolic split fanout (default: 8)
@@ -210,6 +212,7 @@ TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=false
 TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_FANOUT=8
 TRIE_DYNAMIC_ALPHABET=false
@@ -279,8 +282,9 @@ while [[ $# -gt 0 ]]; do
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
-        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
-        --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
+        --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
+        --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
+        --no-trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
         --trie-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_FANOUT=$2; shift 2 ;;
         --trie-dynamic-alphabet) TRIE_DYNAMIC_ALPHABET=true; shift ;;
         --trie-min-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MIN_FANOUT=$2; shift 2 ;;
@@ -356,6 +360,9 @@ MIN_LEAF_SIZE=$(normalize_count "$MIN_LEAF_SIZE") || die '--min-leaf-size must b
 (( MIN_LEAF_SIZE <= LEAF_SIZE )) || die '--min-leaf-size cannot exceed --leaf-size'
 if [[ $INDEX_TYPE == trie ]]; then
     TRIE_RECORD_MBR_SUFFIX_BOUND=${TRIE_RECORD_MBR_SUFFIX_BOUND:-true}
+    if [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == false && $TRIE_LEAF_IVF != 0 ]]; then
+        TRIE_LEAF_IVF_RADIAL_BOUND=true
+    fi
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $TRIE_LEAF_IVF != 0 ]] || \
         die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
@@ -487,6 +494,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound-auto)
+    [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == true && $TRIE_LEAF_IVF_RADIAL_BOUND == false && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-radial-bound)
     if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
         COMMON_ARGS+=(--trie-dynamic-alphabet
                       --trie-min-fanout "$TRIE_MIN_FANOUT"
