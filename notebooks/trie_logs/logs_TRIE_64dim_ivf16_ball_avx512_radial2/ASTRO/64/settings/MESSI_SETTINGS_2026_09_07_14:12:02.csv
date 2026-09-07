@@ -1,0 +1,63 @@
+MESSI SETTINGS
+command,"/vol/fob-wbib-vol2/wbi/schaefpa/MESSI_SPARTAN/scripts/../bin/MESSI","--dataset","/home/tmp/schaefpa/messi_datasets/astro.bin","--in-memory","--index-type","trie","--timeseries-size","256","--dataset-size","100000000","--flush-limit","300000","--read-block","20000","--sax-cardinality","8","--queries","/home/tmp/schaefpa/messi_datasets/astro_queries.bin","--queries-size","100","--threads","64","--numa","auto","--leaf-size","20000","--min-leaf-size","20000","--initial-lbl-size","20000","--sampling-seed","1","--queue-number","64","--trie-mbr-dimensions","128","--n-segments","64","--trie-split-dimensions","64","--trie-record-mbr-suffix-bound","--trie-streaming-leaf-scan","--trie-leaf-ivf","16","--trie-leaf-ivf-radial-bound","--trie-fanout","8","--function-type","5","--sample-size","1000000","--sample-type","2","--is-norm","--histogram-type","2"
+dataset,/home/tmp/schaefpa/messi_datasets/astro.bin
+queries,/home/tmp/schaefpa/messi_datasets/astro_queries.bin
+index path,/vol/home-vol3/wbi/schaefpa/index/2026_09_07_14:12:02
+layout,trie
+in-memory,1
+dataset size,100000000
+queries size,100
+timeseries length,256
+function type,5
+SIMD,1
+input type,float32
+dataset header bytes,0
+query header bytes,0
+apply z-norm,0
+input is normalized,1
+symbolic dimensions,128
+record lower-bound dimensions,64
+SAX cardinality bits,8
+leaf size,20000
+minimum leaf size,20000
+initial leaf buffer size,20000
+maximum total buffer size,300000
+initial first-buffer-layer size,100
+loaded leaves,1
+threads,64
+queue count,64
+requested NUMA nodes,-1
+tight bound,0
+aggressive check,0
+minimum distance,3.40282347e+38
+node split criterion,1
+root split mode,default
+uniform root bits,1
+histogram type,2
+sample size,1000000
+sample type,2
+sampling seed,1
+SFA coefficients,0
+query report interval,10
+profile query phases,0
+use existing index,0
+completion type,0
+serial scan,0
+top-k,0
+k,0
+iSAX node MBR,1
+iSAX record-MBR suffix bound,0
+iSAX record-LB table,0
+iSAX MBR dimensions,32
+trie query batch,0
+trie record-MBR suffix bound,1
+trie streaming leaf scan,1
+trie leaf IVF groups,16
+trie leaf IVF raw-ball bound,1
+trie leaf IVF radial bound,1
+trie leaf IVF radial bound auto,0
+trie fanout,8
+trie dynamic alphabet,0
+trie minimum fanout,2
+trie maximum fanout,16
+trie alphabet budget bits,3
