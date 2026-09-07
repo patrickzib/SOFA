@@ -110,6 +110,82 @@ static inline float messi_record_lb_table_sum(
 #endif
 }
 
+/* Dimension-major blocks retain sixteen record slots on every architecture.
+ * AVX2/NEON consume halves/quarters; padded and out-of-range lanes are masked. */
+#define MESSI_RECORD_LB_BATCH_SIZE 16
+
+static inline int messi_record_lb_batch_lanes(void) {
+#if defined(__AVX512F__)
+    return 16;
+#elif ADS_HAVE_AVX2
+    return 8;
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    return 4;
+#else
+    return 1;
+#endif
+}
+
+/* One lane accumulates one record. Only returned survivor lanes contain full
+ * bounds; rejected lanes may contain partial sums. Check BSF every four dims. */
+static inline unsigned int messi_record_lb_table_batch(
+        const float table[MESSI_RECORD_LB_MAX_DIMENSIONS][256], const sax_type *symbols,
+        int dimensions, float limit, unsigned int active, float distances[16]) {
+    if (active == 0) return 0;
+#if defined(__AVX512F__)
+    __m512 sum = _mm512_setzero_ps();
+    const __m512 threshold = _mm512_set1_ps(limit);
+    for (int d = 0; d < dimensions; ++d) {
+        const __m512i indices = _mm512_cvtepu8_epi32(
+            _mm_loadu_si128((const __m128i *) (symbols + (size_t) d * 16)));
+        sum = _mm512_add_ps(sum, _mm512_mask_i32gather_ps(_mm512_setzero_ps(),
+            (__mmask16) active, indices, table[d], 4));
+        if ((d & 3) == 3 || d + 1 == dimensions) {
+            active &= (unsigned int) _mm512_cmp_ps_mask(sum, threshold, _CMP_LE_OQ);
+            if (active == 0) break;
+        }
+    }
+    _mm512_storeu_ps(distances, sum);
+#elif ADS_HAVE_AVX2
+    __m256 sum = _mm256_setzero_ps();
+    const __m256 threshold = _mm256_set1_ps(limit);
+    const __m256i bits = _mm256_setr_epi32(1, 2, 4, 8, 16, 32, 64, 128);
+    __m256 mask = _mm256_castsi256_ps(_mm256_cmpgt_epi32(
+        _mm256_and_si256(_mm256_set1_epi32((int) active), bits), _mm256_setzero_si256()));
+    for (int d = 0; d < dimensions; ++d) {
+        const __m256i indices = _mm256_cvtepu8_epi32(
+            _mm_loadl_epi64((const __m128i *) (symbols + (size_t) d * 16)));
+        sum = _mm256_add_ps(sum, _mm256_mask_i32gather_ps(_mm256_setzero_ps(), table[d], indices, mask, 4));
+        if ((d & 3) == 3 || d + 1 == dimensions) {
+            mask = _mm256_and_ps(mask, _mm256_cmp_ps(sum, threshold, _CMP_LE_OQ));
+            active = (unsigned int) _mm256_movemask_ps(mask);
+            if (active == 0) break;
+        }
+    }
+    _mm256_storeu_ps(distances, sum);
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    float32x4_t sum = vdupq_n_f32(0.0f);
+    const uint32_t bits[4] = {1, 2, 4, 8};
+    for (int d = 0; d < dimensions; ++d) {
+        const sax_type *s = symbols + (size_t) d * 16;
+        const float values[4] = {table[d][s[0]], table[d][s[1]], table[d][s[2]], table[d][s[3]]};
+        sum = vaddq_f32(sum, vld1q_f32(values));
+        if ((d & 3) == 3 || d + 1 == dimensions) {
+            active &= vaddvq_u32(vandq_u32(vcleq_f32(sum, vdupq_n_f32(limit)), vld1q_u32(bits)));
+            if (active == 0) break;
+        }
+    }
+    vst1q_f32(distances, sum);
+#else
+    float sum = 0.0f;
+    for (int d = 0; d < dimensions && sum <= limit; ++d)
+        sum += table[d][symbols[(size_t) d * 16]];
+    distances[0] = sum;
+    active &= sum <= limit ? 1U : 0U;
+#endif
+    return active;
+}
+
 static inline float messi_lower_bound_16_scalar(const isax_index *index,
                                                  const float values[16],
                                                  const sax_type sax[16],
