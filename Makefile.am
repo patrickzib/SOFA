@@ -17,8 +17,11 @@ bin_MESSI_CFLAGS = -I/opt/local/include -I/usr/include/ -I/usr/local/include/ $(
 bin_MESSI_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) $(CBLAS_LINK_LIBS) -lreadline -lm -lpthread
 bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ $(SIMD_CFLAGS) -fopenmp
 
-check_PROGRAMS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_build_progress
-TESTS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_build_progress
+check_PROGRAMS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_build_progress scripts/tests/test_trie_compaction
+TESTS = $(check_PROGRAMS)
+scripts_tests_test_trie_compaction_SOURCES = scripts/tests/test_trie_compaction.c
+scripts_tests_test_trie_compaction_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) $(CBLAS_LINK_LIBS) -lm
+scripts_tests_test_trie_compaction_LDFLAGS = -fopenmp
 scripts_tests_test_ed_simd_SOURCES = scripts/tests/test_ed_simd.c
 scripts_tests_test_ed_simd_LDADD = lib/libads.a -lm
 scripts_tests_test_trie_partitioned_bounds_SOURCES = scripts/tests/test_trie_partitioned_bounds.c
