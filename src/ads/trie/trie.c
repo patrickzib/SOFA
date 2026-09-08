@@ -131,7 +131,7 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
  * information needed for split selection while keeping the expensive full
  * pass to the one partition pass that cannot be avoided. */
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
-#define TRIE_PCA_PROJECTION_BLOCK_RECORDS 4096U
+#define TRIE_PCA_PROJECTION_BLOCK_RECORDS 16384U
 
 typedef struct trie_query_stats {
     unsigned long checked_nodes;
@@ -1142,13 +1142,19 @@ static enum response trie_word_from_ts(isax_index *index, const ts_type *ts, sax
 }
 
 #if HAVE_CBLAS
+typedef struct {
+    ts_type *projection;
+    ts_type *fft_input;
+    double preprocess_seconds, projection_seconds, symbolize_seconds;
+} trie_pca_build_scratch;
+
 /* Project one bounded bulk-build block.  The BLAS implementation owns the
  * matrix-multiply threads; OpenMP is used only for independent work around
  * that call. */
 static enum response trie_build_pca_block(isax_index *index,
                                           struct symbolic_trie_index *trie,
                                           long first_record, unsigned int records,
-                                          int apply_znorm) {
+                                          int apply_znorm, trie_pca_build_scratch *scratch) {
     const int dimensions = trie->dimensions;
     const int ts_length = index->settings->timeseries_size;
     const int function_type = index->settings->function_type;
@@ -1156,30 +1162,24 @@ static enum response trie_build_pca_block(isax_index *index,
         dimensions <= 0 || ts_length <= 0 || index->pca_dim <= 0 ||
         (size_t) records > SIZE_MAX / (size_t) dimensions) return FAILURE;
 
-    ts_type *projection = malloc(sizeof(*projection) * (size_t) records * dimensions);
+    const double preprocess_start = messi_monotonic_seconds();
+    ts_type *projection = scratch->projection;
     if (projection == NULL) return FAILURE;
     const ts_type *input = rawfile + (size_t) first_record * ts_length;
-    ts_type *fft_input = NULL;
+    ts_type *fft_input = scratch->fft_input;
     int failed = 0;
 
     if (function_type == 5) {
+        if (apply_znorm) {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
 #endif
         for (unsigned int row = 0; row < records; ++row) {
-            if (apply_znorm)
-                znorm(rawfile + (size_t) (first_record + row) * ts_length, ts_length);
+            znorm(rawfile + (size_t) (first_record + row) * ts_length, ts_length);
+        }
         }
     } else {
-        if ((size_t) records > SIZE_MAX / (size_t) index->pca_dim) {
-            free(projection);
-            return FAILURE;
-        }
-        fft_input = malloc(sizeof(*fft_input) * (size_t) records * index->pca_dim);
-        if (fft_input == NULL) {
-            free(projection);
-            return FAILURE;
-        }
+        if (fft_input == NULL) return FAILURE;
 #ifdef _OPENMP
 #pragma omp parallel num_threads(maxquerythread)
 #endif
@@ -1192,7 +1192,6 @@ static enum response trie_build_pca_block(isax_index *index,
 #pragma omp for schedule(static)
 #endif
             for (unsigned int row = 0; row < records; ++row) {
-                if (failed) continue;
                 ts_type *ts = rawfile + (size_t) (first_record + row) * ts_length;
                 if (apply_znorm) znorm(ts, ts_length);
                 memcpy(fftw.ts, ts, sizeof(*ts) * ts_length);
@@ -1213,8 +1212,12 @@ static enum response trie_build_pca_block(isax_index *index,
         input = fft_input;
     }
 
-    if (!failed && pca_project_batch(index, input, records, projection,
+    const double projection_start = messi_monotonic_seconds();
+    scratch->preprocess_seconds += projection_start - preprocess_start;
+    if (!failed && pca_project_batch_unbiased(index, input, records, projection,
                                      maxquerythread > 0 ? maxquerythread : 1) != SUCCESS) failed = 1;
+    const double symbolize_start = messi_monotonic_seconds();
+    scratch->projection_seconds += symbolize_start - projection_start;
     if (!failed) {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) num_threads(maxquerythread)
@@ -1222,7 +1225,9 @@ static enum response trie_build_pca_block(isax_index *index,
         for (unsigned int row = 0; row < records; ++row) {
             const long record = first_record + row;
             sax_type *word = trie->word_arena + (size_t) record * trie->dimensions;
-            const ts_type *values = projection + (size_t) row * dimensions;
+            ts_type *values = projection + (size_t) row * dimensions;
+            for (int k = 0; k < index->pca_components_count; ++k)
+                values[k] += (ts_type) index->pca_bias[k];
             if (function_type == 5) spartan_from_pca(index, values, word);
             else sfa_from_fft(index, values, word);
             trie->root->words[record] = word;
@@ -1230,8 +1235,7 @@ static enum response trie_build_pca_block(isax_index *index,
         }
     }
 
-    free(fft_input);
-    free(projection);
+    scratch->symbolize_seconds += messi_monotonic_seconds() - symbolize_start;
     return failed ? FAILURE : SUCCESS;
 }
 #endif
@@ -1341,13 +1345,27 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     unsigned long transform_completed = 0;
 #if HAVE_CBLAS
     if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
+        trie_pca_build_scratch scratch = {0};
+        const size_t capacity = (size_t) ts_num < TRIE_PCA_PROJECTION_BLOCK_RECORDS
+                                    ? (size_t) ts_num : TRIE_PCA_PROJECTION_BLOCK_RECORDS;
+        if (trie->dimensions <= 0 || index->pca_dim <= 0 ||
+            capacity > SIZE_MAX / sizeof(ts_type) / (size_t) trie->dimensions ||
+            capacity > SIZE_MAX / sizeof(ts_type) / (size_t) index->pca_dim) {
+            failed = 1;
+        } else {
+            scratch.projection = malloc(capacity * (size_t) trie->dimensions * sizeof(ts_type));
+            if (index->settings->function_type == 6)
+                scratch.fft_input = malloc(capacity * (size_t) index->pca_dim * sizeof(ts_type));
+            failed = scratch.projection == NULL ||
+                (index->settings->function_type == 6 && scratch.fft_input == NULL);
+        }
         int reported_transform_percent = 10;
         for (long first = 0; first < ts_num && !failed;
              first += TRIE_PCA_PROJECTION_BLOCK_RECORDS) {
             const unsigned int records = (unsigned int) ((ts_num - first) <
                 (long) TRIE_PCA_PROJECTION_BLOCK_RECORDS
                     ? (ts_num - first) : TRIE_PCA_PROJECTION_BLOCK_RECORDS);
-            if (trie_build_pca_block(index, trie, first, records, apply_znorm) != SUCCESS) {
+            if (trie_build_pca_block(index, trie, first, records, apply_znorm, &scratch) != SUCCESS) {
                 failed = 1;
             } else {
                 double percent = 10.0 +
@@ -1359,6 +1377,10 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
                 }
             }
         }
+        free(scratch.fft_input);
+        free(scratch.projection);
+        fprintf(stderr, ">>> trie transform phases: preprocess=%.3fs projection=%.3fs bias+symbolize=%.3fs\n",
+                scratch.preprocess_seconds, scratch.projection_seconds, scratch.symbolize_seconds);
     } else
 #endif
     {

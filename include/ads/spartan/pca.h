@@ -14,5 +14,11 @@ void pca_report_projection_backend(int workers, unsigned int rows);
  * SGEMM when configured, otherwise the scalar projection path. */
 enum response pca_project_batch(const isax_index *index, const ts_type *input,
                                 unsigned int rows, ts_type *output, int workers);
+#if HAVE_CBLAS
+/* Internal bulk-build primitive: identical SGEMM, but caller applies biases.
+ * Padded output coefficients are zeroed. */
+enum response pca_project_batch_unbiased(const isax_index *index, const ts_type *input,
+                                         unsigned int rows, ts_type *output, int workers);
+#endif
 
 #endif /* MESSI_PCA_H */

@@ -292,6 +292,31 @@ int main(void) {
             }
         }
     }
+#if HAVE_CBLAS
+    /* Retain the original biased batch API as a bitwise reference for the
+     * deferred-bias build path, including partial batches and padding. */
+    ts_type deferred[BATCH_ROWS * DIMENSIONS];
+    for (int padded = 0; padded <= 1; ++padded) {
+        index.pca_components_count = DIMENSIONS - padded;
+        for (int rows = 1; rows <= BATCH_ROWS; ++rows) {
+            for (int workers = 1; workers <= 4; workers *= 2) {
+                if (pca_project_batch(&index, batch_input, rows, batch_output, workers) != SUCCESS ||
+                    pca_project_batch_unbiased(&index, batch_input, rows, deferred, workers) != SUCCESS)
+                    return 1;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(workers) schedule(static)
+#endif
+                for (int row = 0; row < rows; ++row)
+                    for (int k = 0; k < index.pca_components_count; ++k)
+                        deferred[row * DIMENSIONS + k] += (ts_type) index.pca_bias[k];
+                if (memcmp(batch_output, deferred, (size_t) rows * DIMENSIONS * sizeof(ts_type)) != 0) {
+                    fprintf(stderr, "Deferred PCA bias changed projection bits\n");
+                    return 1;
+                }
+            }
+        }
+    }
+#endif
     pca_free(&index);
     for (int i = 0; i < DIMENSIONS; ++i) free(index.bins[i]);
     free(index.bins);

@@ -270,6 +270,39 @@ static void *spartan_order_divide_worker(void *transferdata) {
     return NULL;
 }
 
+/* Samples are independent; retain the scalar accumulation order within each
+ * projection so worker count cannot change the learned bins. */
+static enum response spartan_project_samples(const isax_index *index,
+                                             const ts_type *samples,
+                                             unsigned int sample_size,
+                                             ts_type **coefficients, int workers) {
+    const int dim = index->settings->n_segments;
+    const int ts_length = index->settings->timeseries_size;
+    int failed = 0;
+    if (workers < 1) workers = 1;
+    if (sample_size > 0 && (unsigned int) workers > sample_size) workers = (int) sample_size;
+#ifdef _OPENMP
+#pragma omp parallel num_threads(workers) reduction(|:failed)
+#endif
+    {
+        ts_type *projection = calloc(dim, sizeof(*projection));
+        if (projection == NULL) failed = 1;
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+        for (unsigned int i = 0; i < sample_size; ++i) {
+            if (projection == NULL) continue;
+            if (pca_from_ts(index, samples + (size_t) i * ts_length, projection) != SUCCESS) {
+                failed = 1;
+                continue;
+            }
+            for (int k = 0; k < dim; ++k) coefficients[k][i] = projection[k];
+        }
+        free(projection);
+    }
+    return failed ? FAILURE : SUCCESS;
+}
+
 enum response spartan_set_bins(isax_index *index, const char *ifilename, long int ts_num,
                                int maxquerythread, int filetype_int, int apply_znorm) {
     if (index == NULL || index->settings == NULL) {
@@ -338,8 +371,8 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
         }
     }
 
-    ts_type *projection = calloc(dim, sizeof(ts_type));
-    if (projection == NULL) {
+    if (spartan_project_samples(index, samples, sample_size, coeff_mem_array,
+                                 maxquerythread) != SUCCESS) {
         for (int k = 0; k < dim; ++k) {
             free(coeff_mem_array[k]);
         }
@@ -348,23 +381,6 @@ enum response spartan_set_bins(isax_index *index, const char *ifilename, long in
         pca_free(index);
         return FAILURE;
     }
-    for (unsigned int i = 0; i < sample_size; ++i) {
-        const ts_type *row = samples + (i * ts_length);
-        if (pca_from_ts(index, row, projection) != SUCCESS) {
-            free(projection);
-            for (int k = 0; k < dim; ++k) {
-                free(coeff_mem_array[k]);
-            }
-            free(coeff_mem_array);
-            free(samples);
-            pca_free(index);
-            return FAILURE;
-        }
-        for (int k = 0; k < dim; ++k) {
-            coeff_mem_array[k][i] = projection[k];
-        }
-    }
-    free(projection);
     free(samples);
     double projection_end = messi_monotonic_seconds();
 

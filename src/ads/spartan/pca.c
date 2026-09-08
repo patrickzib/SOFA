@@ -256,8 +256,8 @@ void pca_report_projection_backend(int workers, unsigned int rows) {
     reported_projection_mode = 1;
 }
 
-enum response pca_project_batch(const isax_index *index, const ts_type *input,
-                                unsigned int rows, ts_type *output, int workers) {
+static enum response pca_project_batch_impl(const isax_index *index, const ts_type *input,
+                                unsigned int rows, ts_type *output, int workers, int add_bias) {
     if (index == NULL || input == NULL || output == NULL || rows == 0 ||
         index->settings == NULL || index->pca_components == NULL || index->pca_bias == NULL ||
         index->pca_dim <= 0 || index->pca_components_count <= 0) {
@@ -303,12 +303,13 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
                     input, input_dim, index->pca_components, input_dim,
                     0.0f, output, output_dim);
     }
-    for (unsigned int row = 0; row < rows; ++row) {
+    if (add_bias) for (unsigned int row = 0; row < rows; ++row) {
         ts_type *projected = output + (size_t) row * output_dim;
         for (int k = 0; k < components; ++k) projected[k] += (ts_type) index->pca_bias[k];
     }
     return SUCCESS;
 #else
+    (void) add_bias;
     for (unsigned int row = 0; row < rows; ++row) {
         if (pca_from_ts(index, input + (size_t) row * input_dim,
                         output + (size_t) row * output_dim) != SUCCESS)
@@ -317,3 +318,15 @@ enum response pca_project_batch(const isax_index *index, const ts_type *input,
     return SUCCESS;
 #endif
 }
+
+enum response pca_project_batch(const isax_index *index, const ts_type *input,
+                                unsigned int rows, ts_type *output, int workers) {
+    return pca_project_batch_impl(index, input, rows, output, workers, 1);
+}
+
+#if HAVE_CBLAS
+enum response pca_project_batch_unbiased(const isax_index *index, const ts_type *input,
+                                         unsigned int rows, ts_type *output, int workers) {
+    return pca_project_batch_impl(index, input, rows, output, workers, 0);
+}
+#endif
