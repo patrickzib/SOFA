@@ -142,6 +142,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
     settings->trie_leaf_ivf_radial_bound =
         index_type == MESSI_INDEX_TRIE && radial_bound_requested;
     settings->trie_residual_norm_bound = params->trie_residual_norm_bound;
+    settings->trie_residual_record_only = params->trie_residual_record_only;
     settings->trie_leaf_ivf_radial_bound_auto =
         index_type == MESSI_INDEX_TRIE && params->trie_leaf_ivf_radial_bound_auto;
     settings->trie_fanout = params->trie_fanout == 0 ? 8 : params->trie_fanout;

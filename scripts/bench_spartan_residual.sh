@@ -32,7 +32,7 @@ for prefix in 16 32 64; do
                 --is-norm --histogram-type "$HISTOGRAM" --sax-cardinality 8 --n-segments "$prefix" \
                 --trie-mbr-dimensions "$((LENGTH < 128 ? LENGTH : 128))" \
                 --leaf-size 20000 --min-leaf-size 20000 --initial-lbl-size 20000 \
-                --trie-record-mbr-suffix-bound --trie-streaming-leaf-scan \
+                --trie-record-mbr-suffix-bound --trie-streaming-leaf-scan --profile-query-phases \
                 --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound "${extra[@]}" \
                 >"$run_dir/run.log" 2>&1
             awk -v k="$prefix" -v r="$repeat" -v m="$mode" '

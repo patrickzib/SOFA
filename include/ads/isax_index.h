@@ -113,6 +113,7 @@ typedef struct {
     /* Opt-in per-record centroid-radius triangle bound. */
     char trie_leaf_ivf_radial_bound;
     char trie_residual_norm_bound;
+    char trie_residual_record_only;
     /* Calibrate the radial bound per query and keep it only when at least
      * one quarter of sampled candidates are rejected. */
     char trie_leaf_ivf_radial_bound_auto;

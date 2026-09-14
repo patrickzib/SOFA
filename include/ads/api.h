@@ -53,6 +53,7 @@ typedef struct {
     int trie_alphabet_budget_bits;
     char dynamic_root_split_variance;
     char trie_residual_norm_bound;
+    char trie_residual_record_only;
 } messi_index_params;
 
 messi_index *messi_index_create(const messi_index_params *params);

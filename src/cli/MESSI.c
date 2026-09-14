@@ -427,6 +427,7 @@ int main(int argc, char **argv) {
     static int trie_leaf_ivf_raw_ball_bound = 1;
     static int trie_leaf_ivf_radial_bound = 0;
     static int trie_residual_norm_bound = 0;
+    static int trie_residual_record_only = 0;
     static int trie_leaf_ivf_radial_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
@@ -524,6 +525,7 @@ int main(int argc, char **argv) {
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
                 {"trie-residual-norm-bound", no_argument, 0, 1040},
+                {"trie-residual-record-only", no_argument, 0, 1041},
                 {"no-trie-leaf-ivf-radial-bound", no_argument, 0, 1033},
                 {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
@@ -655,6 +657,10 @@ int main(int argc, char **argv) {
                 break;
             case 1040:
                 trie_residual_norm_bound = 1;
+                break;
+            case 1041:
+                trie_residual_norm_bound = 1;
+                trie_residual_record_only = 1;
                 break;
             case 1028:
                 trie_leaf_ivf_radial_bound_specified = 1;
@@ -948,6 +954,7 @@ int main(int argc, char **argv) {
                        "  --trie-query-batch             Batch independent queries\n"
                        "  --trie-mbr-dimensions N        MBR dimensions (default: min(128, series length))\n"
                        "  --trie-residual-norm-bound     ResSPARTAN float32 residual pruning (opt-in)\n"
+                       "  --trie-residual-record-only    ResSPARTAN residual checks only at records\n"
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
@@ -1479,6 +1486,7 @@ int main(int argc, char **argv) {
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound;
         index_settings->trie_residual_norm_bound = trie_residual_norm_bound;
+        index_settings->trie_residual_record_only = trie_residual_record_only;
         index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;

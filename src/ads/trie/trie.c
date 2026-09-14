@@ -244,6 +244,7 @@ static float trie_residual_bound(isax_index *index, const float *transform,
                                  float bsf, trie_query_stats *stats, int level) {
     const struct symbolic_trie_index *trie = index->trie;
     if (!trie->residual.enabled || scratch == NULL || !scratch->residual_ready) return 0.0f;
+    if (index->settings->trie_residual_record_only && level != 2) return 0.0f;
     const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
     double gap = spartan_residual_gap(scratch->residual_query.radius, rmin, rmax);
     double prefix = 0.0, suffix = 0.0;
@@ -575,7 +576,7 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     trie_radial_candidates = stats->radial_candidates;
     trie_radial_pruned = stats->radial_pruned;
     SAVE_STATS(distance)
-    if (trie->residual.enabled) {
+    if (trie->residual.enabled && profile_query_phases) {
         const char *levels[] = {"node", "ivf", "record"};
         for (int level = 0; level < 3; ++level)
             fprintf(stderr, ">>> ResSPARTAN %s: checks=%lu wins-over-suffix=%lu prunes=%lu\n",

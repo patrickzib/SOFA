@@ -205,7 +205,7 @@ accumulation or residual lookup table. Residual ranges also participate in
 node and IVF pruning. Query state is prepared once and shared with workers.
 No new persistence format is added.
 
-The log prints storage diagnostics and per-query `node`, `ivf`,
+The log prints storage diagnostics. With `--profile-query-phases`, it also prints per-query `node`, `ivf`,
 and `record` counters: checks, residual wins over the suffix, and additional
 prunes. Record checks count survivors of the existing bound filters, not all
 indexed records. The normal pruning summary includes these prunes; do not add
@@ -213,6 +213,9 @@ the residual counters to its totals again. Use `--profile-query-phases` to
 include residual computation in lower-bound timings.
 
 Earlier benchmark figures below describe the corrected implementation, not this simplified version.
+
+The residual benchmark enables query-phase profiling for both modes to collect
+these counters; its timings therefore include profiling overhead.
 
 Run `bash scripts/bench_spartan_residual.sh` for paired builds and 100-query
 searches on the bundled SALD head fixture, at prefixes 16/32/64 and three
