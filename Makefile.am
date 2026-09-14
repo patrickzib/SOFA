@@ -2,6 +2,7 @@ AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS =  ${ACLOCAL_FLAGS}
 AM_CFLAGS = -fcommon
 AM_CPPFLAGS = -I$(top_builddir) -I$(top_srcdir) -I$(top_srcdir)/include
+EXTRA_DIST = include/ads/spartan/residual.h scripts/bench_spartan_residual.sh
 
 lib_LIBRARIES	= lib/libads.a
 lib_libads_a_SOURCES = src/ads/build_progress.c src/ads/isax/isax_file_loaders.c src/ads/isax/isax_first_buffer_layer.c src/ads/isax/isax_index.c src/ads/isax/isax_node.c src/ads/isax/isax_node_buffer.c src/ads/isax/isax_node_record.c src/ads/isax/isax_node_split.c src/ads/isax/isax_query_engine.c src/ads/isax/isax_visualize_index.c src/ads/isax/inmemory_query_engine.c src/ads/isax/parallel_inmemory_query_engine.c src/ads/isax/inmemory_index_engine.c src/ads/isax/parallel_index_engine.c src/ads/isax/parallel_query_engine.c src/ads/isax/inmemory_topk_engine.c src/ads/pqueue.c src/ads/sax/sax.c src/ads/sax/ts.c src/ads/sfa/dft.c src/ads/sfa/sfa.c src/ads/spartan/pca.c src/ads/spartan/spartan.c src/ads/pisa/pisa.c src/ads/calc_utils.c src/ads/trie/trie.c
@@ -19,6 +20,10 @@ bin_MESSI_LDFLAGS = -L/opt/local/lib -Llib/ $(SIMD_CFLAGS) -fopenmp
 
 check_PROGRAMS = scripts/tests/test_ed_simd scripts/tests/test_trie_partitioned_bounds scripts/tests/test_build_progress scripts/tests/test_trie_compaction scripts/tests/test_spartan_projection
 TESTS = $(check_PROGRAMS)
+check_PROGRAMS += scripts/tests/test_spartan_residual
+scripts_tests_test_spartan_residual_SOURCES = scripts/tests/test_spartan_residual.c
+scripts_tests_test_spartan_residual_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) $(CBLAS_LINK_LIBS) -lm -lpthread
+scripts_tests_test_spartan_residual_LDFLAGS = -fopenmp
 scripts_tests_test_spartan_projection_SOURCES = scripts/tests/test_spartan_projection.c
 scripts_tests_test_spartan_projection_LDADD = lib/libads.a $(FFTW_LIBS) $(LAPACK_LIBS) $(CBLAS_LINK_LIBS) -lm -lpthread
 scripts_tests_test_spartan_projection_LDFLAGS = -fopenmp

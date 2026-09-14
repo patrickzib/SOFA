@@ -10,6 +10,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
+#include "ads/spartan/residual.h"
 #include "ads/pisa/pisa.h"
 #include "ads/inmemory_index_engine.h"
 #include "ads/build_progress.h"
@@ -78,6 +79,9 @@ typedef struct symbolic_trie_node {
     float *cluster_raw_radii;
     /* Per-record centroid radii in the existing IVF-cluster record order. */
     float *record_raw_radii;
+    float *record_residuals;
+    float residual_min, residual_max;
+    float *cluster_residual_ranges;
     int cluster_count;
 } symbolic_trie_node;
 
@@ -97,6 +101,8 @@ struct symbolic_trie_index {
     unsigned long long cluster_count;
     unsigned long radial_leaves;
     unsigned long long radial_records;
+    spartan_residual_model residual;
+    float *residual_arena;
 };
 
 static int trie_dimension_is_used(const symbolic_trie_node *node, int dimension) {
@@ -157,6 +163,7 @@ typedef struct trie_query_stats {
     unsigned long radial_candidates;
     unsigned long radial_pruned;
     float approximate_distance;
+    unsigned long residual_checks[3], residual_wins[3], residual_prunes[3];
 } trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
 
@@ -204,7 +211,103 @@ typedef struct {
     float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
     int record_lb_table_ready;
     trie_radial_auto_gate *radial_auto_gate;
+    spartan_residual_value residual_query;
+    int residual_ready;
 } trie_query_scratch;
+
+static double trie_residual_coordinate_gap(const isax_index *index, const float *transform,
+                                           int d, int low, int high) {
+    const int cardinality = index->settings->sax_alphabet_cardinality;
+    double lower = low == 0 ? -INFINITY : index->bins[d][low-1];
+    double upper = high >= cardinality-1 ? INFINITY : index->bins[d][high];
+    return fmax(0.0, fmax(lower-transform[d], transform[d]-upper));
+}
+static void trie_residual_prepare(isax_index *index, const float *query,
+                                  const float *transform, trie_query_scratch *scratch) {
+    scratch->residual_ready = index->trie->residual.enabled;
+    if (scratch->residual_ready)
+        scratch->residual_query = spartan_residual_encode(index, &index->trie->residual,
+            query, transform, index->trie->bound_dimensions);
+}
+static void trie_residual_store(isax_index *index, struct symbolic_trie_index *trie,
+                                long record, const float *raw, const float *projection) {
+    if (trie->residual_arena)
+        trie->residual_arena[record] = spartan_residual_encode(index, &trie->residual,
+            raw, projection, trie->bound_dimensions).radius;
+}
+
+/* Suffix and residual overlap; no floating-point correction is applied. */
+static float trie_residual_bound(isax_index *index, const float *transform,
+                                 const sax_type *minimum, const sax_type *maximum,
+                                 const sax_type *suffix_min, const sax_type *suffix_max,
+                                 float rmin, float rmax, const trie_query_scratch *scratch,
+                                 float bsf, trie_query_stats *stats, int level) {
+    const struct symbolic_trie_index *trie = index->trie;
+    if (!trie->residual.enabled || scratch == NULL || !scratch->residual_ready) return 0.0f;
+    const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
+    double gap = spartan_residual_gap(scratch->residual_query.radius, rmin, rmax);
+    double prefix = 0.0, suffix = 0.0;
+    for (int d = 0; d < trie->dimensions; ++d) {
+        int tail = d >= trie->bound_dimensions;
+        if (tail && suffix_min == NULL) break;
+        double delta = trie_residual_coordinate_gap(index, transform, d,
+            tail ? suffix_min[d] : minimum[d], tail ? suffix_max[d] : maximum[d]);
+        if (tail) suffix += delta*delta; else prefix += delta*delta;
+    }
+    float lower = (float)(prefix + fmax(suffix, gap*gap));
+    if (stats) {
+        ++stats->residual_checks[level];
+        stats->residual_wins[level] += gap*gap > suffix;
+        stats->residual_prunes[level] += lower > bsf;
+    }
+    if (start) stats->mbr_bound_microseconds += trie_monotonic_microseconds()-start;
+    return lower;
+}
+
+static int trie_residual_finish(struct symbolic_trie_index *trie, symbolic_trie_node *node,
+                                int ts_length) {
+    node->residual_min = INFINITY;
+    node->residual_max = 0.0f;
+    if (!node->leaf) {
+        for (int c = 0; c < node->split_fanout; ++c) if (node->children[c]) {
+            if (!trie_residual_finish(trie, node->children[c], ts_length)) return 0;
+            node->residual_min = fminf(node->residual_min, node->children[c]->residual_min);
+            node->residual_max = fmaxf(node->residual_max, node->children[c]->residual_max);
+        }
+        return 1;
+    }
+    if (!node->size) return 1;
+    node->record_residuals = malloc((size_t)node->size * sizeof(float));
+    if (!node->record_residuals) return 0;
+    for (int r = 0; r < node->size; ++r) {
+        float value = trie->residual_arena[node->positions[r]/ts_length];
+        node->record_residuals[r] = value;
+        node->residual_min = fminf(node->residual_min, value);
+        node->residual_max = fmaxf(node->residual_max, value);
+    }
+    if (node->cluster_count) {
+        node->cluster_residual_ranges = malloc((size_t)node->cluster_count*2*sizeof(float));
+        if (!node->cluster_residual_ranges) return 0;
+        for (int c = 0; c < node->cluster_count; ++c) {
+            float low = INFINITY, high = 0.0f;
+            const trie_leaf_cluster group = node->clusters[c];
+            for (int r = group.offset; r < group.offset+group.size; ++r) {
+                low = fminf(low, node->record_residuals[r]);
+                high = fmaxf(high, node->record_residuals[r]);
+            }
+            node->cluster_residual_ranges[c*2] = low;
+            node->cluster_residual_ranges[c*2+1] = high;
+        }
+    }
+    return 1;
+}
+
+static void trie_residual_clear(symbolic_trie_node *node) {
+    if (node == NULL) return;
+    free(node->record_residuals); node->record_residuals = NULL;
+    free(node->cluster_residual_ranges); node->cluster_residual_ranges = NULL;
+    for (int c = 0; c < node->split_fanout; ++c) trie_residual_clear(node->children[c]);
+}
 
 static int trie_radial_auto_gate_init(const isax_index *index,
                                       trie_radial_auto_gate *gate) {
@@ -322,6 +425,8 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
 
 static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
+    free(node->record_residuals);
+    free(node->cluster_residual_ranges);
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
     free(node->words); free(node->batch_words); free(node->positions); free(node->min_word); free(node->max_word);
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
@@ -470,6 +575,12 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     trie_radial_candidates = stats->radial_candidates;
     trie_radial_pruned = stats->radial_pruned;
     SAVE_STATS(distance)
+    if (trie->residual.enabled) {
+        const char *levels[] = {"node", "ivf", "record"};
+        for (int level = 0; level < 3; ++level)
+            fprintf(stderr, ">>> ResSPARTAN %s: checks=%lu wins-over-suffix=%lu prunes=%lu\n",
+                levels[level], stats->residual_checks[level], stats->residual_wins[level], stats->residual_prunes[level]);
+    }
 }
 
 static void trie_node_update_mbb(symbolic_trie_node *node, const sax_type *word, int dimensions) {
@@ -1228,6 +1339,8 @@ static enum response trie_build_pca_block(isax_index *index,
             ts_type *values = projection + (size_t) row * dimensions;
             for (int k = 0; k < index->pca_components_count; ++k)
                 values[k] += (ts_type) index->pca_bias[k];
+            trie_residual_store(index, trie, record,
+                                rawfile + (size_t)record * ts_length, values);
             if (function_type == 5) spartan_from_pca(index, values, word);
             else sfa_from_fft(index, values, word);
             trie->root->words[record] = word;
@@ -1342,6 +1455,18 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     trie->word_arena = malloc((size_t) ts_num * (size_t) trie->dimensions * sizeof(*trie->word_arena));
     trie->root->capacity = trie->root->size = (int) ts_num;
     int failed = trie->root->words == NULL || trie->root->positions == NULL || trie->word_arena == NULL;
+    if (!failed && index->settings->trie_residual_norm_bound) {
+        trie->residual = spartan_residual_init(index);
+        if (index->settings->function_type == 5 && trie->residual.enabled &&
+            trie->bound_dimensions <= MESSI_RECORD_LB_MAX_DIMENSIONS &&
+            index->settings->sax_alphabet_cardinality <= 256 &&
+            (size_t)ts_num <= SIZE_MAX/sizeof(float))
+            trie->residual_arena = malloc((size_t)ts_num*sizeof(float));
+        if (trie->residual_arena == NULL) {
+            trie->residual.enabled = 0;
+            fprintf(stderr, "warning: ResSPARTAN unavailable; using ordinary SPARTAN bounds.\n");
+        }
+    }
     unsigned long transform_completed = 0;
 #if HAVE_CBLAS
     if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
@@ -1410,6 +1535,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             } else {
                 trie->root->words[i] = word;
                 trie->root->positions[i] = (file_position_type) ((size_t) i * index->settings->timeseries_size);
+                trie_residual_store(index, trie, i, ts, transform);
             }
             if (++transform_pending == 1024 || i + 1 == ts_num) {
                 unsigned long completed = __sync_add_and_fetch(&transform_completed,
@@ -1425,7 +1551,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     }
-    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
+    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie->residual_arena); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
     double transform_end = messi_monotonic_seconds();
     messi_build_progress_update(&build_progress, 55.0);
 
@@ -1435,7 +1561,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     if (trie->root->size > index->settings->max_leaf_size) {
         int root_split = trie_split_root_sampled_parallel(trie, index, trie->root);
         if (root_split < 0) {
-            trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
+            trie_node_destroy(trie->root); free(trie->word_arena); free(trie->residual_arena); free(trie); free(rawfile); rawfile = NULL;
             messi_build_progress_abort(&build_progress);
             return FAILURE;
         }
@@ -1513,6 +1639,20 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         if (failed_leaves)
             fprintf(stderr, "warning: unable to transpose %lu trie leaves; using record-wise bounds there.\n", failed_leaves);
     }
+    if (trie->residual.enabled) {
+        if (!trie_residual_finish(trie, trie->root, index->settings->timeseries_size)) {
+            trie_residual_clear(trie->root);
+            trie->residual.enabled = 0;
+            fprintf(stderr, "warning: ResSPARTAN residual allocation failed; disabling.\n");
+        } else {
+            fprintf(stderr, ">>> ResSPARTAN: float32 residual after %d PCs; no floating-point correction\n",
+                    trie->bound_dimensions);
+            fprintf(stderr, ">>> ResSPARTAN payload: %zu record bytes; %llu IVF-range bytes; %zu metadata bytes/node; %zu model bytes\n",
+                    (size_t)ts_num*sizeof(float), trie->cluster_count*2*sizeof(float),
+                    2*sizeof(float*)+2*sizeof(float), sizeof(trie->residual)+sizeof(trie->residual_arena));
+        }
+    }
+    free(trie->residual_arena); trie->residual_arena = NULL;
     const double compact_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
@@ -1544,7 +1684,23 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 
 static float trie_refine_record_distance(isax_index *index, const symbolic_trie_node *node,
                                          int record, const ts_type *query, float bsf,
-                                         trie_query_stats *stats, file_position_type *best_position) {
+                                         trie_query_stats *stats, file_position_type *best_position,
+                                         float symbolic_bound, float mbr_suffix, trie_query_scratch *scratch) {
+    if (index->trie->residual.enabled && node->record_residuals != NULL) {
+        const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
+        const float radius = node->record_residuals[record];
+        const double gap = scratch && scratch->residual_ready ?
+            spartan_residual_gap(scratch->residual_query.radius, radius, radius) : 0.0;
+        /* Reuse prefix+suffix already accumulated by the symbolic kernel. */
+        const float lower = symbolic_bound + (float)fmax(0.0, gap*gap-mbr_suffix);
+        if (stats) {
+            ++stats->residual_checks[2];
+            stats->residual_wins[2] += gap*gap > mbr_suffix;
+            stats->residual_prunes[2] += lower > bsf;
+            if (start) stats->record_bound_microseconds += trie_monotonic_microseconds()-start;
+        }
+        if (lower > bsf) return bsf;
+    }
     if (stats != NULL) ++stats->exact_distances;
     const float distance = trie_exact_distance(query, rawfile + node->positions[record],
                                                index->settings->timeseries_size, bsf, stats);
@@ -1572,7 +1728,7 @@ static float trie_refine_streaming_record(isax_index *index, const symbolic_trie
     if (lower > bsf) {
         return bsf;
     }
-    return trie_refine_record_distance(index, node, record, query, bsf, stats, best_position);
+    return trie_refine_record_distance(index, node, record, query, bsf, stats, best_position, lower, mbr_suffix, scratch);
 }
 
 static inline int trie_radial_simd_lanes(const isax_index *index) {
@@ -1685,7 +1841,7 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 /* Earlier survivors can tighten BSF within this same batch. */
                 if (bound > bsf) continue;
                 if (streaming)
-                    bsf = trie_refine_record_distance(index, node, base + lane, query, bsf, stats, best_position);
+                    bsf = trie_refine_record_distance(index, node, base + lane, query, bsf, stats, best_position, bound, mbr_suffix, scratch);
                 else {
                     scratch->candidates[candidate_count].lower_bound = bound;
                     scratch->candidates[candidate_count++].record_index = base + lane;
@@ -1772,14 +1928,8 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         const trie_leaf_candidate candidate = trie_heap_pop(scratch->candidates, &candidate_count);
         if (heap_start != 0)
             stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
-        if (stats != NULL) ++stats->exact_distances;
-        const float distance = trie_exact_distance(query,
-            rawfile + node->positions[candidate.record_index],
-            index->settings->timeseries_size, bsf, stats);
-        if (distance < bsf) {
-            bsf = distance;
-            if (best_position != NULL) *best_position = node->positions[candidate.record_index];
-        }
+        bsf = trie_refine_record_distance(index, node, candidate.record_index, query, bsf,
+                                          stats, best_position, candidate.lower_bound, mbr_suffix, scratch);
     }
     return bsf;
 }
@@ -1805,10 +1955,17 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
         const trie_leaf_cluster *group = &node->clusters[cluster];
         if (stats != NULL) ++stats->cluster_bounds;
-        const float symbolic_bound = trie_lower_bound(index->trie, index, transform,
+        float symbolic_bound = trie_lower_bound(index->trie, index, transform,
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
             index->trie->dimensions, bsf, stats);
+        if (symbolic_bound < bsf && index->trie->residual.enabled && node->cluster_residual_ranges) {
+            const sax_type *lo = node->cluster_min_words + (size_t)cluster*index->trie->dimensions;
+            const sax_type *hi = node->cluster_max_words + (size_t)cluster*index->trie->dimensions;
+            symbolic_bound = fmaxf(symbolic_bound, trie_residual_bound(index, transform,
+                lo, hi, lo, hi, node->cluster_residual_ranges[2*cluster],
+                node->cluster_residual_ranges[2*cluster+1], scratch, bsf, stats, 1));
+        }
         if (symbolic_bound >= bsf) {
             if (stats != NULL) {
                 ++stats->cluster_symbolic_pruned;
@@ -1871,6 +2028,9 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                                    index->trie->dimensions, bsf, stats);
+    if (lower <= bsf && index->trie->residual.enabled)
+        lower = fmaxf(lower, trie_residual_bound(index, transform, node->min_word, node->max_word,
+            node->min_word, node->max_word, node->residual_min, node->residual_max, scratch, bsf, stats, 0));
     if (lower > bsf) return bsf;
     if (!node->leaf) {
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
@@ -1926,6 +2086,7 @@ static float trie_seed_search(isax_index *index, const ts_type *query,
                                trie_query_stats *stats, trie_query_scratch *scratch,
                                const symbolic_trie_node **seed_leaf,
                                file_position_type *position) {
+    trie_residual_prepare(index, query, transform, scratch);
     *seed_leaf = trie_seed_leaf(index, word, transform, stats);
     const float bsf = *seed_leaf == NULL ? FLT_MAX :
         trie_search_node(index, *seed_leaf, query, transform, FLT_MAX,
@@ -2036,11 +2197,15 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
                                          const ts_type *transform, float bsf,
                                          const symbolic_trie_node *skip_leaf,
                                          trie_leaf_queue *queues, int queue_count,
-                                         int *next_queue, trie_query_stats *stats, int *failed) {
+                                         int *next_queue, trie_query_stats *stats, int *failed,
+                                         const trie_query_scratch *scratch) {
     if (node == skip_leaf || __atomic_load_n(failed, __ATOMIC_RELAXED)) return;
     ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                                    index->trie->dimensions, bsf, stats);
+    if (lower < bsf && index->trie->residual.enabled)
+        lower = fmaxf(lower, trie_residual_bound(index, transform, node->min_word, node->max_word,
+            node->min_word, node->max_word, node->residual_min, node->residual_max, scratch, bsf, stats, 0));
     if (lower >= bsf) return;
     if (node->leaf) {
         int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;
@@ -2050,7 +2215,7 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
     }
     for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL)
         trie_parallel_collect_leaves(index, node->children[i], transform, bsf, skip_leaf,
-                                     queues, queue_count, next_queue, stats, failed);
+                                     queues, queue_count, next_queue, stats, failed, scratch);
 }
 
 static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
@@ -2058,11 +2223,15 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
                                         const symbolic_trie_node *skip_leaf,
                                         trie_query_stats *result_stats,
                                         file_position_type *result_position,
-                                        trie_radial_auto_gate *radial_auto_gate) {
+                                        trie_radial_auto_gate *radial_auto_gate,
+                                        const trie_query_scratch *query_scratch) {
     if (result_stats != NULL) memset(result_stats, 0, sizeof(*result_stats));
 #ifndef _OPENMP
     trie_query_scratch scratch = {0};
+    scratch.residual_query = query_scratch->residual_query;
+    scratch.residual_ready = query_scratch->residual_ready;
     scratch.radial_auto_gate = radial_auto_gate;
+    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
     float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates);
@@ -2080,12 +2249,17 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     if (frontier == NULL || queues == NULL || worker_stats == NULL || worker_scratch == NULL) {
         free(frontier); free(queues); free(worker_stats); free(worker_scratch);
         trie_query_scratch scratch = {0};
+        scratch.residual_query = query_scratch->residual_query;
+        scratch.residual_ready = query_scratch->residual_ready;
         scratch.radial_auto_gate = radial_auto_gate;
+        trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                           result_stats, skip_leaf, &scratch, result_position);
         free(scratch.candidates); return distance;
     }
     for (int i = 0; i < workers; ++i) {
+        worker_scratch[i].residual_query = query_scratch->residual_query;
+        worker_scratch[i].residual_ready = query_scratch->residual_ready;
         worker_scratch[i].radial_auto_gate = radial_auto_gate;
         trie_prepare_record_lb_table(index->trie, index, transform, &worker_scratch[i]);
     }
@@ -2107,7 +2281,7 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
 #pragma omp for schedule(dynamic, 1) nowait
         for (int i = 0; i < frontier_count; ++i)
             trie_parallel_collect_leaves(index, frontier[i], transform, traversal_bsf, skip_leaf,
-                                         queues, queue_count, &next_queue, stats, &failed);
+                                         queues, queue_count, &next_queue, stats, &failed, &worker_scratch[worker]);
         if (profile_query_phases) {
             const unsigned long long elapsed = trie_monotonic_microseconds() - frontier_start;
             const unsigned long long direct = (stats->mbr_bound_microseconds - mbr_before_frontier) +
@@ -2163,6 +2337,11 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->candidate_heap_microseconds += worker_stats[i].candidate_heap_microseconds;
         result_stats->synchronization_microseconds += worker_stats[i].synchronization_microseconds;
         result_stats->cluster_bounds += worker_stats[i].cluster_bounds;
+        for (int level = 0; level < 3; ++level) {
+            result_stats->residual_checks[level] += worker_stats[i].residual_checks[level];
+            result_stats->residual_wins[level] += worker_stats[i].residual_wins[level];
+            result_stats->residual_prunes[level] += worker_stats[i].residual_prunes[level];
+        }
         result_stats->cluster_pruned += worker_stats[i].cluster_pruned;
         result_stats->cluster_records_pruned += worker_stats[i].cluster_records_pruned;
         result_stats->cluster_symbolic_pruned += worker_stats[i].cluster_symbolic_pruned;
@@ -2184,7 +2363,10 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     /* Queue allocation failed mid-search.  Re-run serially rather than ever
      * returning a partial result. */
     trie_query_scratch scratch = {0};
+    scratch.residual_query = query_scratch->residual_query;
+    scratch.residual_ready = query_scratch->residual_ready;
     scratch.radial_auto_gate = radial_auto_gate;
+    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
     float distance = trie_search_node(index, index->trie->root, query, transform, shared_bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates); return distance;
@@ -2254,8 +2436,13 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             trie_query_stats parallel_stats = {0};
             distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf,
                                                   &parallel_stats, NULL,
-                                                  scratch.radial_auto_gate);
+                                                  scratch.radial_auto_gate, &scratch);
             stats.checked_nodes += parallel_stats.checked_nodes;
+            for (int level = 0; level < 3; ++level) {
+                stats.residual_checks[level] += parallel_stats.residual_checks[level];
+                stats.residual_wins[level] += parallel_stats.residual_wins[level];
+                stats.residual_prunes[level] += parallel_stats.residual_prunes[level];
+            }
             stats.lower_bounds += parallel_stats.lower_bounds;
             stats.exact_distances += parallel_stats.exact_distances;
             stats.mbr_bound_microseconds += parallel_stats.mbr_bound_microseconds;
@@ -2436,7 +2623,7 @@ query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
     }
     else result.distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf, NULL,
                                                        &result.record_position,
-                                                       radial_auto_initialized ? &radial_auto_gate : NULL);
+                                                       radial_auto_initialized ? &radial_auto_gate : NULL, &scratch);
     free(scratch.candidates);
     trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
     return result;

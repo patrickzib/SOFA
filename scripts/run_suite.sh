@@ -43,6 +43,7 @@ Options:
   --sampling-seed N       Sampling seed (default: 1)
   --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
+  --trie-residual-norm-bound Add float32 residual-norm pruning (SPARTAN trie only)
   --n-segments N          Trie record-prefix lower-bound dimensions (default: 64; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
   --trie-record-mbr-suffix-bound
@@ -147,6 +148,7 @@ TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_RESIDUAL_NORM_BOUND=false
 TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=false
 TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_DYNAMIC_ALPHABET=false
@@ -213,6 +215,7 @@ while [[ $# -gt 0 ]]; do
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-residual-norm-bound) TRIE_RESIDUAL_NORM_BOUND=true; shift ;;
         --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
         --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --no-trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
@@ -271,6 +274,7 @@ esac
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || \
     die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
+[[ $TRIE_RESIDUAL_NORM_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-residual-norm-bound requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || \
     die '--trie-leaf-ivf-radial-bound requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || \
@@ -349,6 +353,7 @@ run_one() {
         [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
         [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
         [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+        [[ $TRIE_RESIDUAL_NORM_BOUND == true ]] && command+=(--trie-residual-norm-bound)
         [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
         [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
         [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == true && $TRIE_LEAF_IVF_RADIAL_BOUND == false && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false ]] && command+=(--no-trie-leaf-ivf-radial-bound)
@@ -490,6 +495,7 @@ run_query_suite() {
                 [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
                 [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
                 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
+                [[ $TRIE_RESIDUAL_NORM_BOUND == true ]] && command+=(--trie-residual-norm-bound)
                 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
                 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
                 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == true && $TRIE_LEAF_IVF_RADIAL_BOUND == false && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false ]] && command+=(--no-trie-leaf-ivf-radial-bound)

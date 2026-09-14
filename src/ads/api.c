@@ -83,6 +83,11 @@ messi_index *messi_index_create(const messi_index_params *params) {
 
     const messi_index_type index_type = params->index_type == MESSI_INDEX_TRIE
                                             ? MESSI_INDEX_TRIE : MESSI_INDEX_ISAX;
+    if (params->trie_residual_norm_bound &&
+        (index_type != MESSI_INDEX_TRIE || params->function_type != 5)) {
+        free(wrapper);
+        return NULL;
+    }
     const int radial_bound_requested = params->trie_leaf_ivf_radial_bound ||
                                        params->trie_leaf_ivf_radial_bound_auto;
     if (radial_bound_requested &&
@@ -136,6 +141,7 @@ messi_index *messi_index_create(const messi_index_params *params) {
     settings->trie_leaf_ivf = params->trie_leaf_ivf;
     settings->trie_leaf_ivf_radial_bound =
         index_type == MESSI_INDEX_TRIE && radial_bound_requested;
+    settings->trie_residual_norm_bound = params->trie_residual_norm_bound;
     settings->trie_leaf_ivf_radial_bound_auto =
         index_type == MESSI_INDEX_TRIE && params->trie_leaf_ivf_radial_bound_auto;
     settings->trie_fanout = params->trie_fanout == 0 ? 8 : params->trie_fanout;

@@ -166,3 +166,75 @@ OMP_PLACES=cores OMP_PROC_BIND=close \
 
 Use `--sequential` to measure contiguous scans instead of the default randomized
 record order.  Build products are written under `build/benchmarks/`.
+
+### ResSPARTAN residual-norm bound (experimental)
+
+Add `--trie-residual-norm-bound` to a SPARTAN trie run. It is disabled by
+default and requires `--methods spartan-depth,spartan-width` (or either one).
+The C API exposes `messi_index_params.trie_residual_norm_bound`; initialize
+parameter structs to zero and rebuild API clients against the new header.
+
+```bash
+MESSI_RESULTS_ROOT="$PWD/results-residual" \
+  ./scripts/run_suite.sh standard --threads 64 --index-type trie \
+  --methods spartan-depth,spartan-width --n-segments 64 \
+  --trie-residual-norm-bound --binary ./build/bin/MESSI
+```
+
+Each record gets one float32 residual, computed alongside its symbolic word.
+The residual covers the complement of the record prefix (`--n-segments`),
+not just coordinates beyond the MBR. It does not affect splitting or IVF
+selection. Stable raw-record positions retain alignment through reordering;
+the floats are gathered into contiguous leaf order after IVF. Temporary
+construction storage can reach eight bytes/record while both orders exist.
+Final storage is four bytes/record, plus two float endpoints per IVF group,
+two pointers and two floats per node, and shared model metadata. Node metadata
+fields also occupy space when the option is disabled.
+
+The squared bound is `prefix + max(suffix, residual_gap²)`.
+The stored float is `sqrt(max(0, ||x-mean||² - ||A_k(x-mean)||²))`.
+There is no contraction correction, rounding-error enclosure or error margin.
+This assumes orthonormal PCA and accepts floating-point overestimation near
+the pruning threshold; guaranteed exact pruning is not claimed for this option.
+No square root or projection is performed per candidate.
+
+SIMD prefix scans remain unchanged. Surviving records reuse their already
+computed symbolic bound and add `max(0, residual_gap² - suffix)`, using the
+same leaf/IVF suffix as the original check. There is no second record-prefix
+accumulation or residual lookup table. Residual ranges also participate in
+node and IVF pruning. Query state is prepared once and shared with workers.
+No new persistence format is added.
+
+The log prints storage diagnostics and per-query `node`, `ivf`,
+and `record` counters: checks, residual wins over the suffix, and additional
+prunes. Record checks count survivors of the existing bound filters, not all
+indexed records. The normal pruning summary includes these prunes; do not add
+the residual counters to its totals again. Use `--profile-query-phases` to
+include residual computation in lower-bound timings.
+
+Earlier benchmark figures below describe the corrected implementation, not this simplified version.
+
+Run `bash scripts/bench_spartan_residual.sh` for paired builds and 100-query
+searches on the bundled SALD head fixture, at prefixes 16/32/64 and three
+repetitions. It leaves separate logs in a printed temporary directory.
+Override `MESSI_BINARY`, `RESIDUAL_DATASET`, `RESIDUAL_QUERIES`,
+`RESIDUAL_RECORDS`, `RESIDUAL_LENGTH`, `RESIDUAL_WORKERS`, or
+`RESIDUAL_REPEATS` for other workloads. `RESIDUAL_HISTOGRAM=2` selects
+equi-width instead of equi-depth. `RESIDUAL_QUERY_MODE=batch` selects
+parallel independent queries instead of per-query workers. The benchmark
+checks equality of the reported query distances. Choose a series length of at least 64.
+
+Local ARM results on 20,000 SALD records (100 queries, four workers; medians):
+
+| Prefix | Baseline exact/query | Residual exact/query | Baseline query time | Residual query time |
+| --- | ---: | ---: | ---: | ---: |
+| 16 | 12,740.32 | 11,654.75 | 0.144 s | 0.181 s |
+| 32 | 11,227.01 | 10,567.38 | 0.164 s | 0.210 s |
+| 64 | 8,814.36 | 8,581.55 | 0.210 s | 0.257 s |
+
+These measurements are not a speedup claim: pruning improves, but the added
+check costs more time on this small fixture. Benchmark the full dataset and
+target CPU before enabling it routinely. The regression test additionally
+checks high-precision interval enclosure, no bound overestimation, record/IVF
+alignment, allocation failure, and scalar/SIMD and serial/parallel exact
+searches against brute force.
