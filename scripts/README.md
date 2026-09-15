@@ -132,24 +132,26 @@ of the default.
 
 ## Dataset-specific trie tuning
 
-`tune_trie_dataset.sh` performs a staged search for one dataset and tunes
-`spartan-depth` and `spartan-width` independently. It screens leaf capacity,
-record-prefix width, fanout, MBR/split dimensions, IVF groups and eligibility,
-radial policy, and record-residual ordering. Each of the two finalists is built
-once; its query workload is then repeated against that same in-memory trie and
-ranked by median query wall time. Thus `--repeats` does not repeat index builds.
+`tune_trie_dataset.sh` performs a staged search for one dataset. Its shared
+structural stage tests both `spartan-depth` and `spartan-width`, then retains the
+globally fastest method/configuration pair. The remaining stages tune only that
+method, screening MBR/split dimensions, IVF groups and eligibility, radial
+policy, and record-residual ordering. Each of the two final configurations is
+built once; its query workload is then repeated against that same in-memory
+trie and ranked by median query wall time. Thus `--repeats` does not repeat
+index builds.
 
 ```bash
 scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5
 ```
 
 Use the same data-root overrides as `run_suite.sh` when needed. Results default
-to `trie-tuning/DATASET`; `all-runs.tsv` and `all-runs.csv` contain every run,
-and each method gets a `best-config.env`, `best-command.sh`, and
-`final-ranking.tsv`. Completed runs are reused. An incomplete run directory or
-an invocation whose options differ from the saved manifest causes a safe stop
-instead of an overwrite. Use a different `--output-root` for a genuinely new
-tuning campaign.
+to `trie-tuning/DATASET`; `all-runs.tsv` and `all-runs.csv` contain every run.
+The single global winner is written to `best-config.env`, `best-command.sh`,
+`best-config.txt`, and `final-ranking.tsv`. Completed runs are reused. An
+incomplete run directory or an invocation whose options differ from the saved
+manifest causes a safe stop instead of an overwrite. Use a different
+`--output-root` for a genuinely new tuning campaign.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path

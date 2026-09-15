@@ -524,9 +524,39 @@ fi
 pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations'
 
 OUTPUT=$("$SCRIPT_DIR/tune_trie_dataset.sh" --help)
-assert_contains "$OUTPUT" 'spartan-depth and spartan-width'
+assert_contains "$OUTPUT" 'allowing either spartan-depth or'
 assert_contains "$OUTPUT" 'best-config.env'
 assert_contains "$OUTPUT" 'Final query repetitions per built finalist'
-pass 'dataset-specific trie tuner documents independent methods and safe result outputs'
+pass 'dataset-specific trie tuner documents joint method selection and safe result outputs'
+
+TUNER_FAKE_MESSI="$TEMP_ROOT/tuner_fake_messi"
+printf '%s\n' '#!/usr/bin/env bash' \
+    'histogram=1; repeats=1' \
+    'while (( $# )); do case "$1" in --histogram-type) histogram=$2; shift 2 ;; --query-repeats) repeats=$2; shift 2 ;; *) shift ;; esac; done' \
+    'query=1.000; (( histogram == 1 )) || query=0.500' \
+    'printf "    eligible leaves  : 10\n    clusters         : 160\n"' \
+    'printf ">>> trie build timing\n    total      : 2.000 s\n"' \
+    'if (( repeats > 1 )); then for ((i=1; i<=repeats; ++i)); do printf ">>> query repeat %d/%d wall time: %s s\n" "$i" "$repeats" "$query"; done; fi' \
+    'printf ">>> query wall time: %s s\n" "$query"' \
+    'printf "=== Query summary ===\n  wall time        : %s s (1.000 ms/query)\n" "$query"' \
+    'printf "  symbolic record bounds: 1.00 M/query (1.00%% of 100.00 M indexed series)\n"' \
+    'printf "  exact distances  : 1.00 K/query (0.00%% of 100.00 M indexed series)\n"' \
+    > "$TUNER_FAKE_MESSI"
+chmod +x "$TUNER_FAKE_MESSI"
+TUNER_ROOT="$TEMP_ROOT/tuner"
+"$SCRIPT_DIR/tune_trie_dataset.sh" astro --threads 1 --repeats 3 \
+    --output-root "$TUNER_ROOT" --binary "$TUNER_FAKE_MESSI" \
+    --dataset-file "$TEMP_ROOT/astro.bin" --query-file "$TEMP_ROOT/astro_queries.bin" \
+    --dataset-size 1 --query-size 1 >/dev/null
+assert_contains "$(<"$TUNER_ROOT/astro/best-config.env")" 'METHOD=spartan-width'
+[[ $(awk -F '\t' '$3 == "01-structure" && $2 == "spartan-depth" { found=1 } END { print found+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 1 ]] ||
+    fail 'joint tuner did not screen spartan-depth'
+[[ $(awk -F '\t' '$3 == "01-structure" && $2 == "spartan-width" { found=1 } END { print found+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 1 ]] ||
+    fail 'joint tuner did not screen spartan-width'
+[[ $(awk -F '\t' '$3 != "01-structure" && $2 == "spartan-depth" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 0 ]] ||
+    fail 'joint tuner continued tuning the losing method'
+[[ $(awk -F '\t' '$3 == "06-final-query-only" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 6 ]] ||
+    fail 'joint tuner did not record three query repeats for both finalists'
+pass 'dataset-specific trie tuner chooses one method globally and repeats only finalist queries'
 
 printf '1..%d\n' "$TEST_COUNT"

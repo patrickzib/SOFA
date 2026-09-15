@@ -10,7 +10,9 @@ usage() {
     cat <<'USAGE'
 Usage: tune_trie_dataset.sh DATASET [OPTIONS]
 
-Tune a SPARTAN trie independently for spartan-depth and spartan-width.
+Tune one SPARTAN trie configuration, allowing either spartan-depth or
+spartan-width to win. Both methods participate in the shared structural
+screen; later stages tune only the globally selected method.
 Completed runs are reused. If a run directory exists without a completion
 marker, the script stops rather than overwriting possibly useful output.
 
@@ -34,10 +36,10 @@ Options:
 
 Outputs under OUTPUT_ROOT/DATASET:
   all-runs.tsv/csv            One row per completed run
-  METHOD/final-ranking.tsv    Repeated finalist statistics
-  METHOD/best-config.env      Machine-readable winning configuration
-  METHOD/best-command.sh      Reproducible run_suite.sh command
-  best-configs.txt            Human-readable winners for both methods
+  final-ranking.tsv           Repeated finalist statistics
+  best-config.env             Machine-readable global winner
+  best-command.sh             Reproducible run_suite.sh command
+  best-config.txt             Human-readable global winner
 USAGE
 }
 
@@ -289,6 +291,22 @@ best_run_dir() {
         sed -n "${rank}p" | awk -F '\t' '{ print $21 }'
 }
 
+best_run_dir_across_methods() {
+    local phase=$1 rank=${2:-1} method
+    for method in spartan-depth spartan-width; do
+        find "$DATASET_ROOT/$method/$phase" -type f -name metrics.tsv -print 2>/dev/null || true
+    done |
+        while IFS= read -r file; do sed -n '2p' "$file"; done |
+        LC_ALL=C sort -t $'\t' -k15,15g |
+        sed -n "${rank}p" | awk -F '\t' '{ print $21 }'
+}
+
+run_method() {
+    local run_dir=$1
+    [[ -f $run_dir/metrics.tsv ]] || die "missing metrics for selected run: $run_dir"
+    sed -n '2p' "$run_dir/metrics.tsv" | awk -F '\t' '{ print $2 }'
+}
+
 load_run_config() {
     local run_dir=$1
     [[ -n $run_dir && -f $run_dir/config.env ]] || die 'could not locate the selected configuration'
@@ -310,7 +328,7 @@ unique_mbr_values() {
 
 rank_finalists() {
     local method=$1 phase_dir=$DATASET_ROOT/$method/06-final-query-only
-    local output=$DATASET_ROOT/$method/final-ranking.tsv
+    local output=$DATASET_ROOT/final-ranking.tsv
     {
         printf 'candidate\truns\tmedian_query_s\tmean_query_s\tmin_query_s\tmax_query_s\tconfig_dir\n'
         find "$phase_dir" -type f -name metrics.tsv -print |
@@ -339,7 +357,7 @@ rank_finalists() {
 }
 
 write_recommendation() {
-    local method=$1 ranking=$DATASET_ROOT/$method/final-ranking.tsv
+    local method=$1 ranking=$DATASET_ROOT/final-ranking.tsv
     local winner_dir median
     winner_dir=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $7 }')
     median=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $3 }')
@@ -348,7 +366,7 @@ write_recommendation() {
         print_config
         printf 'DATASET=%q\nMETHOD=%q\nMEDIAN_QUERY_S=%q\nREPEATS=%q\n' \
             "$DATASET" "$method" "$median" "$REPEATS"
-    } > "$DATASET_ROOT/$method/best-config.env"
+    } > "$DATASET_ROOT/best-config.env"
 
     local -a command=("$SCRIPT_DIR/run_suite.sh" standard
         --threads "$THREADS" --numa "$NUMA_MODE" --datasets "$DATASET"
@@ -372,32 +390,37 @@ write_recommendation() {
         printf 'exec'
         printf ' %q' "${command[@]}"
         printf ' "$@"\n'
-    } > "$DATASET_ROOT/$method/best-command.sh"
-    chmod +x "$DATASET_ROOT/$method/best-command.sh"
+    } > "$DATASET_ROOT/best-command.sh"
+    chmod +x "$DATASET_ROOT/best-command.sh"
 }
 
-tune_method() {
-    local method=$1 leaf prefix fanout mbr split groups min_size order radial candidate rank selected
+tune_dataset() {
+    local method leaf prefix fanout mbr split groups min_size order radial candidate rank selected
     local -a radial_values=() finalist_dirs=()
-    printf '\n=== Tuning %s on %s ===\n' "$method" "$DATASET"
+    printf '\n=== Jointly screening spartan-depth and spartan-width on %s ===\n' "$DATASET"
 
-    # Stage 1: structural parameters, with the current IVF baseline and no residual.
-    for leaf in 10000 20000 40000; do
-        for prefix in 32 48 64; do
-            for fanout in 4 8; do
-                LEAF_SIZE=$leaf; N_SEGMENTS=$prefix; SPLIT_DIMS=$prefix
-                MBR_DIMS=$MAX_MBR_DIMS; FANOUT=$fanout
-                IVF_GROUPS=16; IVF_MIN_SIZE=4096
-                RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
-                RADIAL_MODE=on
-                run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}"
+    # Stage 1: treat the SPARTAN traversal policy as part of the structural
+    # search. Select one global method/configuration pair after this stage.
+    for method in spartan-depth spartan-width; do
+        for leaf in 10000 20000 40000; do
+            for prefix in 32 48 64; do
+                for fanout in 4 8; do
+                    LEAF_SIZE=$leaf; N_SEGMENTS=$prefix; SPLIT_DIMS=$prefix
+                    MBR_DIMS=$MAX_MBR_DIMS; FANOUT=$fanout
+                    IVF_GROUPS=16; IVF_MIN_SIZE=4096
+                    RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
+                    RADIAL_MODE=on
+                    run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}"
+                done
             done
         done
     done
 
-    selected=$(best_run_dir "$method" 01-structure)
+    selected=$(best_run_dir_across_methods 01-structure)
+    method=$(run_method "$selected")
     load_run_config "$selected"
     local base_leaf=$LEAF_SIZE base_prefix=$N_SEGMENTS base_split=$SPLIT_DIMS base_fanout=$FANOUT
+    printf '\n=== Selected %s after the joint structural screen; tuning remaining parameters ===\n' "$method"
 
     # Stage 2: MBR width and the number of dimensions eligible for splitting.
     while IFS= read -r mbr; do
@@ -478,27 +501,24 @@ tune_method() {
     write_recommendation "$method"
 }
 
-if [[ -f $DATASET_ROOT/.complete ]]; then
+if [[ -f $DATASET_ROOT/.complete && -f $DATASET_ROOT/best-config.env ]]; then
     rebuild_summary
     printf 'Tuning is already complete for dataset=%s; existing results were not overwritten.\n' "$DATASET"
 else
-    for method in spartan-depth spartan-width; do tune_method "$method"; done
+    tune_dataset
     rebuild_summary
     : > "$DATASET_ROOT/.complete"
 fi
 
 {
     printf 'Dataset: %s\n' "$DATASET"
-    for method in spartan-depth spartan-width; do
-        printf '\n[%s]\n' "$method"
-        if [[ -f $DATASET_ROOT/$method/best-config.env ]]; then
-            sed -n '/^LEAF_SIZE=/,$p' "$DATASET_ROOT/$method/best-config.env"
-            printf 'command=%s\n' "$DATASET_ROOT/$method/best-command.sh"
-        else
-            printf 'No completed recommendation.\n'
-        fi
-    done
-} | tee "$DATASET_ROOT/best-configs.txt"
+    if [[ -f $DATASET_ROOT/best-config.env ]]; then
+        sed -n '1,$p' "$DATASET_ROOT/best-config.env"
+        printf 'command=%s\n' "$DATASET_ROOT/best-command.sh"
+    else
+        printf 'No completed recommendation.\n'
+    fi
+} | tee "$DATASET_ROOT/best-config.txt"
 
 printf '\nAll-run summary: %s\n' "$DATASET_ROOT/all-runs.tsv"
-printf 'Recommendations: %s\n' "$DATASET_ROOT/best-configs.txt"
+printf 'Recommendation: %s\n' "$DATASET_ROOT/best-config.txt"
