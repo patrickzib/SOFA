@@ -598,7 +598,6 @@ static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
     }
 }
 
-#define TRIE_LEAF_IVF_MIN_SIZE 4096
 #define TRIE_LEAF_IVF_TRAIN_SIZE 2048
 #define TRIE_LEAF_IVF_MAX_ITERATIONS 10
 
@@ -614,9 +613,9 @@ static double trie_cluster_distance(const sax_type *word, const float *centroid,
 
 static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
                              int cluster_count, const float *centers, int ts_length,
-                             int radial_enabled) {
+                             int radial_enabled, int min_size) {
     const int size = node->size;
-    if (size < TRIE_LEAF_IVF_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
+    if (size < min_size || cluster_count >= size || centers == NULL) return 1;
     const int train_size = size < TRIE_LEAF_IVF_TRAIN_SIZE ? size : TRIE_LEAF_IVF_TRAIN_SIZE;
     float *centroids = calloc((size_t) cluster_count * dimensions, sizeof(*centroids));
     float *sums = calloc((size_t) cluster_count * dimensions, sizeof(*sums));
@@ -783,14 +782,14 @@ typedef struct {
  * on one thread, then let workers cluster independent leaves without sharing
  * per-leaf scratch state or modifying common tree counters. */
 static int trie_collect_cluster_leaves(symbolic_trie_node *node,
-                                       trie_cluster_leaf_list *leaves) {
+                                       trie_cluster_leaf_list *leaves, int min_size) {
     if (node == NULL) return 1;
     if (!node->leaf) {
         for (int i = 0; i < node->split_fanout; ++i)
-            if (!trie_collect_cluster_leaves(node->children[i], leaves)) return 0;
+            if (!trie_collect_cluster_leaves(node->children[i], leaves, min_size)) return 0;
         return 1;
     }
-    if (node->size < TRIE_LEAF_IVF_MIN_SIZE) return 1;
+    if (node->size < min_size) return 1;
     if (leaves->size == leaves->capacity) {
         size_t capacity = leaves->capacity == 0 ? 128 : leaves->capacity * 2;
         if (capacity > SIZE_MAX / sizeof(*leaves->items)) return 0;
@@ -807,7 +806,7 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
                                         const isax_index *index, const float *centers,
                                         int *active_workers, size_t *eligible_leaves) {
     trie_cluster_leaf_list leaves = {0};
-    if (!trie_collect_cluster_leaves(trie->root, &leaves)) {
+    if (!trie_collect_cluster_leaves(trie->root, &leaves, index->settings->trie_leaf_ivf_min_size)) {
         free(leaves.items);
         return 0;
     }
@@ -831,7 +830,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
             if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
                                    index->settings->trie_leaf_ivf, centers,
                                    index->settings->timeseries_size,
-                                   index->settings->trie_leaf_ivf_radial_bound)) {
+                                   index->settings->trie_leaf_ivf_radial_bound,
+                                   index->settings->trie_leaf_ivf_min_size)) {
                 failed = 1;
                 continue;
             }
@@ -851,7 +851,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
         if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
                                index->settings->trie_leaf_ivf, centers,
                                index->settings->timeseries_size,
-                               index->settings->trie_leaf_ivf_radial_bound)) {
+                               index->settings->trie_leaf_ivf_radial_bound,
+                               index->settings->trie_leaf_ivf_min_size)) {
             failed = 1;
             continue;
         }

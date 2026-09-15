@@ -252,6 +252,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->isax_record_lb_table = 0;
     settings->isax_mbr_dimensions = n_segments;
     settings->trie_leaf_ivf = 0;
+    settings->trie_leaf_ivf_min_size = 4096;
     settings->trie_leaf_ivf_raw_ball_bound = 1;
     settings->trie_leaf_ivf_radial_bound = 0;
     settings->trie_residual_norm_bound = 0;

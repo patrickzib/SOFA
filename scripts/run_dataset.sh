@@ -211,6 +211,7 @@ TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_STREAMING_LEAF_SCAN=true
 TRIE_STREAMING_LEAF_SCAN_SPECIFIED=false
 TRIE_LEAF_IVF=16
+TRIE_LEAF_IVF_MIN_SIZE=4096
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
@@ -284,6 +285,7 @@ while [[ $# -gt 0 ]]; do
         --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
+        --trie-leaf-ivf-min-size) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF_MIN_SIZE=$2; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
         --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; shift ;;
@@ -503,6 +505,7 @@ if [[ $INDEX_TYPE == trie ]]; then
 fi
 if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+    [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf-min-size "$TRIE_LEAF_IVF_MIN_SIZE")
     [[ $TRIE_LEAF_IVF == 0 ]] && COMMON_ARGS+=(--no-trie-leaf-ivf)
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
         [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && COMMON_ARGS+=(--trie-residual-record-only)

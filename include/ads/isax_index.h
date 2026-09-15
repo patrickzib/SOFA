@@ -108,6 +108,7 @@ typedef struct {
     char trie_streaming_leaf_scan;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
+    int trie_leaf_ivf_min_size;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
     /* Opt-in per-record centroid-radius triangle bound. */
