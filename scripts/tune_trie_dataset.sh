@@ -16,7 +16,7 @@ marker, the script stops rather than overwriting possibly useful output.
 
 Options:
   --threads N                 Worker threads (default: physical cores)
-  --repeats N                 Final validation repetitions (default: 5)
+  --repeats N                 Final query repetitions per built finalist (default: 5)
   --output-root PATH          Output root (default: ./trie-tuning)
   --binary PATH               MESSI executable passed to run_suite.sh
   --data-root PATH            Main dataset root
@@ -139,7 +139,7 @@ rebuild_summary() {
     local summary_tmp=$DATASET_ROOT/.all-runs.tsv.tmp metrics
     printf '%s\n' "$SUMMARY_HEADER" > "$summary_tmp"
     while IFS= read -r metrics; do
-        sed -n '2p' "$metrics" >> "$summary_tmp"
+        sed -n '2,$p' "$metrics" >> "$summary_tmp"
     done < <(find "$DATASET_ROOT" -type f -name metrics.tsv -print | LC_ALL=C sort)
     mv -- "$summary_tmp" "$DATASET_ROOT/all-runs.tsv"
     awk 'BEGIN { FS="\t"; OFS="," } { for (i=1; i<=NF; ++i) { gsub(/"/, "\"\"", $i); $i="\"" $i "\"" } print }' \
@@ -163,6 +163,7 @@ human_count() {
 parse_log() {
     local log=$1 value
     PARSED_QUERY_S=$(awk '/^>>> query wall time:/ { value=$5 } END { if (value != "") print value }' "$log")
+    PARSED_REPEAT_TIMES=$(awk '/^>>> query repeat [0-9]+\/[0-9]+ wall time:/ { print $7 }' "$log")
     PARSED_BUILD_S=$(awk '
         /^>>> trie build timing/ { in_build=1; next }
         /^>>>/ && in_build { in_build=0 }
@@ -200,9 +201,8 @@ write_config() {
 }
 
 run_config() {
-    local method=$1 phase=$2 config_id=$3 repeat=$4
+    local method=$1 phase=$2 config_id=$3 query_repeats=${4:-1}
     local run_dir=$DATASET_ROOT/$method/$phase/$config_id
-    [[ $repeat == 0 ]] || run_dir=$run_dir/repeat-$repeat
     local complete=$run_dir/.complete log=$run_dir/run.log
     local -a command=("$SCRIPT_DIR/run_suite.sh" standard
         --threads "$THREADS" --numa "$NUMA_MODE" --datasets "$DATASET"
@@ -240,6 +240,7 @@ run_config() {
     if [[ $RESIDUAL == true ]]; then
         command+=(--trie-residual-record-only --trie-residual-order "$RESIDUAL_ORDER")
     fi
+    command+=(--query-repeats "$query_repeats")
     command+=("${RUNNER_ARGS[@]}")
 
     printf '\n[%s/%s] %s\n' "$method" "$phase" "$config_id"
@@ -255,14 +256,26 @@ run_config() {
     if ! parse_log "$log"; then
         die "run completed but its timings could not be parsed; preserved output at $run_dir"
     fi
+    local parsed_repeat_count
+    parsed_repeat_count=$(awk '/^>>> query repeat [0-9]+\/[0-9]+ wall time:/ { count++ } END { print count+0 }' "$log")
+    if (( query_repeats == 1 && parsed_repeat_count == 0 )); then
+        PARSED_REPEAT_TIMES=$PARSED_QUERY_S
+        parsed_repeat_count=1
+    fi
+    (( parsed_repeat_count == query_repeats )) ||
+        die "expected $query_repeats query timings but parsed $parsed_repeat_count; preserved output at $run_dir"
     {
         printf '%s\n' "$SUMMARY_HEADER"
-        printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-            "$DATASET" "$method" "$phase" "$config_id" "$repeat" \
-            "$LEAF_SIZE" "$N_SEGMENTS" "$SPLIT_DIMS" "$MBR_DIMS" "$FANOUT" \
-            "$IVF_GROUPS" "$IVF_MIN_SIZE" "$RESIDUAL" "$RESIDUAL_ORDER" \
-            "$PARSED_QUERY_S" "$PARSED_BUILD_S" "$PARSED_EXACT" "$PARSED_LOWER" \
-            "$PARSED_ELIGIBLE" "$PARSED_CLUSTERS" "$run_dir" "$RADIAL_MODE"
+        local timing timing_repeat=0
+        while IFS= read -r timing; do
+            (( ++timing_repeat ))
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$DATASET" "$method" "$phase" "$config_id" "$timing_repeat" \
+                "$LEAF_SIZE" "$N_SEGMENTS" "$SPLIT_DIMS" "$MBR_DIMS" "$FANOUT" \
+                "$IVF_GROUPS" "$IVF_MIN_SIZE" "$RESIDUAL" "$RESIDUAL_ORDER" \
+                "$timing" "$PARSED_BUILD_S" "$PARSED_EXACT" "$PARSED_LOWER" \
+                "$PARSED_ELIGIBLE" "$PARSED_CLUSTERS" "$run_dir" "$RADIAL_MODE"
+        done <<< "$PARSED_REPEAT_TIMES"
     } > "$run_dir/metrics.tsv"
     : > "$complete"
     rebuild_summary
@@ -296,12 +309,12 @@ unique_mbr_values() {
 }
 
 rank_finalists() {
-    local method=$1 phase_dir=$DATASET_ROOT/$method/06-final
+    local method=$1 phase_dir=$DATASET_ROOT/$method/06-final-query-only
     local output=$DATASET_ROOT/$method/final-ranking.tsv
     {
         printf 'candidate\truns\tmedian_query_s\tmean_query_s\tmin_query_s\tmax_query_s\tconfig_dir\n'
         find "$phase_dir" -type f -name metrics.tsv -print |
-            while IFS= read -r file; do sed -n '2p' "$file"; done |
+            while IFS= read -r file; do sed -n '2,$p' "$file"; done |
             awk -F '\t' '
                 function sort_values(a, n, i, j, x) {
                     for (i=2; i<=n; ++i) { x=a[i]; j=i-1; while (j>=1 && a[j]>x) { a[j+1]=a[j]; --j } a[j+1]=x }
@@ -310,7 +323,7 @@ rank_finalists() {
                     key=$4; n[key]++; values[key,n[key]]=$15+0; sum[key]+=$15
                     if (!(key in min) || $15<min[key]) min[key]=$15
                     if (!(key in max) || $15>max[key]) max[key]=$15
-                    dir[key]=$21; sub(/\/repeat-[0-9]+$/, "", dir[key])
+                    dir[key]=$21
                 }
                 END {
                     for (key in n) {
@@ -330,7 +343,7 @@ write_recommendation() {
     local winner_dir median
     winner_dir=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $7 }')
     median=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $3 }')
-    load_run_config "$winner_dir/repeat-1"
+    load_run_config "$winner_dir"
     {
         print_config
         printf 'DATASET=%q\nMETHOD=%q\nMEDIAN_QUERY_S=%q\nREPEATS=%q\n' \
@@ -365,8 +378,7 @@ write_recommendation() {
 
 tune_method() {
     local method=$1 leaf prefix fanout mbr split groups min_size order radial candidate rank selected
-    local repeat
-    local -a radial_values=() finalist_dirs=() rank_order=()
+    local -a radial_values=() finalist_dirs=()
     printf '\n=== Tuning %s on %s ===\n' "$method" "$DATASET"
 
     # Stage 1: structural parameters, with the current IVF baseline and no residual.
@@ -378,7 +390,7 @@ tune_method() {
                 IVF_GROUPS=16; IVF_MIN_SIZE=4096
                 RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
                 RADIAL_MODE=on
-                run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}" 0
+                run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}"
             done
         done
     done
@@ -394,7 +406,7 @@ tune_method() {
             MBR_DIMS=$mbr; FANOUT=$base_fanout
             IVF_GROUPS=16; IVF_MIN_SIZE=4096
             RESIDUAL=false; RESIDUAL_ORDER=symbolic-first; RADIAL_MODE=on
-            run_config "$method" 02-mbr "mbr-${mbr}-split-${split}" 0
+            run_config "$method" 02-mbr "mbr-${mbr}-split-${split}"
             [[ $mbr != "$base_prefix" ]] || break
         done
     done < <(unique_mbr_values "$base_prefix")
@@ -410,7 +422,7 @@ tune_method() {
         MBR_DIMS=$base_mbr; FANOUT=$base_fanout
         IVF_GROUPS=$groups; IVF_MIN_SIZE=4096
         RESIDUAL=false; RESIDUAL_ORDER=symbolic-first; RADIAL_MODE=on
-        run_config "$method" 03-ivf-groups "groups-$groups" 0
+        run_config "$method" 03-ivf-groups "groups-$groups"
     done
 
     selected=$(best_run_dir "$method" 03-ivf-groups)
@@ -423,14 +435,14 @@ tune_method() {
         MBR_DIMS=$base_mbr; FANOUT=$base_fanout
         IVF_GROUPS=0; IVF_MIN_SIZE=4096
         RESIDUAL=false; RESIDUAL_ORDER=symbolic-first; RADIAL_MODE=off
-        run_config "$method" 04-ivf-min-size ivf-off 0
+        run_config "$method" 04-ivf-min-size ivf-off
     else
         for min_size in 2048 4096 8192; do
             LEAF_SIZE=$base_leaf; N_SEGMENTS=$base_prefix; SPLIT_DIMS=$base_split
             MBR_DIMS=$base_mbr; FANOUT=$base_fanout
             IVF_GROUPS=$base_groups; IVF_MIN_SIZE=$min_size
             RESIDUAL=false; RESIDUAL_ORDER=symbolic-first; RADIAL_MODE=on
-            run_config "$method" 04-ivf-min-size "min-$min_size" 0
+            run_config "$method" 04-ivf-min-size "min-$min_size"
         done
     fi
 
@@ -448,22 +460,19 @@ tune_method() {
             if [[ $order == off ]]; then RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
             else RESIDUAL=true; RESIDUAL_ORDER=$order
             fi
-            run_config "$method" 05-residual "radial-${radial}-residual-${order}" 0
+            run_config "$method" 05-residual "radial-${radial}-residual-${order}"
         done
     done
 
-    # Stage 6: repeat the two fastest residual-stage configurations. Interleave
-    # them and reverse each alternate pair to reduce thermal/time-order bias.
+    # Stage 6: build each of the two fastest residual-stage configurations once,
+    # then repeat only its query workload against the same in-memory trie.
     for rank in 1 2; do
         finalist_dirs[$rank]=$(best_run_dir "$method" 05-residual "$rank")
     done
-    for repeat in $(seq 1 "$REPEATS"); do
-        if (( repeat % 2 == 1 )); then rank_order=(1 2); else rank_order=(2 1); fi
-        for rank in "${rank_order[@]}"; do
-            load_run_config "${finalist_dirs[$rank]}"
-            candidate=$(printf 'candidate-%s' "$rank")
-            run_config "$method" 06-final "$candidate" "$repeat"
-        done
+    for rank in 1 2; do
+        load_run_config "${finalist_dirs[$rank]}"
+        candidate=$(printf 'candidate-%s' "$rank")
+        run_config "$method" 06-final-query-only "$candidate" "$REPEATS"
     done
     rank_finalists "$method"
     write_recommendation "$method"

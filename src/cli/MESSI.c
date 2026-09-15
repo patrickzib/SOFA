@@ -131,6 +131,29 @@ static double monotonic_seconds(void) {
     return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
+static enum response run_trie_query_repeats(isax_index *index, const char *path,
+                                            int query_count, int filetype_int,
+                                            int apply_znorm, float minimum_distance,
+                                            int batch, int repeats,
+                                            double *total_seconds) {
+    *total_seconds = 0.0;
+    for (int repeat = 1; repeat <= repeats; ++repeat) {
+        const double start = monotonic_seconds();
+        const enum response status =
+            (batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+                (index, path, query_count, filetype_int, apply_znorm, minimum_distance);
+        const double elapsed = monotonic_seconds() - start;
+        if (status != SUCCESS) return status;
+        *total_seconds += elapsed;
+        if (repeats > 1) {
+            fprintf(stderr, ">>> query repeat %d/%d wall time: %.6f s\n",
+                    repeat, repeats, elapsed);
+        }
+    }
+    fprintf(stderr, ">>> query wall time: %.6f s\n", *total_seconds);
+    return SUCCESS;
+}
+
 static void format_compact_count(double value, char *buffer, size_t buffer_size) {
     const char *suffix = "";
     double scaled = value;
@@ -447,6 +470,7 @@ int main(int argc, char **argv) {
     static int trie_max_fanout = 16;
     static int trie_alphabet_budget_bits = 3;
     static int query_report_interval_requested = 10;
+    static int query_repeats = 1;
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -543,6 +567,7 @@ int main(int argc, char **argv) {
                 {"isax-record-lb-table", no_argument, 0, 1020},
                 {"enable-sofa-v2", no_argument, 0, 1021},
                 {"query-report-interval", required_argument, 0, 1006},
+                {"query-repeats", required_argument, 0, 1044},
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
                 {NULL,                  0,                 NULL, 0}
@@ -595,6 +620,9 @@ int main(int argc, char **argv) {
                 break;
             case 1006:
                 query_report_interval_requested = atoi(optarg);
+                break;
+            case 1044:
+                query_repeats = atoi(optarg);
                 break;
             case 1008:
                 SIMD_flag = 0;
@@ -928,6 +956,7 @@ int main(int argc, char **argv) {
                        "  --tight-bound                  Enable tight iSAX leaf pruning\n"
                        "  --aggressive-check             Enable aggressive pruning\n"
                        "  --query-report-interval N      Progress rows (0 disables; default: 10)\n"
+                       "  --query-repeats N              Repeat queries after one in-memory trie build\n"
                        "\n"
                        "Transforms and binning:\n"
                        "  --function-type N              0 build only; 1 ParIS-TS; 2 ParIS; 3 MESSI-SAX;\n"
@@ -1043,6 +1072,20 @@ int main(int argc, char **argv) {
     if (isax_mbr_dimensions == 0) isax_mbr_dimensions = 32;
     if (query_report_interval_requested < 0) {
         fprintf(stderr, "error: query report interval must be zero or positive.\n");
+        return EXIT_FAILURE;
+    }
+    if (query_repeats < 1) {
+        fprintf(stderr, "error: --query-repeats must be positive.\n");
+        return EXIT_FAILURE;
+    }
+    if (query_repeats > 1 &&
+        (!inmemory_flag || index_type != MESSI_INDEX_TRIE || use_index)) {
+        fprintf(stderr,
+                "error: --query-repeats greater than one requires a newly built in-memory trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (queries_size > INT_MAX / query_repeats) {
+        fprintf(stderr, "error: queries-size times query-repeats is too large.\n");
         return EXIT_FAILURE;
     }
     query_report_interval = query_report_interval_requested;
@@ -1530,7 +1573,7 @@ int main(int argc, char **argv) {
                 "tight bound,%d\naggressive check,%d\nminimum distance,%.9g\n"
                 "node split criterion,%d\nroot split mode,%s\nuniform root bits,%d\n"
                 "histogram type,%d\nsample size,%d\nsample type,%d\nsampling seed,%u\n"
-                "SFA coefficients,%d\nquery report interval,%d\nprofile query phases,%d\n"
+                "SFA coefficients,%d\nquery report interval,%d\nquery repeats,%d\nprofile query phases,%d\n"
                 "use existing index,%d\ncompletion type,%d\nserial scan,%d\ntop-k,%d\nk,%d\n"
                 "iSAX node MBR,%d\niSAX record-MBR suffix bound,%d\n"
                 "iSAX record-LB table,%d\niSAX MBR dimensions,%d\n"
@@ -1558,7 +1601,7 @@ int main(int argc, char **argv) {
                     (root_split_mode == MESSI_ROOT_SPLIT_UNIFORM ? "uniform" : "default"),
                 dynamic_index,
                 histogram_type, sample_size, sample_type, sampling_seed,
-                n_coefficients, query_report_interval, profile_query_phases,
+                n_coefficients, query_report_interval, query_repeats, profile_query_phases,
                 use_index, complete_type, serial_scan, topk, k_size,
                 isax_node_mbr, isax_record_mbr_suffix_bound,
                 isax_record_lb_table, isax_mbr_dimensions,
@@ -1605,14 +1648,12 @@ int main(int argc, char **argv) {
             }
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            double query_wall_start = monotonic_seconds();
-            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
-                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+            if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                       apply_znorm, minimum_distance, trie_query_batch,
+                                       query_repeats, &query_wall_seconds) != SUCCESS) {
                 fprintf(stderr, "error: trie query processing failed.\n");
                 return EXIT_FAILURE;
             }
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
         //MESSI-SFA: in-memory flag set with function-type 4
         } else if (inmemory_flag && function_type == 4) {
@@ -1650,13 +1691,17 @@ int main(int argc, char **argv) {
             //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
             //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
             // } else {
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
@@ -1693,13 +1738,17 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
@@ -1736,13 +1785,17 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
@@ -1837,11 +1890,12 @@ int main(int argc, char **argv) {
             }
         }
 
-        SAVE_STATS_TOTAL(logfile_query, queries_size)
-        if (queries_size > 0 && query_wall_seconds > 0.0) {
-            const double avg_checked_nodes = (double) checked_nodes_all / queries_size;
-            const double avg_lower_bounds = (double) LBDcalculationnumber_all / queries_size;
-            const double avg_exact_distances = (double) RDcalculationnumber_all / queries_size;
+        const int reported_queries = queries_size * query_repeats;
+        SAVE_STATS_TOTAL(logfile_query, reported_queries)
+        if (reported_queries > 0 && query_wall_seconds > 0.0) {
+            const double avg_checked_nodes = (double) checked_nodes_all / reported_queries;
+            const double avg_lower_bounds = (double) LBDcalculationnumber_all / reported_queries;
+            const double avg_exact_distances = (double) RDcalculationnumber_all / reported_queries;
             const double checked_node_percent = total_tree_nodes > 0
                                                 ? 100.0 * avg_checked_nodes / total_tree_nodes
                                                 : 0.0;
@@ -1855,16 +1909,11 @@ int main(int argc, char **argv) {
              * symbolic MBR, raw ball, or radial bound is not also credited to
              * a later stage.  Only radial survivors receive a symbolic record
              * lower-bound evaluation. */
-            const double avg_cluster_records_pruned = queries_size > 0
-                ? (double) trie_cluster_records_pruned_all / queries_size : 0.0;
-            const double avg_cluster_symbolic_records_pruned = queries_size > 0
-                ? (double) trie_cluster_symbolic_records_pruned_all / queries_size : 0.0;
-            const double avg_cluster_raw_ball_records_pruned = queries_size > 0
-                ? (double) trie_cluster_raw_ball_records_pruned_all / queries_size : 0.0;
-            const double avg_radial_candidates = queries_size > 0
-                ? (double) trie_radial_candidates_all / queries_size : 0.0;
-            const double avg_radial_pruned = queries_size > 0
-                ? (double) trie_radial_pruned_all / queries_size : 0.0;
+            const double avg_cluster_records_pruned = (double) trie_cluster_records_pruned_all / reported_queries;
+            const double avg_cluster_symbolic_records_pruned = (double) trie_cluster_symbolic_records_pruned_all / reported_queries;
+            const double avg_cluster_raw_ball_records_pruned = (double) trie_cluster_raw_ball_records_pruned_all / reported_queries;
+            const double avg_radial_candidates = (double) trie_radial_candidates_all / reported_queries;
+            const double avg_radial_pruned = (double) trie_radial_pruned_all / reported_queries;
             /* No new per-record counter: every symbolic record LB either
              * reaches exact distance or prunes the record (including heap
              * entries skipped after BSF improves). */
@@ -1913,7 +1962,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "=== Query summary ===\n"
                    "  queries          : %d\n"
                    "  wall time        : %s (%.3f ms/query)\n",
-                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size);
+                   reported_queries, wall_time, 1000.0 * query_wall_seconds / reported_queries);
             fprintf(stderr,
                    "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
                    nodes, checked_node_percent, index_nodes);
@@ -1975,21 +2024,21 @@ int main(int argc, char **argv) {
                        "    node MBR bounds  : %.3f\n"
                        "    record bounds    : %.3f\n"
                        "    exact distances  : %.3f\n",
-                       total_mbr_dist_calc_time_all / (1000.0 * queries_size),
-                       total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
-                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+                       total_mbr_dist_calc_time_all / (1000.0 * reported_queries),
+                       total_record_lb_dist_calc_time_all / (1000.0 * reported_queries),
+                       total_real_dist_calc_time_all / (1000.0 * reported_queries));
                 if (index_type == MESSI_INDEX_TRIE) {
                     fprintf(stderr, "    frontier traversal: %.3f\n"
                            "    queue locks/pops : %.3f\n"
                            "    candidate heap   : %.3f\n"
                            "    synchronization/wait: %.3f\n",
-                           total_trie_frontier_time_all / (1000.0 * queries_size),
-                           total_trie_queue_time_all / (1000.0 * queries_size),
-                           total_trie_heap_time_all / (1000.0 * queries_size),
-                           total_trie_sync_time_all / (1000.0 * queries_size));
+                           total_trie_frontier_time_all / (1000.0 * reported_queries),
+                           total_trie_queue_time_all / (1000.0 * reported_queries),
+                           total_trie_heap_time_all / (1000.0 * reported_queries),
+                           total_trie_sync_time_all / (1000.0 * reported_queries));
                 } else {
                     fprintf(stderr, "    traversal/queues : %.3f\n",
-                           total_tree_pass_time_all / (1000.0 * queries_size));
+                           total_tree_pass_time_all / (1000.0 * reported_queries));
                 }
             }
         }

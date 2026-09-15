@@ -135,8 +135,9 @@ of the default.
 `tune_trie_dataset.sh` performs a staged search for one dataset and tunes
 `spartan-depth` and `spartan-width` independently. It screens leaf capacity,
 record-prefix width, fanout, MBR/split dimensions, IVF groups and eligibility,
-radial policy, and record-residual ordering. The two finalists for each method
-are repeated and ranked by median query wall time.
+radial policy, and record-residual ordering. Each of the two finalists is built
+once; its query workload is then repeated against that same in-memory trie and
+ranked by median query wall time. Thus `--repeats` does not repeat index builds.
 
 ```bash
 scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5

@@ -76,6 +76,7 @@ Options:
   --trie-query-batch      Batch independent trie queries
   --query-report-interval N
                           Print query progress every N queries (0 disables it)
+  --query-repeats N       Repeat queries after one in-memory trie build (default: 1)
   --profile-query-phases  Measure traversal, lower-bound, and exact work
   --dynamic-root-split-variance
                           Enable variance-assigned iSAX root bits
@@ -162,6 +163,7 @@ TRIE_ALPHABET_BUDGET_BITS=3
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 QUERY_REPORT_INTERVAL=
+QUERY_REPEATS=1
 PROFILE_QUERY_PHASES=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=
 DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
@@ -233,6 +235,7 @@ while [[ $# -gt 0 ]]; do
         --trie-query-parallel) TRIE_QUERY_PARALLEL=true; shift ;;
         --trie-query-batch) TRIE_QUERY_BATCH=true; shift ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
+        --query-repeats) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPEATS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
@@ -255,6 +258,8 @@ case "$SUITE" in
     *) die "unknown suite '$SUITE'" ;;
 esac
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+[[ $QUERY_REPEATS =~ ^[1-9][0-9]*$ ]] || die '--query-repeats must be a positive integer'
+(( QUERY_REPEATS == 1 )) || [[ $INDEX_TYPE == trie ]] || die '--query-repeats greater than one requires --index-type trie'
 [[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
     die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ $TRIE_FANOUT == 2 || $TRIE_FANOUT == 4 || $TRIE_FANOUT == 8 ]] || \
@@ -378,6 +383,7 @@ run_one() {
     $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
     $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
     [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
+    (( QUERY_REPEATS == 1 )) || command+=(--query-repeats "$QUERY_REPEATS")
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
@@ -522,6 +528,7 @@ run_query_suite() {
             $TRIE_QUERY_PARALLEL && command+=(--trie-query-parallel)
             $TRIE_QUERY_BATCH && command+=(--trie-query-batch)
             [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
+            (( QUERY_REPEATS == 1 )) || command+=(--query-repeats "$QUERY_REPEATS")
             $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
             [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)

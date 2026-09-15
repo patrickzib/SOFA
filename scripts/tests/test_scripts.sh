@@ -239,6 +239,14 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-
 fi
 pass 'query report interval is forwarded and validated'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --query-repeats 3 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--query-repeats 3'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-repeats 0 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted zero query repeats'
+fi
+pass 'query repeats are forwarded and validated'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
@@ -407,6 +415,15 @@ assert_contains "$OUTPUT" '--trie-leaf-ivf-min-size 8192'
 pass 'suite forwards trie leaf IVF and its minimum eligible leaf size'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --query-repeats 3 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--query-repeats 3'
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type isax \
+    --query-repeats 3 --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted repeated queries for iSAX'
+fi
+pass 'suite forwards in-memory trie query repeats'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf-radial-bound'
 if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type trie \
@@ -509,6 +526,7 @@ pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations
 OUTPUT=$("$SCRIPT_DIR/tune_trie_dataset.sh" --help)
 assert_contains "$OUTPUT" 'spartan-depth and spartan-width'
 assert_contains "$OUTPUT" 'best-config.env'
+assert_contains "$OUTPUT" 'Final query repetitions per built finalist'
 pass 'dataset-specific trie tuner documents independent methods and safe result outputs'
 
 printf '1..%d\n' "$TEST_COUNT"

@@ -76,6 +76,7 @@ Options:
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
+  --query-repeats N         Repeat queries after one in-memory trie build (default: 1)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
   --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
   --binary PATH             MESSI executable
@@ -228,6 +229,7 @@ TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
 PROFILE_QUERY_PHASES=false
 QUERY_REPORT_INTERVAL=
+QUERY_REPEATS=1
 # Resolved after parsing because the default depends on --index-type.
 DYNAMIC_ROOT_SPLIT_VARIANCE=
 DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
@@ -301,6 +303,7 @@ while [[ $# -gt 0 ]]; do
         --trie-max-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MAX_FANOUT=$2; shift 2 ;;
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
+        --query-repeats) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPEATS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
@@ -338,6 +341,8 @@ is_nonnegative_integer "$QUERY_HEADER_BYTES" || die '--query-header-bytes must b
 [[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
     die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
+is_positive_integer "$QUERY_REPEATS" || die '--query-repeats must be a positive integer'
+(( QUERY_REPEATS == 1 )) || [[ $INDEX_TYPE == trie ]] || die '--query-repeats greater than one requires --index-type trie'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
@@ -537,6 +542,7 @@ fi
 if [[ -n $QUERY_REPORT_INTERVAL ]]; then
     COMMON_ARGS+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
 fi
+(( QUERY_REPEATS == 1 )) || COMMON_ARGS+=(--query-repeats "$QUERY_REPEATS")
 
 SUMMARY_ROWS=
 collect_run_summary() {
