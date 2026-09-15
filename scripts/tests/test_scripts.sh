@@ -524,9 +524,10 @@ fi
 pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations'
 
 OUTPUT=$("$SCRIPT_DIR/tune_trie_dataset.sh" --help)
-assert_contains "$OUTPUT" 'allowing either spartan-depth or'
+assert_contains "$OUTPUT" 'spartan-depth or spartan-width to win'
 assert_contains "$OUTPUT" 'best-config.env'
 assert_contains "$OUTPUT" 'Final query repetitions per built finalist'
+assert_contains "$OUTPUT" 'DATASET[,DATASET...]'
 pass 'dataset-specific trie tuner documents joint method selection and safe result outputs'
 
 TUNER_FAKE_MESSI="$TEMP_ROOT/tuner_fake_messi"

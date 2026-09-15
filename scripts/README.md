@@ -145,6 +145,13 @@ index builds.
 scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5
 ```
 
+Multiple datasets can be tuned sequentially with a comma-separated argument;
+each gets its own resumable directory and global winner:
+
+```bash
+scripts/tune_trie_dataset.sh PNW,SALD,TXED --threads 64 --repeats 5
+```
+
 Use the same data-root overrides as `run_suite.sh` when needed. Results default
 to `trie-tuning/DATASET`; `all-runs.tsv` and `all-runs.csv` contain every run.
 The single global winner is written to `best-config.env`, `best-command.sh`,

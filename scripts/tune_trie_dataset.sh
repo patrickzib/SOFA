@@ -8,11 +8,11 @@ source "$SCRIPT_DIR/lib/datasets.sh"
 
 usage() {
     cat <<'USAGE'
-Usage: tune_trie_dataset.sh DATASET [OPTIONS]
+Usage: tune_trie_dataset.sh DATASET[,DATASET...] [OPTIONS]
 
-Tune one SPARTAN trie configuration, allowing either spartan-depth or
-spartan-width to win. Both methods participate in the shared structural
-screen; later stages tune only the globally selected method.
+Tune one SPARTAN trie configuration per dataset, allowing either
+spartan-depth or spartan-width to win. Both methods participate in the shared
+structural screen; later stages tune only the globally selected method.
 Completed runs are reused. If a run directory exists without a completion
 marker, the script stops rather than overwriting possibly useful output.
 
@@ -57,6 +57,16 @@ case "$1" in -h|--help) usage; exit 0 ;; esac
 ORIGINAL_CWD=$PWD
 DATASET_INPUT=$1
 shift
+if [[ $DATASET_INPUT == *,* ]]; then
+    DATASET_OPTIONS=("$@")
+    IFS=',' read -r -a DATASET_LIST <<< "$DATASET_INPUT"
+    [[ ${#DATASET_LIST[@]} -gt 0 ]] || die 'at least one dataset is required'
+    for DATASET_ITEM in "${DATASET_LIST[@]}"; do
+        [[ -n $DATASET_ITEM ]] || die "empty dataset in '$DATASET_INPUT'"
+        "$SCRIPT_DIR/tune_trie_dataset.sh" "$DATASET_ITEM" "${DATASET_OPTIONS[@]}"
+    done
+    exit 0
+fi
 THREADS=$(physical_core_count) || die 'unable to detect physical cores; pass --threads N'
 REPEATS=5
 OUTPUT_ROOT=$ORIGINAL_CWD/trie-tuning
