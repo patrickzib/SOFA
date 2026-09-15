@@ -132,14 +132,16 @@ of the default.
 
 ## Dataset-specific trie tuning
 
-`tune_trie_dataset.sh` performs a staged search for one dataset. Its shared
-structural stage tests both `spartan-depth` and `spartan-width`, then retains the
-globally fastest method/configuration pair. The remaining stages tune only that
-method, screening MBR/split dimensions, IVF groups and eligibility, radial
-policy, and record-residual ordering. Each of the two final configurations is
+`tune_trie_dataset.sh` independently completes all six stages for both
+`spartan-depth` and `spartan-width`. Each method selects its own structure,
+MBR/split dimensions, IVF groups and eligibility, radial policy, and
+record-residual ordering. Each of the two final configurations per method is
 built once; its query workload is then repeated against that same in-memory
 trie and ranked by median query wall time. Thus `--repeats` does not repeat
-index builds.
+index builds. All four finalists compete for the overall recommendation.
+The search remains staged within each method, rather than a full Cartesian grid.
+Rerunning with the same options and output root reuses completed runs, including
+older outputs that tuned only one method, and fills in the other method's stages.
 
 ```bash
 scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5

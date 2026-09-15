@@ -558,10 +558,34 @@ assert_contains "$(<"$TUNER_ROOT/astro/best-config.env")" 'METHOD=spartan-width'
     fail 'joint tuner did not screen spartan-depth'
 [[ $(awk -F '\t' '$3 == "01-structure" && $2 == "spartan-width" { found=1 } END { print found+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 1 ]] ||
     fail 'joint tuner did not screen spartan-width'
-[[ $(awk -F '\t' '$3 != "01-structure" && $2 == "spartan-depth" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 0 ]] ||
-    fail 'joint tuner continued tuning the losing method'
-[[ $(awk -F '\t' '$3 == "06-final-query-only" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 6 ]] ||
+for method in spartan-depth spartan-width; do
+    for phase in 01-structure 02-mbr 03-ivf-groups 04-ivf-min-size 05-residual 06-final-query-only; do
+        [[ -d $TUNER_ROOT/astro/$method/$phase ]] || fail "missing $method/$phase"
+    done
+done
+[[ $(awk -F '\t' '$3 == "06-final-query-only" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 12 ]] ||
     fail 'joint tuner did not record three query repeats for both finalists'
-pass 'dataset-specific trie tuner chooses one method globally and repeats only finalist queries'
+[[ $(awk 'END {print NR}' "$TUNER_ROOT/astro/final-ranking.tsv") == 5 ]] ||
+    fail 'final ranking must contain four distinct method/configuration finalists'
+pass 'trie tuner completes both methods and compares all four finalists'
+
+# Simulate an older completed output that stopped depth after stage 1.
+LEGACY_SAVED="$TEMP_ROOT/legacy-saved"
+mkdir -p "$LEGACY_SAVED"
+mv "$TUNER_ROOT/astro/.complete-both-methods" "$LEGACY_SAVED/"
+for phase in 02-mbr 03-ivf-groups 04-ivf-min-size 05-residual 06-final-query-only; do
+    mv "$TUNER_ROOT/astro/spartan-depth/$phase" "$LEGACY_SAVED/"
+done
+cp "$TUNER_ROOT/astro/spartan-width/06-final-query-only/candidate-1/metrics.tsv" "$LEGACY_SAVED/width-metrics.tsv"
+"$SCRIPT_DIR/tune_trie_dataset.sh" astro --threads 1 --repeats 3 \
+    --output-root "$TUNER_ROOT" --binary "$TUNER_FAKE_MESSI" \
+    --dataset-file "$TEMP_ROOT/astro.bin" --query-file "$TEMP_ROOT/astro_queries.bin" \
+    --dataset-size 1 --query-size 1 >/dev/null
+[[ -f $TUNER_ROOT/astro/.complete-both-methods ]] || fail 'legacy output was not upgraded'
+[[ -d $TUNER_ROOT/astro/spartan-depth/06-final-query-only ]] || fail 'missing method was not resumed'
+cmp -s "$LEGACY_SAVED/width-metrics.tsv" "$TUNER_ROOT/astro/spartan-width/06-final-query-only/candidate-1/metrics.tsv" ||
+    fail 'completed finalist metrics changed during resume'
+[[ $(awk 'END {print NR}' "$TUNER_ROOT/astro/final-ranking.tsv") == 5 ]] || fail 'resumed ranking missing finalists'
+pass 'legacy single-method completion resumes missing stages and preserves completed runs'
 
 printf '1..%d\n' "$TEST_COUNT"

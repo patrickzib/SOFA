@@ -11,8 +11,8 @@ usage() {
 Usage: tune_trie_dataset.sh DATASET[,DATASET...] [OPTIONS]
 
 Tune one SPARTAN trie configuration per dataset, allowing either
-spartan-depth or spartan-width to win. Both methods participate in the shared
-structural screen; later stages tune only the globally selected method.
+spartan-depth or spartan-width to win. Both methods independently complete all
+six stages; their finalists are compared only after both methods are tuned.
 Completed runs are reused. If a run directory exists without a completion
 marker, the script stops rather than overwriting possibly useful output.
 
@@ -301,16 +301,6 @@ best_run_dir() {
         sed -n "${rank}p" | awk -F '\t' '{ print $21 }'
 }
 
-best_run_dir_across_methods() {
-    local phase=$1 rank=${2:-1} method
-    for method in spartan-depth spartan-width; do
-        find "$DATASET_ROOT/$method/$phase" -type f -name metrics.tsv -print 2>/dev/null || true
-    done |
-        while IFS= read -r file; do sed -n '2p' "$file"; done |
-        LC_ALL=C sort -t $'\t' -k15,15g |
-        sed -n "${rank}p" | awk -F '\t' '{ print $21 }'
-}
-
 run_method() {
     local run_dir=$1
     [[ -f $run_dir/metrics.tsv ]] || die "missing metrics for selected run: $run_dir"
@@ -337,18 +327,18 @@ unique_mbr_values() {
 }
 
 rank_finalists() {
-    local method=$1 phase_dir=$DATASET_ROOT/$method/06-final-query-only
     local output=$DATASET_ROOT/final-ranking.tsv
     {
         printf 'candidate\truns\tmedian_query_s\tmean_query_s\tmin_query_s\tmax_query_s\tconfig_dir\n'
-        find "$phase_dir" -type f -name metrics.tsv -print |
+        find "$DATASET_ROOT/spartan-depth/06-final-query-only" \
+             "$DATASET_ROOT/spartan-width/06-final-query-only" -type f -name metrics.tsv -print |
             while IFS= read -r file; do sed -n '2,$p' "$file"; done |
             awk -F '\t' '
                 function sort_values(a, n, i, j, x) {
                     for (i=2; i<=n; ++i) { x=a[i]; j=i-1; while (j>=1 && a[j]>x) { a[j+1]=a[j]; --j } a[j+1]=x }
                 }
                 {
-                    key=$4; n[key]++; values[key,n[key]]=$15+0; sum[key]+=$15
+                    key=$2 "/" $4; n[key]++; values[key,n[key]]=$15+0; sum[key]+=$15
                     if (!(key in min) || $15<min[key]) min[key]=$15
                     if (!(key in max) || $15>max[key]) max[key]=$15
                     dir[key]=$21
@@ -367,9 +357,10 @@ rank_finalists() {
 }
 
 write_recommendation() {
-    local method=$1 ranking=$DATASET_ROOT/final-ranking.tsv
+    local method ranking=$DATASET_ROOT/final-ranking.tsv
     local winner_dir median
     winner_dir=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $7 }')
+    method=$(run_method "$winner_dir")
     median=$(sed -n '2p' "$ranking" | awk -F '\t' '{ print $3 }')
     load_run_config "$winner_dir"
     {
@@ -404,33 +395,28 @@ write_recommendation() {
     chmod +x "$DATASET_ROOT/best-command.sh"
 }
 
-tune_dataset() {
-    local method leaf prefix fanout mbr split groups min_size order radial candidate rank selected
+tune_method() {
+    local method=$1 leaf prefix fanout mbr split groups min_size order radial candidate rank selected
     local -a radial_values=() finalist_dirs=()
-    printf '\n=== Jointly screening spartan-depth and spartan-width on %s ===\n' "$DATASET"
+    printf '\n=== Tuning %s on %s ===\n' "$method" "$DATASET"
 
-    # Stage 1: treat the SPARTAN traversal policy as part of the structural
-    # search. Select one global method/configuration pair after this stage.
-    for method in spartan-depth spartan-width; do
-        for leaf in 10000 20000 40000; do
-            for prefix in 32 48 64; do
-                for fanout in 4 8; do
-                    LEAF_SIZE=$leaf; N_SEGMENTS=$prefix; SPLIT_DIMS=$prefix
-                    MBR_DIMS=$MAX_MBR_DIMS; FANOUT=$fanout
-                    IVF_GROUPS=16; IVF_MIN_SIZE=4096
-                    RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
-                    RADIAL_MODE=on
-                    run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}"
-                done
+    # Each binning method has its own structural winner and subsequent stages.
+    for leaf in 10000 20000 40000; do
+        for prefix in 32 48 64; do
+            for fanout in 4 8; do
+                LEAF_SIZE=$leaf; N_SEGMENTS=$prefix; SPLIT_DIMS=$prefix
+                MBR_DIMS=$MAX_MBR_DIMS; FANOUT=$fanout
+                IVF_GROUPS=16; IVF_MIN_SIZE=4096
+                RESIDUAL=false; RESIDUAL_ORDER=symbolic-first
+                RADIAL_MODE=on
+                run_config "$method" 01-structure "leaf-${leaf}-prefix-${prefix}-fanout-${fanout}"
             done
         done
     done
-
-    selected=$(best_run_dir_across_methods 01-structure)
-    method=$(run_method "$selected")
+    selected=$(best_run_dir "$method" 01-structure)
     load_run_config "$selected"
     local base_leaf=$LEAF_SIZE base_prefix=$N_SEGMENTS base_split=$SPLIT_DIMS base_fanout=$FANOUT
-    printf '\n=== Selected %s after the joint structural screen; tuning remaining parameters ===\n' "$method"
+    printf '\n=== Tuning remaining parameters for %s ===\n' "$method"
 
     # Stage 2: MBR width and the number of dimensions eligible for splitting.
     while IFS= read -r mbr; do
@@ -507,17 +493,23 @@ tune_dataset() {
         candidate=$(printf 'candidate-%s' "$rank")
         run_config "$method" 06-final-query-only "$candidate" "$REPEATS"
     done
-    rank_finalists "$method"
-    write_recommendation "$method"
 }
 
-if [[ -f $DATASET_ROOT/.complete && -f $DATASET_ROOT/best-config.env ]]; then
+tune_dataset() {
+    tune_method spartan-depth
+    tune_method spartan-width
+    rank_finalists
+    write_recommendation
+}
+
+if [[ -f $DATASET_ROOT/.complete-both-methods && -f $DATASET_ROOT/best-config.env ]]; then
     rebuild_summary
     printf 'Tuning is already complete for dataset=%s; existing results were not overwritten.\n' "$DATASET"
 else
     tune_dataset
     rebuild_summary
     : > "$DATASET_ROOT/.complete"
+    : > "$DATASET_ROOT/.complete-both-methods"
 fi
 
 {
