@@ -488,7 +488,7 @@ COMMON_ARGS+=(
     --numa "$NUMA_MODE"
     --leaf-size "$LEAF_SIZE"
     --min-leaf-size "$MIN_LEAF_SIZE"
-    --initial-lbl-size 20000
+    --initial-lbl-size "$LEAF_SIZE"
     --sampling-seed "$SAMPLING_SEED"
 )
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
