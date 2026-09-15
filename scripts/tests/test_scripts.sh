@@ -485,14 +485,14 @@ else
     printf '# SKIP set RUN_MESSI_INTEGRATION=1 for the real MESSI fixture test\n'
 fi
 
-OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --methods spartan-depth --trie-residual-norm-bound --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-residual-norm-bound'
-OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets SALD --methods spartan-depth --trie-residual-norm-bound --dry-run 2>/dev/null)
-assert_contains "$OUTPUT" '--trie-residual-norm-bound'
-if "$SCRIPT_DIR/run_dataset.sh" sald standard --methods pisa-depth --trie-residual-norm-bound --dry-run >/dev/null 2>&1; then
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --methods spartan-depth --trie-residual-record-only --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-residual-record-only'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets SALD --methods spartan-depth --trie-residual-record-only --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-residual-record-only'
+if "$SCRIPT_DIR/run_dataset.sh" sald standard --methods pisa-depth --trie-residual-record-only --dry-run >/dev/null 2>&1; then
     fail 'residual bound must reject PISA'
 fi
-if "$SCRIPT_DIR/run_dataset.sh" sald standard --index-type isax --methods spartan-depth --trie-residual-norm-bound --dry-run >/dev/null 2>&1; then
+if "$SCRIPT_DIR/run_dataset.sh" sald standard --index-type isax --methods spartan-depth --trie-residual-record-only --dry-run >/dev/null 2>&1; then
     fail 'residual bound must reject iSAX'
 fi
 pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations'

@@ -104,8 +104,6 @@ static void numerical_tests(void) {
 static void verify_layout(const symbolic_trie_node *node, const isax_index *index) {
     if (!node->leaf) {
         for (int c = 0; c < node->split_fanout; ++c) if (node->children[c]) {
-            assert(node->residual_min <= node->children[c]->residual_min);
-            assert(node->residual_max >= node->children[c]->residual_max);
             verify_layout(node->children[c], index);
         }
         return;
@@ -117,14 +115,7 @@ static void verify_layout(const symbolic_trie_node *node, const isax_index *inde
         spartan_residual_value value = spartan_residual_encode(index, &index->trie->residual,
             raw, projected, index->trie->bound_dimensions);
         assert(value.radius == node->record_residuals[r]);
-        assert(node->residual_min <= node->record_residuals[r]);
-        assert(node->residual_max >= node->record_residuals[r]);
     }
-    for (int c = 0; c < node->cluster_count; ++c)
-        for (int r = node->clusters[c].offset; r < node->clusters[c].offset+node->clusters[c].size; ++r) {
-            assert(node->cluster_residual_ranges[2*c] <= node->record_residuals[r]);
-            assert(node->cluster_residual_ranges[2*c+1] >= node->record_residuals[r]);
-        }
 }
 
 static void search_tests(int capacity, int histogram, int prefix, int normalize) {

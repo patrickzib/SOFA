@@ -426,8 +426,8 @@ int main(int argc, char **argv) {
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     static int trie_leaf_ivf_radial_bound = 0;
-    static int trie_residual_norm_bound = 0;
     static int trie_residual_record_only = 0;
+    static int trie_residual_order = 0;
     static int trie_leaf_ivf_radial_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
@@ -524,8 +524,8 @@ int main(int argc, char **argv) {
                 {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
-                {"trie-residual-norm-bound", no_argument, 0, 1040},
                 {"trie-residual-record-only", no_argument, 0, 1041},
+                {"trie-residual-order", required_argument, 0, 1042},
                 {"no-trie-leaf-ivf-radial-bound", no_argument, 0, 1033},
                 {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
@@ -655,12 +655,13 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf_radial_bound = 1;
                 trie_leaf_ivf_radial_bound_auto = 0;
                 break;
-            case 1040:
-                trie_residual_norm_bound = 1;
-                break;
             case 1041:
-                trie_residual_norm_bound = 1;
                 trie_residual_record_only = 1;
+                break;
+            case 1042:
+                if (strcmp(optarg, "symbolic-first") == 0) trie_residual_order = 0;
+                else if (strcmp(optarg, "residual-first") == 0) trie_residual_order = 1;
+                else { fprintf(stderr, "error: --trie-residual-order expects symbolic-first or residual-first.\n"); return EXIT_FAILURE; }
                 break;
             case 1028:
                 trie_leaf_ivf_radial_bound_specified = 1;
@@ -953,8 +954,8 @@ int main(int argc, char **argv) {
                        "  --trie-query-parallel          Parallelize each query (default)\n"
                        "  --trie-query-batch             Batch independent queries\n"
                        "  --trie-mbr-dimensions N        MBR dimensions (default: min(128, series length))\n"
-                       "  --trie-residual-norm-bound     ResSPARTAN float32 residual pruning (opt-in)\n"
                        "  --trie-residual-record-only    ResSPARTAN residual checks only at records\n"
+                       "  --trie-residual-order MODE     Residual ordering: symbolic-first or residual-first\n"
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
@@ -1113,8 +1114,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-leaf-ivf requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
-    if (trie_residual_norm_bound && (index_type != MESSI_INDEX_TRIE || function_type != 5 || use_index)) {
-        fprintf(stderr, "error: --trie-residual-norm-bound requires a newly built SPARTAN trie.\n");
+    if (trie_residual_record_only && (index_type != MESSI_INDEX_TRIE || function_type != 5 || use_index)) {
+        fprintf(stderr, "error: --trie-residual-record-only requires a newly built SPARTAN trie.\n");
         return EXIT_FAILURE;
     }
     if (trie_leaf_ivf_radial_bound && index_type != MESSI_INDEX_TRIE) {
@@ -1485,8 +1486,9 @@ int main(int argc, char **argv) {
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound;
-        index_settings->trie_residual_norm_bound = trie_residual_norm_bound;
+        index_settings->trie_residual_norm_bound = trie_residual_record_only;
         index_settings->trie_residual_record_only = trie_residual_record_only;
+        index_settings->trie_residual_order = trie_residual_order;
         index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
@@ -1915,7 +1917,7 @@ int main(int argc, char **argv) {
                 if (idx->settings->trie_residual_norm_bound) record_bound_name = "symbolic + residual";
                 fprintf(stderr, "  pruning breakdown:\n"
                        "    %-20s : %s records/query (%.2f%% of indexed series)\n",
-                       idx->settings->trie_residual_norm_bound ? "node MBRs/residual" : "node MBRs",
+                       "node MBRs",
                        node_pruned, node_mbr_percent);
                 if (trie_cluster_bounds_all != 0) {
                     const double cluster_symbolic_prune_percent =

@@ -186,6 +186,74 @@ static inline unsigned int messi_record_lb_table_batch(
     return active;
 }
 
+/* Apply the record residual contribution to an existing symbolic batch bound.
+ * The residuals are in leaf order, so this is a contiguous load (no gather). */
+static inline unsigned int messi_residual_batch_mask(const float *residuals,
+                                                     float query_residual,
+                                                     const float *symbolic,
+                                                     float suffix, float bsf,
+                                                     unsigned int active) {
+#if defined(__AVX512F__)
+    __mmask16 mask = (__mmask16)active;
+    __m512 r = _mm512_maskz_loadu_ps(mask, residuals);
+    __m512 d = _mm512_andnot_ps(_mm512_set1_ps(-0.0f),
+                                _mm512_sub_ps(r, _mm512_set1_ps(query_residual)));
+    __m512 extra = _mm512_mul_ps(d, d);
+    __m512 tail = _mm512_set1_ps(suffix);
+    __m512 add = _mm512_add_ps(_mm512_loadu_ps(symbolic),
+                               _mm512_max_ps(tail, extra));
+    return (unsigned int)_mm512_cmp_ps_mask(add, _mm512_set1_ps(bsf), _CMP_LE_OQ) & active;
+#elif ADS_HAVE_AVX2
+    const __m256 sign = _mm256_set1_ps(-0.0f);
+    __m256 r = _mm256_loadu_ps(residuals);
+    __m256 d = _mm256_andnot_ps(sign, _mm256_sub_ps(r, _mm256_set1_ps(query_residual)));
+    __m256 extra = _mm256_mul_ps(d, d);
+    __m256 add = _mm256_add_ps(_mm256_loadu_ps(symbolic),
+                               _mm256_max_ps(_mm256_set1_ps(suffix), extra));
+    return (unsigned int)_mm256_movemask_ps(
+        _mm256_and_ps(_mm256_castsi256_ps(_mm256_set1_epi32((int)active)),
+                      _mm256_cmp_ps(add, _mm256_set1_ps(bsf), _CMP_LE_OQ)));
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    float32x4_t r = vld1q_f32(residuals);
+    float32x4_t d = vabsq_f32(vsubq_f32(r, vdupq_n_f32(query_residual)));
+    float32x4_t extra = vmulq_f32(d, d);
+    float32x4_t add = vaddq_f32(vld1q_f32(symbolic),
+                                vmaxq_f32(vdupq_n_f32(suffix), extra));
+    uint32x4_t ok = vcleq_f32(add, vdupq_n_f32(bsf));
+    const uint32_t bits[4] = {1, 2, 4, 8};
+    uint32_t flags[4]; vst1q_u32(flags, ok);
+    unsigned int result = 0;
+    for (int i = 0; i < 4; ++i) if (flags[i]) result |= bits[i];
+    return result & active;
+#else
+    unsigned int result = 0;
+    for (int i = 0; i < 16 && (active & (1U << i)); ++i) {
+        float d = fabsf(residuals[i] - query_residual);
+        if (symbolic[i] + fmaxf(suffix, d*d) <= bsf) result |= 1U << i;
+    }
+    return result;
+#endif
+}
+
+static inline unsigned int messi_residual_only_batch_mask(const float *residuals,
+                                                          float query_residual,
+                                                          float bsf, unsigned int active) {
+#if defined(__AVX512F__)
+    __mmask16 m = (__mmask16)active;
+    __m512 d = _mm512_andnot_ps(_mm512_set1_ps(-0.0f), _mm512_sub_ps(_mm512_maskz_loadu_ps(m, residuals), _mm512_set1_ps(query_residual)));
+    return (unsigned int)_mm512_cmp_ps_mask(_mm512_mul_ps(d,d), _mm512_set1_ps(bsf*bsf), _CMP_LE_OQ) & active;
+#elif ADS_HAVE_AVX2
+    __m256 d = _mm256_andnot_ps(_mm256_set1_ps(-0.0f), _mm256_sub_ps(_mm256_loadu_ps(residuals), _mm256_set1_ps(query_residual)));
+    return (unsigned int)_mm256_movemask_ps(_mm256_and_ps(_mm256_castsi256_ps(_mm256_set1_epi32((int)active)), _mm256_cmp_ps(_mm256_mul_ps(d,d), _mm256_set1_ps(bsf*bsf), _CMP_LE_OQ)));
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    float32x4_t d = vabsq_f32(vsubq_f32(vld1q_f32(residuals), vdupq_n_f32(query_residual)));
+    uint32_t flags[4]; vst1q_u32(flags, vcleq_f32(vmulq_f32(d,d), vdupq_n_f32(bsf*bsf)));
+    unsigned int out=0; for (int i=0;i<4;++i) if (flags[i] && (active&(1U<<i))) out|=1U<<i; return out;
+#else
+    unsigned int out=0; for(int i=0;i<16;++i) if((active&(1U<<i))){float d=fabsf(residuals[i]-query_residual);if(d*d<=bsf*bsf)out|=1U<<i;} return out;
+#endif
+}
+
 static inline float messi_lower_bound_16_scalar(const isax_index *index,
                                                  const float values[16],
                                                  const sax_type sax[16],

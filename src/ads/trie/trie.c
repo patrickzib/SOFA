@@ -80,8 +80,6 @@ typedef struct symbolic_trie_node {
     /* Per-record centroid radii in the existing IVF-cluster record order. */
     float *record_raw_radii;
     float *record_residuals;
-    float residual_min, residual_max;
-    float *cluster_residual_ranges;
     int cluster_count;
 } symbolic_trie_node;
 
@@ -244,7 +242,10 @@ static float trie_residual_bound(isax_index *index, const float *transform,
                                  float bsf, trie_query_stats *stats, int level) {
     const struct symbolic_trie_index *trie = index->trie;
     if (!trie->residual.enabled || scratch == NULL || !scratch->residual_ready) return 0.0f;
-    if (index->settings->trie_residual_record_only && level != 2) return 0.0f;
+    /* Residual checks are intentionally record-only. Node/IVF checks perform
+     * substantial repeated bound work and have not paid for themselves. Keep
+     * this guard unconditional so the legacy full flag is an alias. */
+    if (level != 2) return 0.0f;
     const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
     double gap = spartan_residual_gap(scratch->residual_query.radius, rmin, rmax);
     double prefix = 0.0, suffix = 0.0;
@@ -267,13 +268,9 @@ static float trie_residual_bound(isax_index *index, const float *transform,
 
 static int trie_residual_finish(struct symbolic_trie_index *trie, symbolic_trie_node *node,
                                 int ts_length) {
-    node->residual_min = INFINITY;
-    node->residual_max = 0.0f;
     if (!node->leaf) {
         for (int c = 0; c < node->split_fanout; ++c) if (node->children[c]) {
             if (!trie_residual_finish(trie, node->children[c], ts_length)) return 0;
-            node->residual_min = fminf(node->residual_min, node->children[c]->residual_min);
-            node->residual_max = fmaxf(node->residual_max, node->children[c]->residual_max);
         }
         return 1;
     }
@@ -283,22 +280,6 @@ static int trie_residual_finish(struct symbolic_trie_index *trie, symbolic_trie_
     for (int r = 0; r < node->size; ++r) {
         float value = trie->residual_arena[node->positions[r]/ts_length];
         node->record_residuals[r] = value;
-        node->residual_min = fminf(node->residual_min, value);
-        node->residual_max = fmaxf(node->residual_max, value);
-    }
-    if (node->cluster_count) {
-        node->cluster_residual_ranges = malloc((size_t)node->cluster_count*2*sizeof(float));
-        if (!node->cluster_residual_ranges) return 0;
-        for (int c = 0; c < node->cluster_count; ++c) {
-            float low = INFINITY, high = 0.0f;
-            const trie_leaf_cluster group = node->clusters[c];
-            for (int r = group.offset; r < group.offset+group.size; ++r) {
-                low = fminf(low, node->record_residuals[r]);
-                high = fmaxf(high, node->record_residuals[r]);
-            }
-            node->cluster_residual_ranges[c*2] = low;
-            node->cluster_residual_ranges[c*2+1] = high;
-        }
     }
     return 1;
 }
@@ -306,7 +287,6 @@ static int trie_residual_finish(struct symbolic_trie_index *trie, symbolic_trie_
 static void trie_residual_clear(symbolic_trie_node *node) {
     if (node == NULL) return;
     free(node->record_residuals); node->record_residuals = NULL;
-    free(node->cluster_residual_ranges); node->cluster_residual_ranges = NULL;
     for (int c = 0; c < node->split_fanout; ++c) trie_residual_clear(node->children[c]);
 }
 
@@ -427,7 +407,6 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
 static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
     free(node->record_residuals);
-    free(node->cluster_residual_ranges);
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
     free(node->words); free(node->batch_words); free(node->positions); free(node->min_word); free(node->max_word);
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
@@ -1648,9 +1627,8 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         } else {
             fprintf(stderr, ">>> ResSPARTAN: float32 residual after %d PCs; no floating-point correction\n",
                     trie->bound_dimensions);
-            fprintf(stderr, ">>> ResSPARTAN payload: %zu record bytes; %llu IVF-range bytes; %zu metadata bytes/node; %zu model bytes\n",
-                    (size_t)ts_num*sizeof(float), trie->cluster_count*2*sizeof(float),
-                    2*sizeof(float*)+2*sizeof(float), sizeof(trie->residual)+sizeof(trie->residual_arena));
+            fprintf(stderr, ">>> ResSPARTAN payload: %zu record bytes; %zu model bytes\n",
+                    (size_t)ts_num*sizeof(float), sizeof(trie->residual)+sizeof(trie->residual_arena));
         }
     }
     free(trie->residual_arena); trie->residual_arena = NULL;
@@ -1810,6 +1788,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             const int base = record - first;
             const int take = end - record < lanes - first ? end - record : lanes - first;
             unsigned int active = ((1U << take) - 1U) << first;
+            if (scratch->residual_ready && node->record_residuals != NULL &&
+                index->settings->trie_residual_order == 1 && first == 0 && take == lanes)
+                active = messi_residual_only_batch_mask(node->record_residuals + base,
+                    scratch->residual_query.radius, bsf, active);
             const unsigned long long batch_start = streaming && profile_query_phases && stats != NULL
                                                        ? trie_monotonic_microseconds() : 0;
             if (radial_applied) {
@@ -1833,6 +1815,11 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 (size_t) (base / 16) * dimensions * 16 + base % 16;
             unsigned int survivors = messi_record_lb_table_batch(scratch->record_lb_table, symbols,
                 dimensions, bsf - mbr_suffix, active, lower);
+            if (survivors != 0U && scratch->residual_ready &&
+                node->record_residuals != NULL && first == 0 && take == lanes) {
+                survivors = messi_residual_batch_mask(node->record_residuals + base,
+                    scratch->residual_query.radius, lower, mbr_suffix, bsf, survivors);
+            }
             if (batch_start != 0)
                 stats->record_bound_microseconds += trie_monotonic_microseconds() - batch_start;
             while (survivors != 0U) {
@@ -1960,13 +1947,6 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
             index->trie->dimensions, bsf, stats);
-        if (symbolic_bound < bsf && index->trie->residual.enabled && node->cluster_residual_ranges) {
-            const sax_type *lo = node->cluster_min_words + (size_t)cluster*index->trie->dimensions;
-            const sax_type *hi = node->cluster_max_words + (size_t)cluster*index->trie->dimensions;
-            symbolic_bound = fmaxf(symbolic_bound, trie_residual_bound(index, transform,
-                lo, hi, lo, hi, node->cluster_residual_ranges[2*cluster],
-                node->cluster_residual_ranges[2*cluster+1], scratch, bsf, stats, 1));
-        }
         if (symbolic_bound >= bsf) {
             if (stats != NULL) {
                 ++stats->cluster_symbolic_pruned;
@@ -2029,9 +2009,6 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                                    index->trie->dimensions, bsf, stats);
-    if (lower <= bsf && index->trie->residual.enabled)
-        lower = fmaxf(lower, trie_residual_bound(index, transform, node->min_word, node->max_word,
-            node->min_word, node->max_word, node->residual_min, node->residual_max, scratch, bsf, stats, 0));
     if (lower > bsf) return bsf;
     if (!node->leaf) {
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
@@ -2204,9 +2181,6 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
     ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
                                    index->trie->dimensions, bsf, stats);
-    if (lower < bsf && index->trie->residual.enabled)
-        lower = fmaxf(lower, trie_residual_bound(index, transform, node->min_word, node->max_word,
-            node->min_word, node->max_word, node->residual_min, node->residual_max, scratch, bsf, stats, 0));
     if (lower >= bsf) return;
     if (node->leaf) {
         int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;

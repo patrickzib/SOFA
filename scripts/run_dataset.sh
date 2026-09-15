@@ -38,8 +38,8 @@ Options:
   --isax-mbr-dims N         Extended iSAX MBR dimensions (default: 32)
   --isax-record-lb-table    Use query-local iSAX record lower-bound tables
   --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
-  --trie-residual-norm-bound Add float32 residual-norm pruning (SPARTAN trie only)
   --trie-residual-record-only Enable residual pruning only for records
+  --trie-residual-order MODE  Residual ordering: symbolic-first or residual-first
   --n-segments N            Trie record-prefix lower-bound dimensions (default: 64; range: 16--64;
                             alias: --trie-record-lb-dims)
   --trie-split-dims N       Trie split-candidate dimensions (default: min(32, MBR dimensions))
@@ -214,8 +214,8 @@ TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
-TRIE_RESIDUAL_NORM_BOUND=false
 TRIE_RESIDUAL_RECORD_ONLY=false
+TRIE_RESIDUAL_ORDER=symbolic-first
 TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=false
 TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_FANOUT=8
@@ -286,8 +286,8 @@ while [[ $# -gt 0 ]]; do
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
-        --trie-residual-norm-bound) TRIE_RESIDUAL_NORM_BOUND=true; shift ;;
-        --trie-residual-record-only) TRIE_RESIDUAL_NORM_BOUND=true; TRIE_RESIDUAL_RECORD_ONLY=true; shift ;;
+        --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; shift ;;
+        --trie-residual-order) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RESIDUAL_ORDER=$2; [[ $TRIE_RESIDUAL_ORDER == symbolic-first || $TRIE_RESIDUAL_ORDER == residual-first ]] || die '--trie-residual-order expects symbolic-first or residual-first'; shift 2 ;;
         --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
         --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --no-trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
@@ -350,7 +350,7 @@ is_positive_integer "$ISAX_N_SEGMENTS" || die '--isax-n-segments must be a posit
 [[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
-[[ $TRIE_RESIDUAL_NORM_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-residual-norm-bound requires --index-type trie'
+[[ $TRIE_RESIDUAL_RECORD_ONLY == false || $INDEX_TYPE == trie ]] || die '--trie-residual-record-only requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound-auto requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
@@ -449,10 +449,10 @@ METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
 
 IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 [[ ${#METHOD_LIST[@]} -gt 0 ]] || die 'at least one method is required'
-if [[ $TRIE_RESIDUAL_NORM_BOUND == true ]]; then
+if [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]]; then
     for residual_method in "${METHOD_LIST[@]}"; do
         [[ $residual_method == spartan-depth || $residual_method == spartan-width ]] || \
-            die '--trie-residual-norm-bound requires --methods spartan-depth,spartan-width (or either one)'
+            die '--trie-residual-record-only requires --methods spartan-depth,spartan-width (or either one)'
     done
 fi
 
@@ -505,8 +505,8 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
     [[ $TRIE_LEAF_IVF == 0 ]] && COMMON_ARGS+=(--no-trie-leaf-ivf)
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
-        [[ $TRIE_RESIDUAL_NORM_BOUND == true ]] && COMMON_ARGS+=(--trie-residual-norm-bound)
         [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && COMMON_ARGS+=(--trie-residual-record-only)
+        [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && COMMON_ARGS+=(--trie-residual-order "$TRIE_RESIDUAL_ORDER")
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound-auto)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == true && $TRIE_LEAF_IVF_RADIAL_BOUND == false && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-radial-bound)
@@ -573,8 +573,8 @@ collect_run_summary() {
         sfa-width) method_name=SFA; binning=width ;;
         pisa-depth) method_name=PISA; binning=depth ;;
         pisa-width) method_name=PISA; binning=width ;;
-        spartan-depth) method_name=SPARTAN; binning=depth; [[ $TRIE_RESIDUAL_NORM_BOUND == false ]] || method_name=ResSPARTAN ;;
-        spartan-width) method_name=SPARTAN; binning=width; [[ $TRIE_RESIDUAL_NORM_BOUND == false ]] || method_name=ResSPARTAN ;;
+        spartan-depth) method_name=SPARTAN; binning=depth; [[ $TRIE_RESIDUAL_RECORD_ONLY == false ]] || method_name=ResSPARTAN ;;
+        spartan-width) method_name=SPARTAN; binning=width; [[ $TRIE_RESIDUAL_RECORD_ONLY == false ]] || method_name=ResSPARTAN ;;
     esac
     [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
     leaf_cap=$(format_count "$LEAF_SIZE")

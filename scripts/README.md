@@ -169,7 +169,7 @@ record order.  Build products are written under `build/benchmarks/`.
 
 ### ResSPARTAN residual-norm bound (experimental)
 
-Add `--trie-residual-norm-bound` to a SPARTAN trie run. It is disabled by
+Add `--trie-residual-record-only` to a SPARTAN trie run. It is disabled by
 default and requires `--methods spartan-depth,spartan-width` (or either one).
 The C API exposes `messi_index_params.trie_residual_norm_bound`; initialize
 parameter structs to zero and rebuild API clients against the new header.
@@ -178,7 +178,7 @@ parameter structs to zero and rebuild API clients against the new header.
 MESSI_RESULTS_ROOT="$PWD/results-residual" \
   ./scripts/run_suite.sh standard --threads 64 --index-type trie \
   --methods spartan-depth,spartan-width --n-segments 64 \
-  --trie-residual-norm-bound --binary ./build/bin/MESSI
+  --trie-residual-record-only --binary ./build/bin/MESSI
 ```
 
 Each record gets one float32 residual, computed alongside its symbolic word.

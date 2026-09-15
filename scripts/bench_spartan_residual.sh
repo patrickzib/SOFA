@@ -24,7 +24,7 @@ for prefix in 16 32 64; do
             mkdir -p -- "$run_dir"
             extra=()
             [[ $QUERY_MODE != batch ]] || extra+=(--trie-query-batch)
-            ((mode == 0)) || extra+=(--trie-residual-norm-bound)
+            ((mode == 0)) || extra+=(--trie-residual-record-only)
             MESSI_LOG_ROOT="$run_dir" "$BINARY" --in-memory --index-path "$run_dir/index-root" \
                 --dataset "$DATASET" --dataset-size "$RECORDS" --timeseries-size "$LENGTH" \
                 --queries "$QUERIES" --queries-size 100 --threads "$WORKERS" --numa none \

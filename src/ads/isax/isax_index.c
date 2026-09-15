@@ -256,6 +256,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->trie_leaf_ivf_radial_bound = 0;
     settings->trie_residual_norm_bound = 0;
     settings->trie_residual_record_only = 0;
+    settings->trie_residual_order = 0;
     settings->trie_leaf_ivf_radial_bound_auto = 0;
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;

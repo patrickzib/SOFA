@@ -54,6 +54,7 @@ typedef struct {
     char dynamic_root_split_variance;
     char trie_residual_norm_bound;
     char trie_residual_record_only;
+    char trie_residual_order;
 } messi_index_params;
 
 messi_index *messi_index_create(const messi_index_params *params);
