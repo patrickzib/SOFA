@@ -94,8 +94,9 @@ query files. Seismic remains opt-in because its current local distribution
 contains all-NaN records.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
-directory inside terminal leaves with at least 4 K records. It is enabled by
-default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
+directory inside terminal leaves with at least 4 K records by default. Change
+the threshold with `--trie-leaf-ivf-min-size`; IVF is enabled by default and
+can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
 Construction clusters eligible leaves independently in parallel, using the
 existing `--threads` setting; the build log reports the active worker count.
 
@@ -128,6 +129,26 @@ affects the very next record. Cluster and leaf traversal ordering is unchanged.
 Use `--no-trie-streaming-leaf-scan` to restore the best-first record heap for
 A/B benchmarks; `--trie-streaming-leaf-scan` remains as an explicit spelling
 of the default.
+
+## Dataset-specific trie tuning
+
+`tune_trie_dataset.sh` performs a staged search for one dataset and tunes
+`spartan-depth` and `spartan-width` independently. It screens leaf capacity,
+record-prefix width, fanout, MBR/split dimensions, IVF groups and eligibility,
+radial policy, and record-residual ordering. The two finalists for each method
+are repeated and ranked by median query wall time.
+
+```bash
+scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5
+```
+
+Use the same data-root overrides as `run_suite.sh` when needed. Results default
+to `trie-tuning/DATASET`; `all-runs.tsv` and `all-runs.csv` contain every run,
+and each method gets a `best-config.env`, `best-command.sh`, and
+`final-ranking.tsv`. Completed runs are reused. An incomplete run directory or
+an invocation whose options differ from the saved manifest causes a safe stop
+instead of an overwrite. Use a different `--output-root` for a genuinely new
+tuning campaign.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path

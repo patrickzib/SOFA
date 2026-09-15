@@ -501,6 +501,7 @@ run_query_suite() {
                 $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
                 [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
                 [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+                [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf-min-size "$TRIE_LEAF_IVF_MIN_SIZE")
                 [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
                 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
                 [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && command+=(--trie-residual-record-only)

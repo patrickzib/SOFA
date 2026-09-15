@@ -171,6 +171,14 @@ pass 'trie streaming leaf scan defaults on, supports heap opt-out, and is scoped
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 8 --trie-leaf-ivf-min-size 2048 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf 8'
+assert_contains "$OUTPUT" '--trie-leaf-ivf-min-size 2048'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --trie-leaf-ivf 8 --trie-leaf-ivf-min-size 0 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted a non-positive trie IVF minimum size'
+fi
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
     --trie-leaf-ivf 16 --dry-run >/dev/null 2>&1; then
     fail 'runner accepted trie leaf IVF for iSAX'
@@ -393,9 +401,10 @@ assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
 pass 'suite defaults to streaming leaf refinement and forwards heap opt-out'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
-    --trie-leaf-ivf 16 --dry-run 2>/dev/null)
+    --trie-leaf-ivf 16 --trie-leaf-ivf-min-size 8192 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
-pass 'suite forwards trie leaf IVF'
+assert_contains "$OUTPUT" '--trie-leaf-ivf-min-size 8192'
+pass 'suite forwards trie leaf IVF and its minimum eligible leaf size'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
@@ -496,5 +505,10 @@ if "$SCRIPT_DIR/run_dataset.sh" sald standard --index-type isax --methods sparta
     fail 'residual bound must reject iSAX'
 fi
 pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations'
+
+OUTPUT=$("$SCRIPT_DIR/tune_trie_dataset.sh" --help)
+assert_contains "$OUTPUT" 'spartan-depth and spartan-width'
+assert_contains "$OUTPUT" 'best-config.env'
+pass 'dataset-specific trie tuner documents independent methods and safe result outputs'
 
 printf '1..%d\n' "$TEST_COUNT"

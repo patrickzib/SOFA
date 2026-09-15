@@ -52,6 +52,8 @@ Options:
   --no-trie-streaming-leaf-scan
                             Use the record lower-bound heap instead
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves (default: 16)
+  --trie-leaf-ivf-min-size N
+                            Minimum leaf size eligible for IVF (default: 4096)
   --no-trie-leaf-ivf        Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
@@ -396,6 +398,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     if (( TRIE_LEAF_IVF != 0 )); then
         is_positive_integer "$TRIE_LEAF_IVF" || die '--trie-leaf-ivf must be a positive integer'
         (( TRIE_LEAF_IVF >= 2 && TRIE_LEAF_IVF <= 64 )) || die '--trie-leaf-ivf must be between 2 and 64'
+        is_positive_integer "$TRIE_LEAF_IVF_MIN_SIZE" || die '--trie-leaf-ivf-min-size must be a positive integer'
     fi
     (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
