@@ -50,12 +50,12 @@ PAPER_STAGES = (
     "exact",
 )
 PAPER_LABELS = {
-    "node_mbr": "internal-node MBR",
-    "group_mbr": "leaf-group MBR",
-    "radial": "per-series radial",
-    "symbolic": "prefix + MBR suffix",
-    "residual": "residual refinement",
-    "exact": "exact distance",
+    "node_mbr": "1. Node MBR",
+    "group_mbr": "2. Leaf MBR",
+    "radial": "3. Per-Series Radial",
+    "symbolic": "4. Symbolic Prefix + MBR suffix",
+    "residual": "5. Symbolic Prefix + Residual",
+    "exact": "6. Exact Distance",
 }
 PAPER_COLORS = {
     "node_mbr": "tab:blue",
@@ -115,6 +115,8 @@ def read_paper_profile(path: Path | str) -> list[dict[str, float]]:
     return rows
 
 
+
+
 def plot_paper_bound_profile(
     path: Path | str,
     *,
@@ -123,730 +125,234 @@ def plot_paper_bound_profile(
     output: Path | str | None = None,
     dpi: int = 180,
 ):
-    """Plot exclusive pruning contribution and summed parallel worker cost."""
+    """Plot the paper cascade as a clean time-weighted pruning staircase."""
+
     if aggregate not in {"mean", "median"}:
         raise ValueError("aggregate must be 'mean' or 'median'")
+
     rows = read_paper_profile(path)
-    reducer = statistics.mean if aggregate == "mean" else statistics.median
-    contributions = []
-    worker_ms = []
-    for stage in PAPER_STAGES:
-        count_column = "exact_evaluated" if stage == "exact" else f"{stage}_pruned"
-        contributions.append(reducer(
-            100.0 * row[count_column] / row["total_records"] for row in rows
-        ))
-        worker_ms.append(reducer(row[f"{stage}_us"] / 1000.0 for row in rows))
-
-    fig, (pruning_ax, time_ax) = plt.subplots(
-        2, 1, figsize=(8.5, 6.0), constrained_layout=True,
-        gridspec_kw={"height_ratios": (1, 2)},
-    )
-    left = 0.0
-    for stage, contribution in zip(PAPER_STAGES, contributions):
-        pruning_ax.barh(
-            [0], [contribution], left=left, color=PAPER_COLORS[stage],
-            label=PAPER_LABELS[stage],
-        )
-        if contribution >= 3.0:
-            pruning_ax.text(left + contribution / 2.0, 0, f"{contribution:.1f}%",
-                            ha="center", va="center", fontsize=8)
-        left += contribution
-    pruning_ax.set_xlim(0, 100)
-    pruning_ax.set_yticks([])
-    pruning_ax.set_xlabel(f"{aggregate} exclusive record contribution (%)")
-    pruning_ax.legend(ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, 1.55))
-
-    labels = [PAPER_LABELS[stage] for stage in PAPER_STAGES]
-    positions = list(range(len(PAPER_STAGES)))
-    time_ax.barh(positions, worker_ms,
-                 color=[PAPER_COLORS[stage] for stage in PAPER_STAGES])
-    time_ax.set_yticks(positions, labels)
-    time_ax.invert_yaxis()
-    time_ax.set_xlabel(f"{aggregate} summed worker time per query (ms)")
-    wall_ms = reducer(row["query_wall_us"] / 1000.0 for row in rows)
-    time_ax.text(0.99, 0.02, f"query wall time: {wall_ms:.3f} ms",
-                 transform=time_ax.transAxes, ha="right", va="bottom", fontsize=9)
-    time_ax.grid(True, axis="x", alpha=0.25)
-    fig.suptitle(title)
-    if output is not None:
-        output = Path(output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        fig.savefig(output, dpi=dpi)
-    return fig, (pruning_ax, time_ax)
-
-
-def read_curve(
-    path: Path | str,
-) -> dict[int, list[dict[str, float]]]:
-    """Read and validate a pruning curve.
-
-    Samples must already be ordered within each query.  Equal timestamps are
-    allowed because several cumulative updates can happen between clock
-    ticks; only the last sample at an equal timestamp is retained.
-    """
-    path = Path(path)
-
-    by_query: dict[int, list[dict[str, float]]] = defaultdict(list)
-
-    with path.open(newline="") as stream:
-        reader = csv.DictReader(stream)
-        fields = set(reader.fieldnames or ())
-
-        missing = REQUIRED_COLUMNS - fields
-
-        if missing:
-            raise ValueError(
-                f"{path}: missing columns: {', '.join(sorted(missing))}"
-            )
-
-        present_timing = set(TIMING_COLUMNS) & fields
-        if present_timing and present_timing != set(TIMING_COLUMNS):
-            missing_timing = set(TIMING_COLUMNS) - fields
-            raise ValueError(
-                f"{path}: incomplete stage-timing columns: "
-                f"{', '.join(sorted(missing_timing))}"
-            )
-
-        for line_number, row in enumerate(reader, start=2):
-            try:
-                sample = {
-                    name: float(row[name])
-                    for name in (
-                        "elapsed_ms",
-                        "total_records",
-                        *BREAKDOWN_STAGES,
-                        *(TIMING_COLUMNS if present_timing else ()),
-                    )
-                }
-
-                query = int(row["query"])
-
-            except (KeyError, TypeError, ValueError) as error:
-                raise ValueError(
-                    f"{path}:{line_number}: invalid curve row"
-                ) from error
-
-            if sample["total_records"] <= 0:
-                raise ValueError(
-                    f"{path}:{line_number}: total_records must be positive"
-                )
-
-            by_query[query].append(sample)
-
-    if not by_query:
-        raise ValueError(f"{path}: no samples")
-
-    cleaned: dict[int, list[dict[str, float]]] = {}
-
-    for query, samples in by_query.items():
-        deduplicated: list[dict[str, float]] = []
-        total_records = samples[0]["total_records"]
-        previous_elapsed = -1.0
-        previous_counts = {
-            stage: 0.0
-            for stage in BREAKDOWN_STAGES
-        }
-
-        for sample in samples:
-            elapsed = sample["elapsed_ms"]
-
-            if elapsed < previous_elapsed:
-                raise ValueError(
-                    f"{path}: query {query}: elapsed_ms decreases "
-                    f"from {previous_elapsed:g} to {elapsed:g}"
-                )
-
-            if sample["total_records"] != total_records:
-                raise ValueError(
-                    f"{path}: query {query}: total_records changes "
-                    "within the query"
-                )
-
-            for stage in BREAKDOWN_STAGES:
-                count = sample[stage]
-                if count < previous_counts[stage]:
-                    raise ValueError(
-                        f"{path}: query {query}: {stage} decreases "
-                        f"from {previous_counts[stage]:g} to {count:g}"
-                    )
-                previous_counts[stage] = count
-
-            resolved = sum(sample[stage] for stage in BREAKDOWN_STAGES)
-            if resolved > total_records + 0.5:
-                raise ValueError(
-                    f"{path}: query {query}: cumulative stage counters "
-                    f"exceed total_records ({resolved:g} > {total_records:g})"
-                )
-
-            if (
-                deduplicated
-                and elapsed == deduplicated[-1]["elapsed_ms"]
-            ):
-                deduplicated[-1] = sample
-            else:
-                deduplicated.append(sample)
-
-            previous_elapsed = elapsed
-
-        final_resolved = sum(
-            deduplicated[-1][stage]
-            for stage in BREAKDOWN_STAGES
-        )
-        if abs(final_resolved - total_records) > 0.5:
-            raise ValueError(
-                f"{path}: query {query}: final stage counters account for "
-                f"{final_resolved:g} of {total_records:g} records; the trace "
-                "cannot produce a certified 100% staircase"
-            )
-
-        cleaned[query] = deduplicated
-
-    return cleaned
-
-
-def cumulative_percent(
-    sample: dict[str, float],
-    stage: str | None = None,
-) -> float:
-    """
-    Calculate cumulative pruning percentage.
-
-    If stage is None:
-        sum all pruning stages.
-
-    If stage is given:
-        sum all stages up to and including that stage.
-    """
-    if stage is None:
-        value = sum(
-            sample[name]
-            for name in STAGES
-        )
-
-    else:
-        stage_index = BREAKDOWN_STAGES.index(stage)
-
-        value = sum(
-            sample[name]
-            for name in BREAKDOWN_STAGES[: stage_index + 1]
-        )
-
-    return 100.0 * value / sample["total_records"]
-
-
-def interpolate(
-    samples: list[dict[str, float]],
-    elapsed_ms: float,
-    value: Callable[[dict[str, float]], float],
-) -> float:
-    """Step interpolation: pruning happens at discrete search events."""
-    current = value(samples[0])
-
-    for sample in samples:
-        if sample["elapsed_ms"] > elapsed_ms:
-            break
-
-        current = value(sample)
-
-    return current
-
-
-def aggregate_curve(
-    curves: dict[int, list[dict[str, float]]],
-    aggregate: str,
-    value: Callable[[dict[str, float]], float],
-) -> tuple[list[float], list[float]]:
-    """Aggregate query curves on a shared elapsed-time grid."""
-
-    max_elapsed = max(
-        samples[-1]["elapsed_ms"]
-        for samples in curves.values()
-    )
-
-    points = max(
-        2,
-        min(
-            500,
-            int(max_elapsed) + 1,
-        ),
-    )
-
-    x_values = [
-        max_elapsed * index / (points - 1)
-        for index in range(points)
-    ]
 
     reducer = (
-        statistics.median
-        if aggregate == "median"
-        else statistics.mean
+        statistics.mean
+        if aggregate == "mean"
+        else statistics.median
     )
 
-    observations: list[list[float]] = [[] for _ in x_values]
-    for samples in curves.values():
-        sample_index = 0
-        current = value(samples[0])
-        for grid_index, elapsed_ms in enumerate(x_values):
-            while (
-                sample_index + 1 < len(samples)
-                and samples[sample_index + 1]["elapsed_ms"] <= elapsed_ms
-            ):
-                sample_index += 1
-                current = value(samples[sample_index])
-            observations[grid_index].append(current)
+    contributions = []
+    worker_ms = []
 
-    y_values = [reducer(values) for values in observations]
-
-    return x_values, y_values
-
-
-def selected_curve(
-    curves: dict[int, list[dict[str, float]]],
-    query: int,
-    value: Callable[[dict[str, float]], float],
-) -> tuple[list[float], list[float]]:
-    """Return the curve for one particular query."""
-
-    if query not in curves:
-        available = ", ".join(
-            str(number)
-            for number in sorted(curves)
+    for stage in PAPER_STAGES:
+        count_column = (
+            "exact_evaluated"
+            if stage == "exact"
+            else f"{stage}_pruned"
         )
 
-        raise ValueError(
-            f"query {query} is absent "
-            f"(available: {available})"
-        )
-
-    samples = curves[query]
-
-    x_values = [
-        sample["elapsed_ms"]
-        for sample in samples
-    ]
-
-    y_values = [
-        value(sample)
-        for sample in samples
-    ]
-
-    return x_values, y_values
-
-
-def annotate_numeric_column(
-    ax,
-    samples: list[dict[str, float]],
-    value: Callable[[dict[str, float]], float],
-    column: str,
-    *,
-    fontsize: int = 8,
-    offset: tuple[int, int] = (5, 5),
-) -> None:
-    """
-    Annotate plot points using values from an existing numeric CSV column.
-
-    Example columns:
-        node_pruned
-        cluster_pruned
-        local_vq_pruned
-        record_pruned
-        total_records
-        elapsed_ms
-    """
-
-    if column not in samples[0]:
-        available = ", ".join(
-            sorted(samples[0].keys())
-        )
-
-        raise ValueError(
-            f"Unknown annotation column {column!r}. "
-            f"Available columns: {available}"
-        )
-
-    for sample in samples:
-        x = sample["elapsed_ms"]
-        y = value(sample)
-
-        label_value = sample[column]
-
-        ax.annotate(
-            f"{label_value:g}",
-            xy=(x, y),
-            xytext=offset,
-            textcoords="offset points",
-            fontsize=fontsize,
-        )
-
-
-def stage_timing_breakdown(
-    curves: dict[int, list[dict[str, float]]],
-    aggregate: str,
-    query: int | None,
-) -> tuple[list[tuple[str, float, float]], float, float]:
-    """Return fixed-order stage durations and final contributions."""
-    if query is None:
-        selected = curves
-    else:
-        if query not in curves:
-            available = ", ".join(str(number) for number in sorted(curves))
-            raise ValueError(
-                f"query {query} is absent (available: {available})"
+        contributions.append(
+            reducer(
+                100.0 * row[count_column] / row["total_records"]
+                for row in rows
             )
-        selected = {query: curves[query]}
-
-    reducer = statistics.median if aggregate == "median" else statistics.mean
-    stage_summaries: list[tuple[str, float, float]] = []
-
-    missing_timing = [
-        query_number
-        for query_number, samples in selected.items()
-        if any(column not in samples[-1] for column in TIMING_COLUMNS)
-    ]
-    if missing_timing:
-        raise ValueError(
-            "This breakdown requires a new per-query timing log. Rerun with "
-            "--trie-pruning-curve after rebuilding the index executable."
         )
 
-    for stage in BREAKDOWN_STAGES:
-        contributions: list[float] = []
-        durations: list[float] = []
-
-        for samples in selected.values():
-            total_records = samples[0]["total_records"]
-            maximum = max(sample[stage] for sample in samples)
-            contributions.append(100.0 * maximum / total_records)
-            durations.append(samples[-1][STAGE_TIMING_COLUMNS[stage]] / 1000.0)
-
-        contribution = reducer(contributions)
-        duration = reducer(durations)
-        if contribution > 1e-12 or duration > 1e-12:
-            stage_summaries.append(
-                (stage, duration, contribution)
+        worker_ms.append(
+            reducer(
+                row[f"{stage}_us"] / 1000.0
+                for row in rows
             )
+        )
 
-    other_time = reducer(
-        [samples[-1]["other_us"] / 1000.0 for samples in selected.values()]
+    stage_worker_ms = sum(worker_ms)
+
+    if stage_worker_ms <= 0:
+        raise ValueError(
+            f"{path}: total measured stage time must be positive"
+        )
+
+    # Smaller, more compact figure.
+    fig, ax = plt.subplots(
+        figsize=(7.0, 3.5)
     )
-    full_query_time = reducer(
-        [samples[-1]["elapsed_ms"] for samples in selected.values()]
-    )
-    return stage_summaries, other_time, full_query_time
-
-
-def plot_stage_staircase(
-    ax,
-    stage_summaries: Sequence[tuple[str, float, float]],
-    other_time: float,
-    full_query_time: float,
-    *,
-    markers: bool,
-    annotated_stages: Sequence[str],
-) -> None:
-    """Plot a fixed-order staircase from measured stage durations."""
-    if not stage_summaries:
-        raise ValueError("The curve contains no stage contributions.")
 
     previous_time = 0.0
     cumulative = 0.0
-    for stage, duration, contribution in stage_summaries:
-        timestamp = previous_time + duration
+
+    for step, (stage, contribution, duration) in enumerate(
+        zip(PAPER_STAGES, contributions, worker_ms),
+        start=1,
+    ):
+        step_label = str(step) if stage != "exact" else "E"
+
+        timestamp = (
+            previous_time
+            + 100.0 * duration / stage_worker_ms
+        )
+
         next_cumulative = cumulative + contribution
+        color = PAPER_COLORS[stage]
+
         ax.plot(
             [previous_time, timestamp, timestamp],
             [cumulative, cumulative, next_cumulative],
-            color=STAGE_COLORS[stage],
-            linewidth=2.5,
-            solid_capstyle="butt",
-            label=STAGE_LABELS[stage],
+            color=color,
+            linewidth=3.2,
+            solid_capstyle="round",
+            label=PAPER_LABELS[stage],
+            zorder=2,
         )
-        if stage in annotated_stages:
-            contribution_text = (
-                f"{contribution:.4f}%"
-                if contribution < 0.01
-                else f"{contribution:.2f}%"
-            )
-            near_endpoint = timestamp >= 0.82 * full_query_time
-            offset_x = -8 if near_endpoint else 8
-            offset_y = -12 if next_cumulative > 96.0 else 0
+
+        ax.scatter(
+            timestamp,
+            next_cumulative,
+            color=color,
+            s=70,
+            edgecolor="white",
+            linewidth=1.2,
+            zorder=4,
+        )
+
+        ax.annotate(
+            step_label,
+            xy=(timestamp, next_cumulative),
+            xytext=(0, 10),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=11.5,
+            fontweight="bold",
+            color=color,
+            bbox={
+                "boxstyle": "circle,pad=0.15",
+                "facecolor": "white",
+                "edgecolor": color,
+                "linewidth": 1.2,
+                "alpha": 0.95,
+            },
+            zorder=5,
+        )
+
+        if contribution >= 0.01:
+            if contribution < 0.1:
+                contribution_text = f"+{contribution:.3f}%"
+            else:
+                contribution_text = f"+{contribution:.1f}%"
+
+            midpoint_y = (cumulative + next_cumulative) / 2.0
+
+            if timestamp > 90:
+                xytext = (-10, -2)
+                ha = "right"
+            elif next_cumulative > 96:
+                xytext = (8, 6)
+                ha = "left"
+            else:
+                xytext = (8, 0)
+                ha = "left"
+
             ax.annotate(
-                f"{STAGE_LABELS[stage]}\n+{contribution_text}",
-                xy=(timestamp, 0.5 * (cumulative + next_cumulative)),
-                xytext=(offset_x, offset_y),
+                contribution_text,
+                xy=(timestamp, midpoint_y),
+                xytext=xytext,
                 textcoords="offset points",
-                ha="right" if near_endpoint else "left",
-                va="top" if offset_y < 0 else "center",
-                color=STAGE_COLORS[stage],
-                fontsize=8,
+                ha=ha,
+                va="center",
+                fontsize=11.5,
+                fontweight="semibold",
+                color=color,
+                zorder=5,
             )
-        if markers:
-            ax.scatter(
-                [timestamp],
-                [next_cumulative],
-                color=STAGE_COLORS[stage],
-                s=25,
-                zorder=3,
-            )
+
         previous_time = timestamp
         cumulative = next_cumulative
 
-    endpoint = max(previous_time + other_time, full_query_time)
-    ax.plot(
-        [previous_time, endpoint],
-        [cumulative, cumulative],
-        color=STAGE_COLORS[stage_summaries[-1][0]],
-        linewidth=2.5,
+    # Title and labels.
+    ax.set_title(
+        title,
+        fontsize=18,
+        fontweight="semibold",
+        pad=14,
     )
-    ax.annotate(
-        f"full query: {cumulative:.2f}%",
-        xy=(endpoint, cumulative),
-        xytext=(8, -10),
-        textcoords="offset points",
-        ha="left",
-        va="top",
-        fontsize=9,
-        fontweight="bold",
-    )
-    ax.set_xlim(left=0, right=max(1.0, endpoint * 1.30))
-
-
-def plot_trie_pruning_curve(
-    curves: Sequence[Path | str],
-    *,
-    labels: Sequence[str] | None = None,
-    query: int | None = None,
-    aggregate: str = "median",
-    breakdown: bool = False,
-    title: str = "Trie pruning curve",
-    output: Path | str | None = None,
-    figsize: tuple[float, float] = (8.0, 4.8),
-    dpi: int = 180,
-    markers: bool = True,
-    annotation_column: str | None = None,
-    annotation_fontsize: int = 8,
-):
-    """
-    Plot one or more trie-pruning curves.
-
-    Parameters
-    ----------
-    curves:
-        CSV files written by --trie-pruning-curve.
-
-    labels:
-        Legend labels, one per CSV.
-
-    query:
-        Plot one particular query.
-
-        If None, all queries are aggregated.
-
-    aggregate:
-        "median" or "mean".
-
-    breakdown:
-        Show one fixed-order cumulative staircase from the final per-query
-        stage counters and timings. Each stage's horizontal segment is its
-        measured duration; its vertical jump is the final contribution.
-
-        Requires exactly one CSV.
-
-    title:
-        Plot title.
-
-    output:
-        Optional path for PNG/PDF/SVG output.
-
-    figsize:
-        Matplotlib figure size.
-
-    dpi:
-        DPI when saving.
-
-    markers:
-        Show circles at individual plotted points.
-
-    annotation_column:
-        In breakdown mode, optionally annotate only this stage instead of all
-        stages. In a normal comparison plot, annotate this numeric
-        column at every sampled point.
-
-        Examples:
-            "node_pruned"
-            "cluster_pruned"
-            "local_vq_pruned"
-            "record_pruned"
-
-        Normal-plot annotations are only available when query is set.
-
-    annotation_fontsize:
-        Font size for point annotations.
-
-    Returns
-    -------
-    fig, ax
-        Matplotlib figure and axes.
-    """
-
-    curves = [
-        Path(path)
-        for path in curves
-    ]
-
-    if not curves:
-        raise ValueError(
-            "At least one curve must be supplied."
-        )
-
-    if aggregate not in {"median", "mean"}:
-        raise ValueError(
-            f"aggregate must be 'median' or 'mean', "
-            f"got {aggregate!r}"
-        )
-
-    if labels is not None and len(labels) != len(curves):
-        raise ValueError(
-            f"Got {len(labels)} labels for "
-            f"{len(curves)} CSV files. "
-            "There must be exactly one label per CSV."
-        )
-
-    if breakdown and len(curves) != 1:
-        raise ValueError(
-            "breakdown=True requires exactly one CSV file."
-        )
-
-    if annotation_column is not None and query is None and not breakdown:
-        raise ValueError(
-            "annotation_column requires query=<query number>. "
-            "Annotations cannot be mapped uniquely onto an "
-            "aggregated curve."
-        )
-
-    labels = (
-        list(labels)
-        if labels is not None
-        else [
-            path.stem
-            for path in curves
-        ]
-    )
-
-    loaded = [
-        read_curve(path)
-        for path in curves
-    ]
-
-    fig, ax = plt.subplots(
-        figsize=figsize,
-        constrained_layout=True,
-    )
-
-    if breakdown:
-        curve = loaded[0]
-        stages_to_annotate = (
-            (annotation_column,)
-            if annotation_column is not None
-            else BREAKDOWN_STAGES
-        )
-        unknown = set(stages_to_annotate) - set(BREAKDOWN_STAGES)
-        if unknown:
-            raise ValueError(
-                "breakdown annotation_column must be a stage column: "
-                + ", ".join(sorted(BREAKDOWN_STAGES))
-            )
-        stage_summaries, other_time, full_query_time = stage_timing_breakdown(
-            curve,
-            aggregate,
-            query,
-        )
-        plot_stage_staircase(
-            ax,
-            stage_summaries,
-            other_time,
-            full_query_time,
-            markers=markers,
-            annotated_stages=stages_to_annotate,
-        )
-
-    else:
-        for curve, label in zip(
-            loaded,
-            labels,
-        ):
-
-            if query is None:
-                x_values, y_values = aggregate_curve(
-                    curve,
-                    aggregate,
-                    cumulative_percent,
-                )
-
-            else:
-                x_values, y_values = selected_curve(
-                    curve,
-                    query,
-                    cumulative_percent,
-                )
-
-            ax.plot(
-                x_values,
-                y_values,
-                linewidth=2,
-                marker="o" if markers else None,
-                label=label,
-            )
-
-            if (
-                annotation_column is not None
-                and query is not None
-            ):
-                annotate_numeric_column(
-                    ax,
-                    curve[query],
-                    cumulative_percent,
-                    annotation_column,
-                    fontsize=annotation_fontsize,
-                )
-
-    ax.set_title(title)
 
     ax.set_xlabel(
-        "Elapsed query time (ms)"
+        f"{aggregate.capitalize()} time fraction",
+        fontsize=15,
+        labelpad=10,
     )
 
     ax.set_ylabel(
-        (
-            f"{aggregate.capitalize()} cumulative records resolved (%)"
-            if query is None
-            else "Cumulative records resolved (%)"
-        )
-        if breakdown
-        else "Cumulative database records pruned (%)"
+        f"{aggregate.capitalize()} series pruned",
+        fontsize=15,
+        labelpad=10,
     )
 
-    ax.set_ylim(
-        0,
-        100,
+    ax.set_xlim(0, 103)
+    ax.set_ylim(0, 105)
+
+    ax.set_xticks(
+        [0, 20, 40, 60, 80, 100],
+        ["0%", "20%", "40%", "60%", "80%", "100%"],
     )
 
-    ax.set_xlim(
-        left=0,
+    ax.set_yticks(
+        [0, 20, 40, 60, 80, 100],
+        ["0%", "20%", "40%", "60%", "80%", "100%"],
+    )
+
+    ax.tick_params(
+        axis="both",
+        labelsize=13,
+        length=5,
+        width=1.0,
+        pad=5,
+    )
+
+    ax.set_axisbelow(True)
+
+    ax.grid(
+        axis="y",
+        alpha=0.16,
+        linewidth=0.9,
     )
 
     ax.grid(
-        True,
-        alpha=0.25,
+        axis="x",
+        alpha=0.05,
+        linewidth=0.7,
     )
 
-    ax.legend(
-        loc="upper left" if breakdown else "lower right",
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # ------------------------------------------------------------
+    # Compact legend below the axes
+    # ------------------------------------------------------------
+
+    handles, labels = ax.get_legend_handles_labels()
+
+    fig.legend(
+        handles,
+        labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, -0.08),
+        ncol=3,
+        fontsize=10,
+        frameon=False,
+        handlelength=2.4,
+        handletextpad=0.6,
+        columnspacing=1.6,
+        labelspacing=0.6,
+    )
+
+    # Reserve just enough space for the legend.
+    fig.subplots_adjust(
+        left=0.12,
+        right=0.98,
+        top=0.88,
+        bottom=0.23,
     )
 
     if output is not None:
         output = Path(output)
-
         output.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -855,16 +361,12 @@ def plot_trie_pruning_curve(
         fig.savefig(
             output,
             dpi=dpi,
+            bbox_inches="tight",
         )
 
     return fig, ax
 
 
-def newest_curve(directory: Path) -> Path:
-    curves = list(directory.glob("MESSI_TRIE_PRUNING_CURVE_*.csv"))
-    if not curves:
-        raise FileNotFoundError(f"No pruning-curve CSV found in {directory}")
-    return max(curves, key=lambda path: path.stat().st_mtime)
 
 
 def newest_dataset_curve(dataset_directory: Path) -> Path | None:
@@ -874,65 +376,3 @@ def newest_dataset_curve(dataset_directory: Path) -> Path | None:
         )
     )
     return max(curves, key=lambda path: path.stat().st_mtime) if curves else None
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Plot legacy or paper-matched S3-Trie pruning profiles."
-    )
-    parser.add_argument(
-        "--curve-root", type=Path,
-        help="result root containing one directory per dataset",
-    )
-    parser.add_argument(
-        "--output-directory", type=Path,
-        help="plot destination (default: CURVE_ROOT/plots)",
-    )
-    parser.add_argument(
-        "--aggregate", choices=("mean", "median"), default="mean",
-        help="aggregation across queries (default: mean)",
-    )
-    args = parser.parse_args()
-    repository = Path(__file__).resolve().parents[1]
-    local_curve_root = Path("trie_pruning_curves")
-    curve_root = args.curve_root or (
-        local_curve_root if local_curve_root.is_dir()
-        else repository / "notebooks" / "trie_pruning_curves"
-    )
-    if not curve_root.is_dir():
-        raise FileNotFoundError(f"No trie-pruning-curves directory found at {curve_root}")
-
-    output_directory = args.output_directory or curve_root / "plots"
-    for dataset_directory in sorted(curve_root.iterdir()):
-        if not dataset_directory.is_dir() or dataset_directory.name == "plots":
-            continue
-        curve_file = newest_dataset_curve(dataset_directory)
-        if curve_file is None:
-            continue
-        dataset = dataset_directory.name
-        output = output_directory / f"{dataset}_pruning_staircase.png"
-        with curve_file.open(newline="") as stream:
-            fields = set(next(csv.reader(stream), ()))
-        if PAPER_REQUIRED_COLUMNS <= fields:
-            output = output_directory / f"{dataset}_paper_bound_profile.png"
-            fig, _ = plot_paper_bound_profile(
-                curve_file,
-                aggregate=args.aggregate,
-                title=f"{dataset}: paper-matched bound profile",
-                output=output,
-            )
-        else:
-            fig, _ = plot_trie_pruning_curve(
-                [curve_file],
-                breakdown=True,
-                aggregate=args.aggregate,
-                markers=True,
-                title=f"{dataset}: mean pruning progression",
-                output=output,
-            )
-        plt.close(fig)
-        print(output)
-
-
-if __name__ == "__main__":
-    main()
