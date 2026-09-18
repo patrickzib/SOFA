@@ -1,0 +1,2 @@
+layout,function type,indexed records,series length,symbolic dimensions,record lower-bound dimensions,binning us,index construction wall us,total construction wall us
+isax,4,578853,256,16,0,300709,1505386,1806095
