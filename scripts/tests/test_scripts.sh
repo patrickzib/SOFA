@@ -59,7 +59,7 @@ assert_not_contains "$OUTPUT" '--query-header-bytes'
 pass 'BigANN, SpaceV, and Text-to-Image encodings match their files'
 
 OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 2 ]] || fail 'default trie standard profile should emit two SPARTAN commands'
 assert_contains "$OUTPUT" '--threads 7'
 assert_contains "$OUTPUT" '--index-type trie'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
@@ -68,6 +68,14 @@ assert_contains "$OUTPUT" '--trie-split-dimensions 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'runner defaults to the trie benchmark profile and physical-core thread count'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets astro --threads 16,32,64 \
+    --index-threads 64 --index-type trie --methods spartan-depth --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--threads 16'
+assert_contains "$OUTPUT" '--threads 32'
+assert_contains "$OUTPUT" '--threads 64'
+assert_contains "$OUTPUT" '--index-threads 64'
+pass 'suite separates fixed index workers from query-core scaling'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-type 3'
@@ -85,9 +93,8 @@ assert_not_contains "$OUTPUT" '--queue-number'
 pass 'queue count is optional and defaults in MESSI'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type trie --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'trie standard profile should exclude SAX and PISA by default'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 2 ]] || fail 'trie standard profile should run only SPARTAN by default'
 assert_not_contains "$OUTPUT" '--function-type 3'
-assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_not_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
@@ -295,19 +302,19 @@ pass 'short series use the largest valid even coefficient pool'
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
-pass 'trie MBR dimensions are capped by series length, not half length'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
+pass 'trie MBR dimensions are capped by series length, not half length and SPARTAN is the default'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
 pass 'trie supports 128 MBR dimensions for 128-value series'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
 pass 'BigANN trie MBR dimensions use the corrected 128-value series length'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)

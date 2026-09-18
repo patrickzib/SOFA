@@ -6,6 +6,9 @@ runners default to trie indexes with 128 MBR dimensions (capped by series
 length), 64 record-bound dimensions, and 16 leaf-IVF groups. If `--threads`
 is omitted, they use the physical cores available to the process; set
 `MESSI_PHYSICAL_CORES=N` when platform or scheduler topology is unavailable.
+Use `--index-threads N` to keep index construction at a fixed worker count
+while varying query workers with `--threads N`; without it, indexing uses the
+query worker count.
 
 ```bash
 scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
@@ -16,7 +19,7 @@ scripts/run_dataset.sh simsearchnet standard --threads 36
 ```
 
 The profiles preserve the existing experiment matrices. With the default trie
-layout, `standard` runs SFA and SPARTAN variants and `knn` runs SFA variants;
+layout, `standard` runs SPARTAN variants and `knn` runs SFA variants;
 select `--index-type isax` for the wider legacy matrices below:
 
 - `standard`: SAX, SFA, PISA, and SPARTAN variants
@@ -27,6 +30,17 @@ select `--index-type isax` for the wider legacy matrices below:
 Use `run_suite.sh` for the complete benchmark matrices. It also exposes the
 `generated-queries`, `hard-queries`, and `noise-workloads` suites migrated from
 `scripts/old/`.
+
+For the compact core-scaling comparison across TRIE/SPARTAN, SOFA/SFA+iSAX,
+and MESSI/SAX+iSAX, run:
+
+```bash
+scripts/run_core_scaling_experiment.sh --datasets astro,obs,pnw
+```
+
+The wrapper runs query workers at 16, 32, and 64 cores while keeping index
+construction at 64 workers. Use `--dry-run` to inspect commands and
+`--experiment-root PATH` to isolate the generated logs and archives.
 
 ## Trie fanout and dynamic alphabets
 
@@ -97,8 +111,9 @@ For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
 directory inside terminal leaves with at least 4 K records by default. Change
 the threshold with `--trie-leaf-ivf-min-size`; IVF is enabled by default and
 can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
-Construction clusters eligible leaves independently in parallel, using the
-existing `--threads` setting; the build log reports the active worker count.
+Construction clusters eligible leaves independently in parallel, using
+`--index-threads` (or `--threads` when omitted); the build log reports the
+active worker count.
 
 `--trie-leaf-ivf-radial-bound` is enabled by default with trie leaf IVF; use
 `--no-trie-leaf-ivf-radial-bound` to disable it. It stores each record's distance from its raw-space

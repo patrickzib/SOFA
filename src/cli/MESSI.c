@@ -416,6 +416,7 @@ int main(int argc, char **argv) {
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
     static int requested_threads = 0;
+    static int requested_index_threads = 0;
     static int requested_numa_nodes = -1;
     static char inmemory_flag = 0;
     /* SIMD is enabled automatically when AVX2 support was compiled in.
@@ -513,6 +514,7 @@ int main(int argc, char **argv) {
                 {"min-checked-leaves",  required_argument, 0,    'u'},
                 {"in-memory",           no_argument,       0,    'v'},
                 {"threads",             required_argument, 0,    'I'},
+                {"index-threads",       required_argument, 0,    1046},
                 {"numa",                required_argument, 0,    'J'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
                 {"n-segments",          required_argument, 0,    'B'},
@@ -833,6 +835,17 @@ int main(int argc, char **argv) {
                     }
                 }
                 break;
+            case 1046:
+                if (strcmp(optarg, "auto") == 0) {
+                    requested_index_threads = 0;
+                } else {
+                    requested_index_threads = atoi(optarg);
+                    if (requested_index_threads <= 0) {
+                        fprintf(stderr, "error: index-threads must be a positive integer or 'auto'.\n");
+                        return EXIT_FAILURE;
+                    }
+                }
+                break;
             case 'J':
                 if (strcmp(optarg, "auto") == 0) {
                     requested_numa_nodes = -1;
@@ -962,6 +975,7 @@ int main(int argc, char **argv) {
                        "\n"
                        "Query execution:\n"
                        "  --threads N|auto               Workers (default: available physical CPU cores)\n"
+                       "  --index-threads N|auto         Index-construction workers (default: --threads)\n"
                        "  --queue-number N               Priority queues\n"
                        "  --numa auto|none|N             CPU affinity policy\n"
                        "  --tight-bound                  Enable tight iSAX leaf pruning\n"
@@ -1280,7 +1294,7 @@ int main(int argc, char **argv) {
         perror("pthread_setaffinity_np");
         return EXIT_FAILURE;
     }
-    fprintf(stderr, ">>> using %d worker threads on %d physical cores (%d logical CPUs)%s%s\n",
+    fprintf(stderr, ">>> using %d query workers on %d physical cores (%d logical CPUs)%s%s\n",
             thread_count, physical_cores, usable_cpus,
             requested_numa_nodes == 0 ? " (affinity disabled)" : "",
             detected_numa_nodes > 0 ? " across detected NUMA nodes" : "");
@@ -1295,10 +1309,18 @@ int main(int argc, char **argv) {
         thread_count = available_cpus;
     }
     fprintf(stderr,
-            ">>> using %d worker threads on %d physical cores (%d logical CPUs); NUMA affinity is unavailable on this platform.\n",
+            ">>> using %d query workers on %d physical cores (%d logical CPUs); NUMA affinity is unavailable on this platform.\n",
             thread_count, physical_cores, available_cpus);
 #endif
-    calculate_thread = thread_count;
+    int index_thread_count = requested_index_threads > 0 ? requested_index_threads : thread_count;
+    if (index_thread_count > available_cpus) {
+        fprintf(stderr, "warning: requested %d index threads but only %d CPUs are available; capping index threads.\n",
+                index_thread_count, available_cpus);
+        index_thread_count = available_cpus;
+    }
+    fprintf(stderr, ">>> resolved index workers: %d (query workers: %d)\n",
+            index_thread_count, thread_count);
+    calculate_thread = index_thread_count;
     maxquerythread = thread_count;
     /* Keep the default work distribution proportional to the active query
      * workers.  An explicit --queue-number always takes precedence. */
@@ -1629,7 +1651,7 @@ int main(int argc, char **argv) {
                 "SAX cardinality bits,%d\nleaf size,%d\nminimum leaf size,%d\n"
                 "initial leaf buffer size,%d\nmaximum total buffer size,%d\n"
                 "initial first-buffer-layer size,%d\nloaded leaves,%d\n"
-                "threads,%d\nqueue count,%d\nrequested NUMA nodes,%d\n"
+                "threads,%d\nindex threads,%d\nqueue count,%d\nrequested NUMA nodes,%d\n"
                 "tight bound,%d\naggressive check,%d\nminimum distance,%.9g\n"
                 "node split criterion,%d\nroot split mode,%s\nuniform root bits,%d\n"
                 "histogram type,%d\nsample size,%d\nsample type,%d\nsampling seed,%u\n"
@@ -1658,7 +1680,7 @@ int main(int argc, char **argv) {
                 index_settings->n_segments, index_settings->trie_bound_dimensions,
                 sax_cardinality, leaf_size, min_leaf_size,
                 initial_lbl_size, flush_limit, initial_fbl_size, total_loaded_leaves,
-                maxquerythread, N_PQUEUE, requested_numa_nodes,
+                maxquerythread, index_thread_count, N_PQUEUE, requested_numa_nodes,
                 tight_bound, aggressive_check, minimum_distance,
                 node_split_criterion,
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE ? "variance" :
@@ -1709,11 +1731,13 @@ int main(int argc, char **argv) {
         /// ########################################
 
         double query_wall_seconds = 0.0;
-        if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+    if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+            maxquerythread = index_thread_count;
             if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: trie construction failed.\n");
                 return EXIT_FAILURE;
             }
+            maxquerythread = thread_count;
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
             if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
@@ -1729,18 +1753,20 @@ int main(int argc, char **argv) {
             sfa_bins_init(idx);
 
             //set bins
-            if (sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (sfa_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                              apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: SFA bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
@@ -1776,18 +1802,20 @@ int main(int argc, char **argv) {
             spartan_bins_init(idx);
 
             //set bins
-            if (spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (spartan_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                                  apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: SPARTAN bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
@@ -1823,18 +1851,20 @@ int main(int argc, char **argv) {
             pisa_bins_init(idx);
 
             //set bins
-            if (pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (pisa_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                               apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: PISA bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);

@@ -14,7 +14,8 @@ Suites:
   generated-queries, hard-queries, noise-workloads
 
 Options:
-  --threads LIST          Comma-separated CPU/queue counts (default: available physical CPU cores)
+  --threads LIST          Comma-separated query CPU/queue counts (default: available physical CPU cores)
+  --index-threads N|auto  Index-construction workers (default: each query count)
   --k-values LIST         K values for knn (default: 20,50)
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
@@ -46,6 +47,8 @@ Options:
   --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
   --trie-residual-record-only Enable residual pruning only for records
+  --no-trie-residual-record-only
+                          Disable the default trie residual record bound
   --trie-residual-order MODE  Residual ordering: symbolic-first or residual-first
   --n-segments N          Trie record-prefix lower-bound dimensions (default: 64; range: 16--64)
   --trie-split-dims N     Trie split-candidate dimensions (default: min(32, MBR dimensions))
@@ -121,6 +124,7 @@ SUITE=$1
 shift
 
 THREADS_CSV=$(physical_core_count) || die 'unable to detect physical CPU cores; pass --threads N'
+INDEX_THREADS=
 K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
@@ -157,6 +161,7 @@ TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
 TRIE_RESIDUAL_RECORD_ONLY=false
+TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=false
 TRIE_RESIDUAL_ORDER=symbolic-first
 TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=false
 TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
@@ -190,6 +195,7 @@ RESULTS_ROOT=${MESSI_RESULTS_ROOT:-"$HOME/MESSI_SFA_logs"}
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS_CSV=$2; shift 2 ;;
+        --index-threads) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_THREADS=$2; shift 2 ;;
         --k-values) [[ $# -ge 2 ]] || die "$1 requires a value"; K_VALUES_CSV=$2; shift 2 ;;
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
@@ -229,7 +235,8 @@ while [[ $# -gt 0 ]]; do
         --trie-leaf-ivf-min-size) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF_MIN_SIZE=$2; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
-        --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; shift ;;
+        --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=true; shift ;;
+        --no-trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=false; TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=true; shift ;;
         --trie-residual-order) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RESIDUAL_ORDER=$2; [[ $TRIE_RESIDUAL_ORDER == symbolic-first || $TRIE_RESIDUAL_ORDER == residual-first ]] || die '--trie-residual-order expects symbolic-first or residual-first'; shift 2 ;;
         --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
         --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
@@ -357,6 +364,7 @@ run_one() {
     local queue_number=${QUEUE_NUMBER:-$threads}
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" \
         --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+    [[ -n $INDEX_THREADS ]] && command+=(--index-threads "$INDEX_THREADS")
     [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
     [[ -n $QUERY_FILE ]] && command+=(--query-file "$QUERY_FILE")
     [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
@@ -388,6 +396,7 @@ run_one() {
         [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
         [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
         [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && command+=(--trie-residual-record-only)
+        [[ $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == true && $TRIE_RESIDUAL_RECORD_ONLY == false ]] && command+=(--no-trie-residual-record-only)
         [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && command+=(--trie-residual-order "$TRIE_RESIDUAL_ORDER")
         [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
         [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
@@ -506,6 +515,7 @@ run_query_suite() {
             local queue_number=${QUEUE_NUMBER:-$threads}
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" \
                 --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+            [[ -n $INDEX_THREADS ]] && command+=(--index-threads "$INDEX_THREADS")
             [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
             [[ -n $QUERY_SIZE ]] && command+=(--query-size "$QUERY_SIZE")
@@ -534,6 +544,7 @@ run_query_suite() {
                 [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
                 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && command+=(--no-trie-leaf-ivf-raw-ball-bound)
                 [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && command+=(--trie-residual-record-only)
+                [[ $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == true && $TRIE_RESIDUAL_RECORD_ONLY == false ]] && command+=(--no-trie-residual-record-only)
                 [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && command+=(--trie-residual-order "$TRIE_RESIDUAL_ORDER")
                 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && command+=(--trie-leaf-ivf-radial-bound)
                 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && command+=(--trie-leaf-ivf-radial-bound-auto)
