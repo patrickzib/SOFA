@@ -41,6 +41,11 @@ implementation automatically.
 Run `autoreconf -fi` before `configure` only when modifying Autotools inputs
 or when a clone does not include a usable generated `configure` script.
 
+The detailed S3-Trie lower-bound profiler is compiled out by default. Build a
+separate experiment binary with `./configure --enable-trie-pruning-trace`; its
+`--trie-pruning-curve` runtime option is then available. Normal builds contain
+neither the counters nor their timing calls.
+
 # Build Python (Cython) API
 
 The Python extension compiles the native engine directly. Use an environment

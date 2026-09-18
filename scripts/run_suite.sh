@@ -41,6 +41,8 @@ Options:
   --sample-size N         Override binning sample size; accepts count suffixes
   --sample-type 1|2|3     Binning sampling: first values, uniform (default), or random
   --sampling-seed N       Sampling seed (default: 1)
+  --apply-z-norm          Z-normalize every database series and query
+  --no-apply-z-norm       Use input values without runner-requested normalization
   --no-simd               Disable SIMD for every run
   --trie-mbr-dims N       Trie MBR dimensions (default: 128; capped by series length)
   --trie-residual-record-only Enable residual pruning only for records
@@ -78,6 +80,7 @@ Options:
                           Print query progress every N queries (0 disables it)
   --query-repeats N       Repeat queries after one in-memory trie build (default: 1)
   --profile-query-phases  Measure traversal, lower-bound, and exact work
+  --trie-pruning-curve    Write the paper-matched five-bound pruning trace
   --dynamic-root-split-variance
                           Enable variance-assigned iSAX root bits
   --no-dynamic-root-split-variance
@@ -137,6 +140,7 @@ MIN_LEAF_SIZE=
 SAMPLE_SIZE=
 SAMPLE_TYPE=2
 SAMPLING_SEED=
+APPLY_Z_NORM_OVERRIDE=
 NO_SIMD=false
 TRIE_FANOUT=8
 TRIE_MBR_DIMS=
@@ -165,6 +169,7 @@ TRIE_QUERY_BATCH=false
 QUERY_REPORT_INTERVAL=
 QUERY_REPEATS=1
 PROFILE_QUERY_PHASES=false
+TRIE_PRUNING_CURVE=false
 DYNAMIC_ROOT_SPLIT_VARIANCE=
 DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
 ENABLE_SOFA_V2=false
@@ -210,6 +215,8 @@ while [[ $# -gt 0 ]]; do
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE=$2; shift 2 ;;
         --sample-type) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_TYPE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --apply-z-norm) APPLY_Z_NORM_OVERRIDE=true; shift ;;
+        --no-apply-z-norm) APPLY_Z_NORM_OVERRIDE=false; shift ;;
         --no-simd) NO_SIMD=true; shift ;;
         --trie-mbr-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MBR_DIMS=$2; shift 2 ;;
         --n-segments|--trie-record-lb-dims) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RECORD_LB_DIMS=$2; TRIE_RECORD_LB_DIMS_SPECIFIED=true; shift 2 ;;
@@ -237,6 +244,7 @@ while [[ $# -gt 0 ]]; do
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --query-repeats) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPEATS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
+        --trie-pruning-curve) TRIE_PRUNING_CURVE=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --tight-bound) TIGHT_BOUND=true; shift ;;
@@ -280,6 +288,8 @@ esac
     die '--trie-query-batch requires --index-type trie'
 [[ $TRIE_QUERY_PARALLEL == false || $TRIE_QUERY_BATCH == false ]] || \
     die 'choose at most one of --trie-query-parallel and --trie-query-batch'
+[[ $TRIE_PRUNING_CURVE == false || $INDEX_TYPE == trie ]] || die '--trie-pruning-curve requires --index-type trie'
+[[ $TRIE_PRUNING_CURVE == false || $TRIE_QUERY_BATCH == false ]] || die '--trie-pruning-curve is incompatible with --trie-query-batch'
 [[ $DYNAMIC_ROOT_SPLIT_VARIANCE != true || $INDEX_TYPE == isax ]] || \
     die '--dynamic-root-split-variance requires --index-type isax'
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
@@ -301,6 +311,16 @@ if [[ $INDEX_TYPE == trie ]]; then
         die '--trie-leaf-ivf-radial-bound requires --trie-leaf-ivf'
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
         die '--trie-leaf-ivf-radial-bound-auto requires --trie-leaf-ivf'
+fi
+if [[ $TRIE_PRUNING_CURVE == true ]]; then
+    [[ $METHODS_OVERRIDE == spartan-depth ]] || \
+        die '--trie-pruning-curve requires --methods spartan-depth'
+    [[ $TRIE_LEAF_IVF != 0 && $TRIE_LEAF_IVF_RAW_BALL_BOUND == false &&
+       $TRIE_LEAF_IVF_RADIAL_BOUND == true && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false &&
+       $TRIE_RECORD_MBR_SUFFIX_BOUND == true && $TRIE_STREAMING_LEAF_SCAN == true &&
+       $TRIE_RESIDUAL_RECORD_ONLY == true && $TRIE_RESIDUAL_ORDER == symbolic-first ]] || \
+        die '--trie-pruning-curve requires the paper cascade (IVF, radial, suffix, symbolic-first residual, streaming, no raw ball)'
+    (( QUERY_REPEATS == 1 )) || die '--trie-pruning-curve requires --query-repeats 1'
 fi
 if [[ $TRIE_DYNAMIC_ALPHABET == true ]]; then
     [[ $TRIE_FANOUT == 8 ]] || die '--trie-fanout cannot be combined with --trie-dynamic-alphabet'
@@ -347,6 +367,8 @@ run_one() {
     [[ -n $SAMPLE_SIZE ]] && command+=(--sample-size "$SAMPLE_SIZE")
     command+=(--sample-type "$SAMPLE_TYPE")
     [[ -n $SAMPLING_SEED ]] && command+=(--sampling-seed "$SAMPLING_SEED")
+    [[ $APPLY_Z_NORM_OVERRIDE == true ]] && command+=(--apply-z-norm)
+    [[ $APPLY_Z_NORM_OVERRIDE == false ]] && command+=(--no-apply-z-norm)
     [[ -n $MESSI_EXECUTABLE ]] && command+=(--binary "$MESSI_EXECUTABLE")
     [[ -n $DATA_ROOT ]] && command+=(--data-root "$DATA_ROOT")
     [[ -n $QUERY_ROOT ]] && command+=(--query-root "$QUERY_ROOT")
@@ -385,6 +407,7 @@ run_one() {
     [[ -n $QUERY_REPORT_INTERVAL ]] && command+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
     (( QUERY_REPEATS == 1 )) || command+=(--query-repeats "$QUERY_REPEATS")
     $PROFILE_QUERY_PHASES && command+=(--profile-query-phases)
+    $TRIE_PRUNING_CURVE && command+=(--trie-pruning-curve)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE == true ]] && command+=(--dynamic-root-split-variance)
     [[ $DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED == true && $DYNAMIC_ROOT_SPLIT_VARIANCE == false ]] && command+=(--no-dynamic-root-split-variance)
     if [[ $INDEX_TYPE == isax ]]; then

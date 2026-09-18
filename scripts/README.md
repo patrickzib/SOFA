@@ -123,6 +123,45 @@ symbolic record bound. Each line reports an average count per query, its
 stage-local pruning rate, and its share of all indexed records, so overlapping
 bounds are not double-counted.
 
+## Paper lower-bound pruning experiment
+
+The paper describes a five-stage cascade: internal-node MBR, leaf-group MBR,
+per-series radial, symbolic prefix plus MBR suffix, and residual refinement,
+followed by exact distance. The raw centroid/ball group bound available in the
+implementation is not part of that cascade.
+
+Configure a separate instrumented build so normal S3-Trie runs retain no trace
+counter or timer overhead:
+
+```bash
+./configure --enable-trie-pruning-trace
+make -j
+```
+
+Then run the historical eight-dataset experiment with the paper defaults:
+
+```bash
+MESSI_BINARY="$PWD/bin/MESSI" \
+MESSI_RESULTS_ROOT="$PWD/results/trie_pruning_curves" \
+scripts/run_paper_pruning_experiment.sh
+```
+
+The runner fixes 64 workers, `D=min(128,n)`, `B=64`, fanout 8, leaf capacity
+20,000, 16 IVF groups above 4,096 records, uniform sampling capped at one
+million series, 100 queries, and independent z-normalization. It enables only
+the five paper bounds and rejects configurations that add the raw-ball bound,
+omit a paper stage, batch queries, repeat queries, or select another method.
+Each CSV row records exclusive pruned-record counts, checks, summed worker time
+per stage, query wall time, and exact evaluations; writing fails if the stages
+do not account for every indexed record exactly.
+
+Plot either the new schema or the historical schema with:
+
+```bash
+python3 scripts/plot_trie_pruning_curve.py \
+  --curve-root results/trie_pruning_curves
+```
+
 Trie leaf refinement streams by default: it computes each record's lower bound
 and immediately runs exact distance when that bound passes, so an improved BSF
 affects the very next record. Cluster and leaf traversal ordering is unchanged.

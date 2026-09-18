@@ -198,6 +198,33 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type tr
 fi
 pass 'explicit trie IVF radial bound is forwarded and requires IVF'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 64 --queue-number 64 \
+    --methods spartan-depth --trie-mbr-dims 128 --n-segments 64 --trie-split-dims 64 \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-min-size 4096 \
+    --no-trie-leaf-ivf-raw-ball-bound --trie-leaf-ivf-radial-bound \
+    --trie-record-mbr-suffix-bound --trie-streaming-leaf-scan \
+    --trie-residual-record-only --trie-residual-order symbolic-first \
+    --trie-pruning-curve --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-pruning-curve'
+assert_contains "$OUTPUT" '--no-trie-leaf-ivf-raw-ball-bound'
+assert_contains "$OUTPUT" '--trie-residual-order symbolic-first'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --methods spartan-depth \
+    --trie-residual-record-only --trie-pruning-curve --dry-run >/dev/null 2>&1; then
+    fail 'pruning trace accepted a configuration containing the non-paper raw-ball bound'
+fi
+pass 'paper pruning trace forwards and validates the five-bound cascade'
+
+OUTPUT=$("$SCRIPT_DIR/run_paper_pruning_experiment.sh" --datasets astro \
+    --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--function-type 5'
+assert_contains "$OUTPUT" '--apply-z-norm'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--no-trie-leaf-ivf-raw-ball-bound'
+assert_contains "$OUTPUT" '--trie-pruning-curve'
+pass 'paper pruning experiment fixes the LaTeX configuration and five bounds'
+
 for runner in dataset suite; do
     if [[ $runner == dataset ]]; then
         RADIAL_COMMAND=("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie --dry-run)

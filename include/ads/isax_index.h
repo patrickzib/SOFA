@@ -119,6 +119,10 @@ typedef struct {
     /* Calibrate the radial bound per query and keep it only when at least
      * one quarter of sampled candidates are rejected. */
     char trie_leaf_ivf_radial_bound_auto;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    /* NULL disables tracing even in an instrumented build. */
+    const char *trie_pruning_curve_path;
+#endif
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;

@@ -27,6 +27,8 @@ Options:
   --sample-size N           Override the sample size; accepts count suffixes
   --sample-type 1|2|3       Binning sampling: first values, uniform (default), or random
   --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
+  --apply-z-norm            Z-normalize every database series and query
+  --no-apply-z-norm         Use input values without runner-requested normalization
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: trie (default) or isax
@@ -78,6 +80,7 @@ Options:
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
   --query-repeats N         Repeat queries after one in-memory trie build (default: 1)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
+  --trie-pruning-curve      Write the paper-matched five-bound pruning trace
   --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
   --binary PATH             MESSI executable
   MESSI_SHELL_LOG_DIR       Directory for per-method shell output logs
@@ -200,6 +203,7 @@ SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
 SAMPLE_TYPE=2
 SAMPLING_SEED=1
+APPLY_Z_NORM_OVERRIDE=
 NO_SIMD=false
 METHODS_OVERRIDE=
 INDEX_TYPE=trie
@@ -228,6 +232,7 @@ TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
 PROFILE_QUERY_PHASES=false
+TRIE_PRUNING_CURVE=false
 QUERY_REPORT_INTERVAL=
 QUERY_REPEATS=1
 # Resolved after parsing because the default depends on --index-type.
@@ -270,6 +275,8 @@ while [[ $# -gt 0 ]]; do
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
         --sample-type) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_TYPE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --apply-z-norm) APPLY_Z_NORM_OVERRIDE=true; shift ;;
+        --no-apply-z-norm) APPLY_Z_NORM_OVERRIDE=false; shift ;;
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
@@ -305,6 +312,7 @@ while [[ $# -gt 0 ]]; do
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
         --query-repeats) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPEATS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
+        --trie-pruning-curve) TRIE_PRUNING_CURVE=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --tight-bound) TIGHT_BOUND=true; shift ;;
@@ -321,6 +329,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 load_dataset "$DATASET_ARG" "$PROFILE"
+
+[[ -n $APPLY_Z_NORM_OVERRIDE ]] && APPLY_Z_NORM=$APPLY_Z_NORM_OVERRIDE
 
 [[ -n $DATASET_OVERRIDE ]] && DATASET_FILE=$DATASET_OVERRIDE
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
@@ -465,6 +475,18 @@ if [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]]; then
             die '--trie-residual-record-only requires --methods spartan-depth,spartan-width (or either one)'
     done
 fi
+if [[ $TRIE_PRUNING_CURVE == true ]]; then
+    [[ $INDEX_TYPE == trie ]] || die '--trie-pruning-curve requires --index-type trie'
+    [[ $TRIE_QUERY_BATCH == false ]] || die '--trie-pruning-curve is incompatible with --trie-query-batch'
+    [[ ${#METHOD_LIST[@]} -eq 1 && ${METHOD_LIST[0]} == spartan-depth ]] || \
+        die '--trie-pruning-curve requires --methods spartan-depth'
+    [[ $TRIE_LEAF_IVF != 0 && $TRIE_LEAF_IVF_RAW_BALL_BOUND == false &&
+       $TRIE_LEAF_IVF_RADIAL_BOUND == true && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false &&
+       $TRIE_RECORD_MBR_SUFFIX_BOUND == true && $TRIE_STREAMING_LEAF_SCAN == true &&
+       $TRIE_RESIDUAL_RECORD_ONLY == true && $TRIE_RESIDUAL_ORDER == symbolic-first ]] || \
+        die '--trie-pruning-curve requires the paper cascade (IVF, radial, suffix, symbolic-first residual, streaming, no raw ball)'
+    (( QUERY_REPEATS == 1 )) || die '--trie-pruning-curve requires --query-repeats 1'
+fi
 
 COMMON_ARGS=(
     --dataset "$DATASET_PATH"
@@ -539,6 +561,7 @@ fi
 if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)
 fi
+$TRIE_PRUNING_CURVE && COMMON_ARGS+=(--trie-pruning-curve)
 if [[ -n $QUERY_REPORT_INTERVAL ]]; then
     COMMON_ARGS+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
 fi

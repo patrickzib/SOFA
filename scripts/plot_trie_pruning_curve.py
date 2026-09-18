@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import csv
 import statistics
 from collections import defaultdict
@@ -40,12 +41,138 @@ STAGE_TIMING_COLUMNS = {
 }
 TIMING_COLUMNS = (*STAGE_TIMING_COLUMNS.values(), "other_us")
 
+PAPER_STAGES = (
+    "node_mbr",
+    "group_mbr",
+    "radial",
+    "symbolic",
+    "residual",
+    "exact",
+)
+PAPER_LABELS = {
+    "node_mbr": "internal-node MBR",
+    "group_mbr": "leaf-group MBR",
+    "radial": "per-series radial",
+    "symbolic": "prefix + MBR suffix",
+    "residual": "residual refinement",
+    "exact": "exact distance",
+}
+PAPER_COLORS = {
+    "node_mbr": "tab:blue",
+    "group_mbr": "tab:orange",
+    "radial": "tab:green",
+    "symbolic": "tab:red",
+    "residual": "tab:purple",
+    "exact": "tab:brown",
+}
+PAPER_REQUIRED_COLUMNS = {
+    "query", "total_records", "query_wall_us", "worker_search_us",
+    "node_mbr_checks", "node_mbr_pruned", "node_mbr_us",
+    "group_mbr_checks", "group_mbr_pruned", "group_mbr_us",
+    "radial_checks", "radial_pruned", "radial_us",
+    "symbolic_checks", "symbolic_pruned", "symbolic_us",
+    "residual_checks", "residual_pruned", "residual_us",
+    "exact_evaluated", "exact_us", "other_worker_us",
+}
+
 REQUIRED_COLUMNS = {
     "query",
     "elapsed_ms",
     "total_records",
     *BREAKDOWN_STAGES,
 }
+
+
+def read_paper_profile(path: Path | str) -> list[dict[str, float]]:
+    """Read the final-per-query trace for the paper's five-bound cascade."""
+    path = Path(path)
+    rows: list[dict[str, float]] = []
+    with path.open(newline="") as stream:
+        reader = csv.DictReader(stream)
+        fields = set(reader.fieldnames or ())
+        missing = PAPER_REQUIRED_COLUMNS - fields
+        if missing:
+            raise ValueError(f"{path}: missing columns: {', '.join(sorted(missing))}")
+        for line_number, row in enumerate(reader, start=2):
+            try:
+                sample = {name: float(row[name]) for name in PAPER_REQUIRED_COLUMNS}
+                sample["query"] = int(row["query"])
+            except (TypeError, ValueError) as error:
+                raise ValueError(f"{path}:{line_number}: invalid profile row") from error
+            if sample["total_records"] <= 0 or any(value < 0 for value in sample.values()):
+                raise ValueError(f"{path}:{line_number}: counts and times must be nonnegative")
+            resolved = sample["exact_evaluated"] + sum(
+                sample[f"{stage}_pruned"] for stage in PAPER_STAGES[:-1]
+            )
+            if abs(resolved - sample["total_records"]) > 0.5:
+                raise ValueError(
+                    f"{path}:{line_number}: paper stages resolve {resolved:g} of "
+                    f"{sample['total_records']:g} records"
+                )
+            rows.append(sample)
+    if not rows:
+        raise ValueError(f"{path}: no samples")
+    return rows
+
+
+def plot_paper_bound_profile(
+    path: Path | str,
+    *,
+    aggregate: str = "mean",
+    title: str = "S3-Trie paper-bound profile",
+    output: Path | str | None = None,
+    dpi: int = 180,
+):
+    """Plot exclusive pruning contribution and summed parallel worker cost."""
+    if aggregate not in {"mean", "median"}:
+        raise ValueError("aggregate must be 'mean' or 'median'")
+    rows = read_paper_profile(path)
+    reducer = statistics.mean if aggregate == "mean" else statistics.median
+    contributions = []
+    worker_ms = []
+    for stage in PAPER_STAGES:
+        count_column = "exact_evaluated" if stage == "exact" else f"{stage}_pruned"
+        contributions.append(reducer(
+            100.0 * row[count_column] / row["total_records"] for row in rows
+        ))
+        worker_ms.append(reducer(row[f"{stage}_us"] / 1000.0 for row in rows))
+
+    fig, (pruning_ax, time_ax) = plt.subplots(
+        2, 1, figsize=(8.5, 6.0), constrained_layout=True,
+        gridspec_kw={"height_ratios": (1, 2)},
+    )
+    left = 0.0
+    for stage, contribution in zip(PAPER_STAGES, contributions):
+        pruning_ax.barh(
+            [0], [contribution], left=left, color=PAPER_COLORS[stage],
+            label=PAPER_LABELS[stage],
+        )
+        if contribution >= 3.0:
+            pruning_ax.text(left + contribution / 2.0, 0, f"{contribution:.1f}%",
+                            ha="center", va="center", fontsize=8)
+        left += contribution
+    pruning_ax.set_xlim(0, 100)
+    pruning_ax.set_yticks([])
+    pruning_ax.set_xlabel(f"{aggregate} exclusive record contribution (%)")
+    pruning_ax.legend(ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, 1.55))
+
+    labels = [PAPER_LABELS[stage] for stage in PAPER_STAGES]
+    positions = list(range(len(PAPER_STAGES)))
+    time_ax.barh(positions, worker_ms,
+                 color=[PAPER_COLORS[stage] for stage in PAPER_STAGES])
+    time_ax.set_yticks(positions, labels)
+    time_ax.invert_yaxis()
+    time_ax.set_xlabel(f"{aggregate} summed worker time per query (ms)")
+    wall_ms = reducer(row["query_wall_us"] / 1000.0 for row in rows)
+    time_ax.text(0.99, 0.02, f"query wall time: {wall_ms:.3f} ms",
+                 transform=time_ax.transAxes, ha="right", va="bottom", fontsize=9)
+    time_ax.grid(True, axis="x", alpha=0.25)
+    fig.suptitle(title)
+    if output is not None:
+        output = Path(output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output, dpi=dpi)
+    return fig, (pruning_ax, time_ax)
 
 
 def read_curve(
@@ -750,17 +877,32 @@ def newest_dataset_curve(dataset_directory: Path) -> Path | None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Plot legacy or paper-matched S3-Trie pruning profiles."
+    )
+    parser.add_argument(
+        "--curve-root", type=Path,
+        help="result root containing one directory per dataset",
+    )
+    parser.add_argument(
+        "--output-directory", type=Path,
+        help="plot destination (default: CURVE_ROOT/plots)",
+    )
+    parser.add_argument(
+        "--aggregate", choices=("mean", "median"), default="mean",
+        help="aggregation across queries (default: mean)",
+    )
+    args = parser.parse_args()
     repository = Path(__file__).resolve().parents[1]
     local_curve_root = Path("trie_pruning_curves")
-    curve_root = (
-        local_curve_root
-        if local_curve_root.is_dir()
+    curve_root = args.curve_root or (
+        local_curve_root if local_curve_root.is_dir()
         else repository / "notebooks" / "trie_pruning_curves"
     )
     if not curve_root.is_dir():
         raise FileNotFoundError(f"No trie-pruning-curves directory found at {curve_root}")
 
-    output_directory = curve_root / "plots"
+    output_directory = args.output_directory or curve_root / "plots"
     for dataset_directory in sorted(curve_root.iterdir()):
         if not dataset_directory.is_dir() or dataset_directory.name == "plots":
             continue
@@ -769,14 +911,25 @@ def main() -> None:
             continue
         dataset = dataset_directory.name
         output = output_directory / f"{dataset}_pruning_staircase.png"
-        fig, _ = plot_trie_pruning_curve(
-            [curve_file],
-            breakdown=True,
-            aggregate="mean",
-            markers=True,
-            title=f"{dataset}: mean pruning progression",
-            output=output,
-        )
+        with curve_file.open(newline="") as stream:
+            fields = set(next(csv.reader(stream), ()))
+        if PAPER_REQUIRED_COLUMNS <= fields:
+            output = output_directory / f"{dataset}_paper_bound_profile.png"
+            fig, _ = plot_paper_bound_profile(
+                curve_file,
+                aggregate=args.aggregate,
+                title=f"{dataset}: paper-matched bound profile",
+                output=output,
+            )
+        else:
+            fig, _ = plot_trie_pruning_curve(
+                [curve_file],
+                breakdown=True,
+                aggregate=args.aggregate,
+                markers=True,
+                title=f"{dataset}: mean pruning progression",
+                output=output,
+            )
         plt.close(fig)
         print(output)
 

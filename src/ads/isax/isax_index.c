@@ -259,6 +259,9 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->trie_residual_record_only = 0;
     settings->trie_residual_order = 0;
     settings->trie_leaf_ivf_radial_bound_auto = 0;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    settings->trie_pruning_curve_path = NULL;
+#endif
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
     settings->trie_record_mbr_suffix_bound = 0;

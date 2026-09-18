@@ -471,6 +471,9 @@ int main(int argc, char **argv) {
     static int trie_alphabet_budget_bits = 3;
     static int query_report_interval_requested = 10;
     static int query_repeats = 1;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    static int trie_pruning_curve = 0;
+#endif
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -568,6 +571,9 @@ int main(int argc, char **argv) {
                 {"enable-sofa-v2", no_argument, 0, 1021},
                 {"query-report-interval", required_argument, 0, 1006},
                 {"query-repeats", required_argument, 0, 1044},
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                {"trie-pruning-curve", no_argument, 0, 1045},
+#endif
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
                 {NULL,                  0,                 NULL, 0}
@@ -624,6 +630,11 @@ int main(int argc, char **argv) {
             case 1044:
                 query_repeats = atoi(optarg);
                 break;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            case 1045:
+                trie_pruning_curve = 1;
+                break;
+#endif
             case 1008:
                 SIMD_flag = 0;
                 break;
@@ -957,6 +968,9 @@ int main(int argc, char **argv) {
                        "  --aggressive-check             Enable aggressive pruning\n"
                        "  --query-report-interval N      Progress rows (0 disables; default: 10)\n"
                        "  --query-repeats N              Repeat queries after one in-memory trie build\n"
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                       "  --trie-pruning-curve           Write paper-matched per-bound pruning/timing CSV\n"
+#endif
                        "\n"
                        "Transforms and binning:\n"
                        "  --function-type N              0 build only; 1 ParIS-TS; 2 ParIS; 3 MESSI-SAX;\n"
@@ -1175,6 +1189,31 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-leaf-ivf-radial-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    if (trie_pruning_curve) {
+        if (index_type != MESSI_INDEX_TRIE || function_type != 5 || use_index || !inmemory_flag) {
+            fprintf(stderr, "error: --trie-pruning-curve requires a newly built in-memory SPARTAN trie.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_query_batch) {
+            fprintf(stderr, "error: --trie-pruning-curve is incompatible with --trie-query-batch.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_leaf_ivf == 0 || trie_leaf_ivf_raw_ball_bound ||
+            !trie_leaf_ivf_radial_bound || trie_leaf_ivf_radial_bound_auto ||
+            !trie_record_mbr_suffix_bound || !trie_streaming_leaf_scan ||
+            !trie_residual_record_only || trie_residual_order != 0) {
+            fprintf(stderr,
+                    "error: --trie-pruning-curve requires the paper cascade: IVF, unconditional radial, "
+                    "record-MBR suffix, symbolic-first residual, streaming scan, and no raw-ball bound.\n");
+            return EXIT_FAILURE;
+        }
+        if (query_repeats != 1) {
+            fprintf(stderr, "error: --trie-pruning-curve currently requires --query-repeats 1.\n");
+            return EXIT_FAILURE;
+        }
+    }
+#endif
     if (index_type != MESSI_INDEX_ISAX &&
         (isax_node_mbr_specified || isax_record_mbr_suffix_bound || isax_record_lb_table ||
          isax_mbr_dimensions_specified || enable_sofa_v2)) {
@@ -1424,6 +1463,9 @@ int main(int argc, char **argv) {
         char log_filename_tree[FILENAME_LENGTH];
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        char log_filename_curve[FILENAME_LENGTH] = {0};
+#endif
 
         char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
@@ -1443,11 +1485,19 @@ int main(int argc, char **argv) {
         snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
         snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
         snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trie_pruning_curve)
+            snprintf(log_filename_curve, sizeof(log_filename_curve), "%s/trie_pruning_curve", log_root);
+#endif
 
         if (ensure_directory(log_filename) != 0 ||
             ensure_directory(log_filename_tree) != 0 ||
             ensure_directory(log_filename_index) != 0 ||
-            ensure_directory(log_filename_query) != 0) {
+            ensure_directory(log_filename_query) != 0
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            || (trie_pruning_curve && ensure_directory(log_filename_curve) != 0)
+#endif
+            ) {
             fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
                     log_root, strerror(errno));
         }
@@ -1467,6 +1517,13 @@ int main(int argc, char **argv) {
         strcat(log_filename_query, "/MESSI_QUERY_");
         strcat(log_filename_query, time_str);
         strcat(log_filename_query, ".csv");
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trie_pruning_curve) {
+            strcat(log_filename_curve, "/MESSI_TRIE_PRUNING_CURVE_");
+            strcat(log_filename_curve, time_str);
+            strcat(log_filename_curve, ".csv");
+        }
+#endif
 
         strcat(index_directory, time_str);
 
@@ -1544,6 +1601,9 @@ int main(int argc, char **argv) {
         index_settings->trie_residual_record_only = trie_residual_record_only;
         index_settings->trie_residual_order = trie_residual_order;
         index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        index_settings->trie_pruning_curve_path = trie_pruning_curve ? log_filename_curve : NULL;
+#endif
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
@@ -1582,7 +1642,11 @@ int main(int argc, char **argv) {
                 "trie leaf IVF raw-ball bound,%d\ntrie leaf IVF radial bound,%d\n"
                 "trie leaf IVF radial bound auto,%d\ntrie fanout,%d\n"
                 "trie dynamic alphabet,%d\ntrie minimum fanout,%d\n"
-                "trie maximum fanout,%d\ntrie alphabet budget bits,%d\n",
+                "trie maximum fanout,%d\ntrie alphabet budget bits,%d\n"
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                "trie pruning trace compiled,1\ntrie pruning curve,%d\n"
+#endif
+                ,
                 dataset, queries, index_path,
                 index_type == MESSI_INDEX_TRIE ? "trie" : "isax", inmemory_flag,
                 dataset_size, queries_size, time_series_size,
@@ -1610,7 +1674,11 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf_raw_ball_bound, trie_leaf_ivf_radial_bound,
                 trie_leaf_ivf_radial_bound_auto, trie_fanout,
                 trie_dynamic_alphabet, trie_min_fanout,
-                trie_max_fanout, trie_alphabet_budget_bits);
+                trie_max_fanout, trie_alphabet_budget_bits
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                , trie_pruning_curve
+#endif
+                );
         fflush(logfile);
 
         if (!inmemory_flag) {

@@ -740,6 +740,7 @@ enable_option_checking
 enable_silent_rules
 enable_dependency_tracking
 with_no_benchmarking
+enable_trie_pruning_trace
 with_with_debug
 with_with_clustering
 with_verbose
@@ -1391,6 +1392,9 @@ Optional Features:
                           do not reject slow dependency extractors
   --disable-dependency-tracking
                           speeds up one-time build
+  --enable-trie-pruning-trace
+                          compile the paper-matched S3-Trie pruning profiler
+                          (default=no)
   --enable-simd[=auto]    enable AVX2 SIMD optimizations (default=auto; use
                           'no' to disable)
 
@@ -6735,6 +6739,21 @@ printf '%s\n' "$as_me: You have disabled benchmarking!" >&6;}
 else
 
 printf '%s\n' "#define BENCHMARK /**/" >>confdefs.h
+
+fi
+
+# Check whether --enable-trie-pruning-trace was given.
+if test ${enable_trie_pruning_trace+y}
+then :
+  enableval=$enable_trie_pruning_trace;
+else case e in #(
+  e) enable_trie_pruning_trace=no ;;
+esac
+fi
+
+if test "x$enable_trie_pruning_trace" = "xyes"; then
+
+printf '%s\n' "#define MESSI_TRIE_PRUNING_TRACE 1" >>confdefs.h
 
 fi
 
