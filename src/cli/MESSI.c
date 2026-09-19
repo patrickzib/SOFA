@@ -1632,6 +1632,7 @@ int main(int argc, char **argv) {
         index_settings->trie_max_bits = fanout_to_bits(trie_max_fanout);
         index_settings->trie_alphabet_budget_bits = trie_alphabet_budget_bits;
         index_settings->sampling_seed = sampling_seed;
+        index_settings->configuration_log = logfile;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 

@@ -86,6 +86,8 @@ typedef struct {
     int histogram_type;
     int sample_type;
     unsigned int sampling_seed;
+    /* Optional construction settings stream owned by the CLI. */
+    FILE *configuration_log;
     int n_coefficients;
     /* Bytes preceding dense vector payloads.  These are separate because
      * several ANN distributions use a headered base but raw query files. */
@@ -140,6 +142,9 @@ typedef struct {
      * this contains the number of leading SAX bits used per dimension. */
     char dynamic_root_split_variance;
     sax_type *root_bit_cardinalities;
+    /* One symbolic dimension per fixed root bit. */
+    int *root_dimensions;
+    char root_dimensions_variance_ranked;
 
     // int filetype_int;
 
@@ -147,6 +152,8 @@ typedef struct {
 
 static inline int isax_index_dimension_at(const isax_index_settings *settings,
                                           int slot) {
+    if (settings->root_dimensions != NULL)
+        return settings->root_dimensions[slot];
     return (slot * settings->n_segments) / settings->isax_index_segments;
 }
 

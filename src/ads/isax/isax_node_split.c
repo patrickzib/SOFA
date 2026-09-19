@@ -417,10 +417,19 @@ int split_node(isax_index *index, isax_node *node, int inmemory, int kn) {
     } else if (split_data->split_mask != NULL) {
         memset(split_data->split_mask, -1,
                sizeof(*split_data->split_mask) * (size_t) index->settings->n_segments);
-        int root_segments = index->settings->isax_index_segments / kn;
-        for (int slot = 0; slot < root_segments; slot++) {
-            const int dimension = (slot * index->settings->n_segments) / root_segments;
-            split_data->split_mask[dimension] = (int8_t) (kn - 1);
+        if (index->settings->root_bit_cardinalities != NULL) {
+            for (int dimension = 0; dimension < index->settings->n_segments; ++dimension) {
+                const int bits = index->settings->root_bit_cardinalities[dimension];
+                if (bits > 0) split_data->split_mask[dimension] = (int8_t) (bits - 1);
+            }
+        } else {
+            int root_segments = index->settings->isax_index_segments / kn;
+            for (int slot = 0; slot < root_segments; slot++) {
+                const int dimension = kn == 1
+                    ? isax_index_dimension_at(index->settings, slot)
+                    : (slot * index->settings->n_segments) / root_segments;
+                split_data->split_mask[dimension] = (int8_t) (kn - 1);
+            }
         }
     }
     if (split_data->split_mask == NULL) {

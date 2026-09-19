@@ -28,6 +28,9 @@ enum response configure_dynamic_bit_allocation(isax_index *index,
                                                  int budget,
                                                  int min_bit_val,
                                                  int max_bit_val);
+enum response configure_root_dimensions(isax_index_settings *settings,
+                                        const double *variance,
+                                        int dimensions);
 root_mask_type isax_root_mask_from_sax(const isax_index *index,
                                        const sax_type *sax,
                                        int uniform_kn);

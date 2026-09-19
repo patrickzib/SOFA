@@ -157,6 +157,17 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->n_segments = n_segments;
     settings->isax_index_segments = index_type == MESSI_INDEX_ISAX && n_segments > 16
                                         ? 16 : n_segments;
+    settings->root_dimensions = malloc(sizeof(*settings->root_dimensions) *
+                                       (size_t) settings->isax_index_segments);
+    if (settings->root_dimensions == NULL) {
+        fprintf(stderr, "error: could not allocate root dimension map.\n");
+        free(settings);
+        return NULL;
+    }
+    for (i = 0; i < settings->isax_index_segments; ++i)
+        settings->root_dimensions[i] =
+            (i * settings->n_segments) / settings->isax_index_segments;
+    settings->root_dimensions_variance_ranked = 0;
     // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) n_segments);
     settings->ts_values_per_paa_segment =timeseries_size/ n_segments;
     settings->max_leaf_size = max_leaf_size;
@@ -230,6 +241,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->dataset_header_bytes = 0;
     settings->query_header_bytes = 0;
     settings->sampling_seed = 1;
+    settings->configuration_log = NULL;
     settings->node_split_criterion = 1;
     settings->index_type = index_type;
     /* Node MBRs predate SOFA v2 and remain the normal iSAX baseline. */
@@ -334,6 +346,7 @@ void isax_index_destroy(isax_index *index, isax_node *node)
     	free(index->settings->raw_filename);
     	free(index->settings->max_sax_cardinalities);
 		free(index->settings->root_bit_cardinalities);
+		free(index->settings->root_dimensions);
     	free(index->settings);
 
 		// TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
@@ -416,6 +429,7 @@ void MESSI2_index_destroy(isax_index *index, isax_node *node)
     	free(index->settings->raw_filename);
     	free(index->settings->max_sax_cardinalities);
 		free(index->settings->root_bit_cardinalities);
+		free(index->settings->root_dimensions);
     	free(index->settings);
 
 		// TODO: OPTIMIZE TO FLUSH WITHOUT TRAVERSAL!
@@ -494,6 +508,7 @@ void isax_index_pRecBuf_destroy(isax_index *index, isax_node *node,int prewokern
         free(index->settings->raw_filename);
         free(index->settings->max_sax_cardinalities);
         free(index->settings->root_bit_cardinalities);
+        free(index->settings->root_dimensions);
         free(index->settings->symbolic_variances);
         free(index->settings);
 
@@ -712,24 +727,33 @@ enum response create_node_filename(isax_index *index,
     }
     // If it has no parent it is root node and as such it's cardinality is kn (default 1).
     else {
-        const int root_dimensions = index->settings->isax_index_segments / kn;
+        const int dynamic = index->settings->root_bit_cardinalities != NULL;
+        const int root_dimensions = dynamic ? index->settings->n_segments
+                                            : index->settings->isax_index_segments / kn;
+        int emitted = 0;
         for (int slot = 0; slot < root_dimensions; slot++) {
-            i = (slot * index->settings->n_segments) / root_dimensions;
+            i = dynamic ? slot
+                        : (kn == 1 ? isax_index_dimension_at(index->settings, slot)
+                                   : (slot * index->settings->n_segments) / root_dimensions);
+            const int dimension_bits = dynamic
+                                           ? index->settings->root_bit_cardinalities[i]
+                                           : kn;
+            if (dimension_bits <= 0) continue;
             root_mask_type mask = 0x00;
-            for (int j = 0; j < kn; j++) {
+            for (int j = 0; j < dimension_bits; j++) {
                 mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - j] &
                          record->sax[i]);
             }
-            mask = mask >> index->settings->sax_bit_cardinality - kn;
+            mask = mask >> (index->settings->sax_bit_cardinality - dimension_bits);
             
             node->isax_values[i] = (int) mask;
-            node->isax_cardinalities[i] = kn;
+            node->isax_cardinalities[i] = dimension_bits;
             
-            if (slot==0) {
-                l += sprintf(node->filename+l ,"%d.%d", (int) mask, kn);
+            if (emitted++ == 0) {
+                l += sprintf(node->filename+l ,"%d.%d", (int) mask, dimension_bits);
             }
             else {
-                l += sprintf(node->filename+l ,"_%d.%d", (int) mask, kn);
+                l += sprintf(node->filename+l ,"_%d.%d", (int) mask, dimension_bits);
             } 
         }
     }
@@ -2365,6 +2389,68 @@ isax_node *node_read(isax_index *index, FILE *file) {
 }
 
 
+static void root_dimension_map_write(const isax_index_settings *settings) {
+    if (settings->root_dimensions == NULL || settings->root_directory == NULL) return;
+    const char magic[8] = {'M', 'R', 'O', 'O', 'T', 'D', 'M', '1'};
+    char *path = malloc(strlen(settings->root_directory) + 32);
+    if (path == NULL) return;
+    sprintf(path, "%s/root_dimensions.idx", settings->root_directory);
+    FILE *file = fopen(path, "wb");
+    if (file == NULL) {
+        fprintf(stderr, "warning: could not persist root dimension map: %s\n", path);
+        free(path);
+        return;
+    }
+    const unsigned int count = (unsigned int) settings->isax_index_segments;
+    const unsigned char ranked = (unsigned char) settings->root_dimensions_variance_ranked;
+    if (fwrite(magic, sizeof(magic), 1, file) != 1 ||
+        fwrite(&count, sizeof(count), 1, file) != 1 ||
+        fwrite(&ranked, sizeof(ranked), 1, file) != 1 ||
+        fwrite(settings->root_dimensions, sizeof(*settings->root_dimensions), count, file) != count) {
+        fprintf(stderr, "warning: failed while persisting root dimension map: %s\n", path);
+    }
+    fclose(file);
+    free(path);
+}
+
+static void root_dimension_map_read(isax_index_settings *settings) {
+    const char expected[8] = {'M', 'R', 'O', 'O', 'T', 'D', 'M', '1'};
+    char magic[8];
+    char *path = malloc(strlen(settings->root_directory) + 32);
+    if (path == NULL) return;
+    sprintf(path, "%s/root_dimensions.idx", settings->root_directory);
+    FILE *file = fopen(path, "rb");
+    free(path);
+    if (file == NULL) return; /* Legacy index: retain the uniform default. */
+
+    unsigned int count = 0;
+    unsigned char ranked = 0;
+    int valid = fread(magic, sizeof(magic), 1, file) == 1 &&
+                memcmp(magic, expected, sizeof(magic)) == 0 &&
+                fread(&count, sizeof(count), 1, file) == 1 &&
+                count == (unsigned int) settings->isax_index_segments &&
+                fread(&ranked, sizeof(ranked), 1, file) == 1 &&
+                fread(settings->root_dimensions, sizeof(*settings->root_dimensions), count, file) == count;
+    if (valid) {
+        for (unsigned int i = 0; i < count && valid; ++i) {
+            if (settings->root_dimensions[i] < 0 ||
+                settings->root_dimensions[i] >= settings->n_segments) valid = 0;
+            for (unsigned int j = 0; j < i; ++j)
+                if (settings->root_dimensions[i] == settings->root_dimensions[j]) valid = 0;
+        }
+    }
+    fclose(file);
+    if (valid) {
+        settings->root_dimensions_variance_ranked = ranked != 0;
+    } else {
+        fprintf(stderr, "warning: invalid root dimension map; using uniform fallback.\n");
+        for (int i = 0; i < settings->isax_index_segments; ++i)
+            settings->root_dimensions[i] =
+                (i * settings->n_segments) / settings->isax_index_segments;
+        settings->root_dimensions_variance_ranked = 0;
+    }
+}
+
 void index_write(isax_index *index)
 {
 	fprintf(stderr, ">>> Storing index: %s\n", index->settings->root_directory);
@@ -2411,6 +2497,7 @@ void index_write(isax_index *index)
 		}
 	}
 	fclose(file);
+	root_dimension_map_write(index->settings);
 
     char *filename_adpt = malloc(sizeof(char) * (strlen(index->settings->root_directory) + 15));
     filename_adpt = strcpy(filename_adpt, index->settings->root_directory);
@@ -2504,6 +2591,7 @@ void index_mRecBuf_write(isax_index *index)
         }
     }
     fclose(file);
+    root_dimension_map_write(index->settings);
 
     char *filename_adpt = malloc(sizeof(char) * (strlen(index->settings->root_directory) + 15));
     
@@ -2574,6 +2662,7 @@ isax_index * index_read(const char* root_directory) {
 	idx_settings->raw_filename = malloc(sizeof(char) * 256);
 	strcpy(idx_settings->raw_filename, raw_filename);
 	free(raw_filename);
+	root_dimension_map_read(idx_settings);
 
 	isax_index *index = isax_index_init(idx_settings);
 
@@ -2894,8 +2983,16 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
-        fprintf(stderr, "  root dims     : %d uniformly selected of %d symbolic dimensions\n",
+        fprintf(stderr, "  root dims     : %s %d of %d symbolic dimensions\n",
+                settings->root_dimensions_variance_ranked ? "variance-ranked" : "uniform",
                 settings->isax_index_segments, settings->n_segments);
+        fprintf(stderr, "  root dimensions:");
+        for (int slot = 0; slot < settings->isax_index_segments; ++slot)
+            fprintf(stderr, "%s%d", slot == 0 ? " " : ",",
+                    isax_index_dimension_at(settings, slot));
+        fprintf(stderr, "\n");
+        fprintf(stderr, "  lower bounds  : all %d symbolic dimensions%s\n",
+                settings->n_segments, settings->SIMD_flag ? " (SIMD enabled)" : "");
         fprintf(stderr, "  iSAX bounds   : node MBR=%s\n",
                 settings->isax_node_mbr ? "on" : "off");
         if (settings->isax_record_mbr_suffix_bound || settings->isax_record_lb_table) {
