@@ -691,7 +691,6 @@ enum response create_node_filename(isax_index *index,
     
     if (node->parent) {
         for (i=0; i<index->settings->n_segments; i++) {
-            if (!isax_is_index_dimension(index->settings, i)) continue;
             root_mask_type mask = 0x00;
             int k; 
             for (k=0; k <= node->parent->split_data->split_mask[i]; k++) {
@@ -2243,7 +2242,8 @@ void node_write(isax_index *index, isax_node *node, FILE *file) {
 	}
 	else {
 		fwrite(&(node->split_data->splitpoint), sizeof(int), 1, file);
-		fwrite(node->split_data->split_mask, sizeof(sax_type), index->settings->n_segments, file);
+		fwrite(node->split_data->split_mask, sizeof(*node->split_data->split_mask),
+               index->settings->n_segments, file);
 	}
 
 	if(node->isax_cardinalities != NULL) {
@@ -2333,10 +2333,12 @@ isax_node *node_read(isax_index *index, FILE *file) {
 		node->has_partial_data_file = 0;
 		node->leaf_size = 0;
 		node->split_data = malloc(sizeof(isax_node_split_data));
-		node->split_data->split_mask = malloc(sizeof(sax_type) * index->settings->n_segments);
+		node->split_data->split_mask = malloc(sizeof(*node->split_data->split_mask) *
+                                                   (size_t) index->settings->n_segments);
 
 		fread(&(node->split_data->splitpoint), sizeof(int), 1, file);
-		fread(node->split_data->split_mask, sizeof(sax_type), index->settings->n_segments, file);
+		fread(node->split_data->split_mask, sizeof(*node->split_data->split_mask),
+              index->settings->n_segments, file);
 	}
 	node->mask = mask;
 
@@ -2892,7 +2894,7 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
-        fprintf(stderr, "  index dims    : %d uniformly selected of %d symbolic dimensions\n",
+        fprintf(stderr, "  root dims     : %d uniformly selected of %d symbolic dimensions\n",
                 settings->isax_index_segments, settings->n_segments);
         fprintf(stderr, "  iSAX bounds   : node MBR=%s\n",
                 settings->isax_node_mbr ? "on" : "off");

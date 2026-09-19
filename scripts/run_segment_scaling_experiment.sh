@@ -16,6 +16,8 @@ Options:
   --threads N               Query workers (default: 64)
   --index-threads N|auto    Index workers (default: 64)
   --experiment-root PATH    Logs/results root (default: ./results/segment_scaling)
+  --resume                  Skip completed dataset/system/segment archives
+  --rerun-existing          Rerun completed archives (default)
   -h, --help                Show this help
 
 All other options are passed to run_suite.sh. Use --datasets to select a
@@ -29,6 +31,8 @@ SEGMENT_LIST=16,32,48,64
 QUERY_THREADS=64
 INDEX_THREADS=64
 EXPERIMENT_ROOT=${MESSI_SEGMENT_SCALING_ROOT:-"$PWD/results/segment_scaling"}
+RESUME=false
+DRY_RUN=false
 PASSTHROUGH=()
 
 while [[ $# -gt 0 ]]; do
@@ -52,6 +56,19 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || die "$1 requires a path"
             EXPERIMENT_ROOT=$2
             shift 2
+            ;;
+        --resume)
+            RESUME=true
+            shift
+            ;;
+        --rerun-existing)
+            RESUME=false
+            shift
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            PASSTHROUGH+=("$1")
+            shift
             ;;
         --enable-sofa-v2|--isax-node-mbr|--isax-record-mbr-suffix-bound|--isax-record-lb-table|--no-simd)
             die "$1 is controlled by this experiment"
@@ -92,6 +109,17 @@ run_system() {
     shift 4
     local results_root="$EXPERIMENT_ROOT/results/$name/segments-$segments"
     local log_root="$EXPERIMENT_ROOT/logs/$name/segments-$segments"
+    local -a rerun_args=()
+    [[ $RESUME == true ]] || rerun_args+=(--rerun-existing)
+
+    if [[ $RESUME == true && $DRY_RUN == false && -d $log_root ]] &&
+       [[ -n $(find "$log_root" -mindepth 1 -maxdepth 1 -print -quit) ]]; then
+        local incomplete_parent="$EXPERIMENT_ROOT/incomplete/$name/segments-$segments"
+        local incomplete_path="$incomplete_parent/attempt-$(date +%Y%m%d-%H%M%S)-$$"
+        mkdir -p -- "$incomplete_parent"
+        mv -- "$log_root" "$incomplete_path"
+        printf 'Preserved incomplete logs at %s\n' "$incomplete_path" >&2
+    fi
 
     printf '\n=== segments=%s system=%s layout=%s methods=%s ===\n' \
         "$segments" "$name" "$index_type" "$methods" >&2
@@ -102,7 +130,7 @@ run_system() {
             --index-threads "$INDEX_THREADS" \
             --index-type "$index_type" \
             --methods "$methods" \
-            --rerun-existing \
+            "${rerun_args[@]}" \
             "${PASSTHROUGH[@]}" "$@"
 }
 

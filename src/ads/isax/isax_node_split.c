@@ -221,7 +221,6 @@ static int append_disk_buffers(isax_index *index, isax_node *node,
 int simple_split_decision(isax_node_split_data *split_data, isax_index_settings *settings) {
     int min_index = -1;
     for (int i = 0; i < settings->n_segments; i++) {
-        if (!isax_is_index_dimension(settings, i)) continue;
         if (split_data->split_mask[i] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -232,7 +231,7 @@ int simple_split_decision(isax_node_split_data *split_data, isax_index_settings 
     if (min_index == -1) {
         fprintf(stderr, "split_mask (n_segments=%d):", settings->n_segments);
         for (int i = 0; i < settings->n_segments; i++) {
-            fprintf(stderr, " %u", (unsigned) split_data->split_mask[i]);
+            fprintf(stderr, " %d", (int) split_data->split_mask[i]);
         }
         fprintf(stderr, "\n");
     }
@@ -273,7 +272,6 @@ int informed_split_decision(isax_node_split_data *split_data,
     int segment_to_split = -1;
     int segment_to_split_b = -1;
     for (i = 0; i < settings->n_segments; i++) {
-        if (!isax_is_index_dimension(settings, i)) continue;
         int new_bit_cardinality = split_data->split_mask[i] + 1;
         if (new_bit_cardinality > settings->sax_bit_cardinality - 1) {
             continue;
@@ -318,7 +316,6 @@ int maxvar_split_decision(isax_node_split_data *split_data,
     double best_variance = -1.0;
 
     for (int segment = 0; segment < settings->n_segments; ++segment) {
-        if (!isax_is_index_dimension(settings, segment)) continue;
         if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -353,7 +350,6 @@ int maxbin_split_decision(isax_node_split_data *split_data,
     int best_imbalance = INT_MAX;
 
     for (int segment = 0; segment < settings->n_segments; ++segment) {
-        if (!isax_is_index_dimension(settings, segment)) continue;
         if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -412,16 +408,19 @@ int split_node(isax_index *index, isax_node *node, int inmemory, int kn) {
         return 0;
     }
 
-    split_data->split_mask = calloc(index->settings->n_segments, sizeof(sax_type));
+    split_data->split_mask = malloc(sizeof(*split_data->split_mask) *
+                                    (size_t) index->settings->n_segments);
     if (split_data->split_mask != NULL && node->parent != NULL) {
         memcpy(split_data->split_mask,
                node->parent->split_data->split_mask,
-               sizeof(sax_type) * index->settings->n_segments);
+               sizeof(*split_data->split_mask) * (size_t) index->settings->n_segments);
     } else if (split_data->split_mask != NULL) {
+        memset(split_data->split_mask, -1,
+               sizeof(*split_data->split_mask) * (size_t) index->settings->n_segments);
         int root_segments = index->settings->isax_index_segments / kn;
         for (int slot = 0; slot < root_segments; slot++) {
             const int dimension = (slot * index->settings->n_segments) / root_segments;
-            split_data->split_mask[dimension] = (sax_type) (kn - 1);
+            split_data->split_mask[dimension] = (int8_t) (kn - 1);
         }
     }
     if (split_data->split_mask == NULL) {

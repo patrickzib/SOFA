@@ -1647,7 +1647,7 @@ int main(int argc, char **argv) {
                 "function type,%d\nSIMD,%u\n"
                 "input type,%s\ndataset header bytes,%lu\nquery header bytes,%lu\n"
                 "apply z-norm,%d\ninput is normalized,%d\n"
-                "symbolic dimensions,%d\niSAX index dimensions,%d\nrecord lower-bound dimensions,%d\n"
+                "symbolic dimensions,%d\niSAX root dimensions,%d\nrecord lower-bound dimensions,%d\n"
                 "SAX cardinality bits,%d\nleaf size,%d\nminimum leaf size,%d\n"
                 "initial leaf buffer size,%d\nmaximum total buffer size,%d\n"
                 "initial first-buffer-layer size,%d\nloaded leaves,%d\n"

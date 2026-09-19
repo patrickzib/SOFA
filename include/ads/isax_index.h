@@ -45,9 +45,9 @@ typedef struct {
     int timeseries_size;
     int ts_values_per_paa_segment;
     int n_segments;
-    /* Number of uniformly selected symbolic dimensions used to route and
-     * split the dense iSAX tree.  The complete n_segments-wide word remains
-     * available for node and record lower bounds. */
+    /* Number of uniformly selected symbolic dimensions used for the dense
+     * iSAX root partition. Deeper splits and bounds may use the complete
+     * n_segments-wide word. */
     int isax_index_segments;
 	
 	int tight_bound;

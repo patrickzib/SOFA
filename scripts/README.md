@@ -54,13 +54,21 @@ variants without SOFA-v2 bounds, and both SPARTAN/trie variants. SPARTAN keeps
 its 128-dimensional MBR cascade while its record prefix and split candidates
 track the selected dimension count. Results and logs are isolated below
 `results/segment_scaling/{results,logs}/SYSTEM/segments-N`. The SAX and SFA
-indexes always route and split on 16 uniformly selected dimensions, avoiding
-the dense `2^N` iSAX root table, while node/record bounds and blocked SIMD use
-the complete symbolic word at all four widths. No second construction word is
-stored. Use `--dry-run` to inspect the commands. At 48 dimensions, SAX/PAA
+indexes use 16 uniformly selected dimensions for the root partition, avoiding
+the dense `2^N` iSAX root table. Deeper splits, node/record bounds, and blocked
+SIMD use the complete symbolic word at all four widths. No second construction
+word is stored. Use `--dry-run` to inspect the commands. At 48 dimensions, SAX/PAA
 ignores trailing samples for series lengths that are not divisible by 48; the
 runner prints a warning so this exploratory point is not mistaken for a
 strictly like-for-like PAA comparison.
+
+Interrupted runs can be resumed with `--resume`. A dataset is skipped only
+when its archive already exists under the matching system and segment width;
+an interrupted, unarchived dataset is rerun from the beginning. The default
+remains `--rerun-existing` so deliberate repeat experiments keep their prior
+behavior. Before rerunning an incomplete unit, its partial logs are moved to
+`incomplete/SYSTEM/segments-N/attempt-TIMESTAMP-PID` so they cannot be mixed
+with the completed archive.
 Open `notebooks/plot_segment_scaling.ipynb` after the run (or after copying the
 experiment directory to `notebooks/trie_logs/segment_scaling`) to print the
 16/32/48/64 table and plot the macro-averaged scaling curves.
