@@ -391,13 +391,13 @@ mkdir -p "$SEGMENT_RESUME_ROOT/results/messi/segments-16/ASTRO" \
          "$SEGMENT_RESUME_ROOT/logs/messi/segments-16"
 printf 'partial\n' > "$SEGMENT_RESUME_ROOT/logs/messi/segments-16/interrupted.log"
 OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --segment-list 16 \
-    --datasets astro --experiment-root "$SEGMENT_RESUME_ROOT" --resume \
+    --datasets astro --experiment-root "$SEGMENT_RESUME_ROOT" \
     --binary /tmp/does-not-exist 2>&1)
 [[ $(printf '%s\n' "$OUTPUT" | grep -c 'Skipping dataset=astro') == 3 ]] || \
     fail 'segment-scaling resume did not skip all three completed system archives'
 [[ $(find "$SEGMENT_RESUME_ROOT/incomplete/messi/segments-16" -name interrupted.log | wc -l | tr -d ' ') == 1 ]] || \
     fail 'segment-scaling resume did not preserve partial logs separately'
-pass 'segment-scaling runner resumes at dataset/system/segment archive boundaries'
+pass 'segment-scaling runner resumes by default at dataset/system/segment archive boundaries'
 
 TEST_RUN_MESSI="$TEMP_ROOT/test_run_messi"
 printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "$*"' > "$TEST_RUN_MESSI"

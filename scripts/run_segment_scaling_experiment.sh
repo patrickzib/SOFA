@@ -16,8 +16,8 @@ Options:
   --threads N               Query workers (default: 64)
   --index-threads N|auto    Index workers (default: 64)
   --experiment-root PATH    Logs/results root (default: ./results/segment_scaling)
-  --resume                  Skip completed dataset/system/segment archives
-  --rerun-existing          Rerun completed archives (default)
+  --resume                  Skip completed dataset/system/segment archives (default)
+  --rerun-existing          Rerun completed archives
   -h, --help                Show this help
 
 All other options are passed to run_suite.sh. Use --datasets to select a
@@ -31,7 +31,7 @@ SEGMENT_LIST=16,32,48,64
 QUERY_THREADS=64
 INDEX_THREADS=64
 EXPERIMENT_ROOT=${MESSI_SEGMENT_SCALING_ROOT:-"$PWD/results/segment_scaling"}
-RESUME=false
+RESUME=true
 DRY_RUN=false
 PASSTHROUGH=()
 

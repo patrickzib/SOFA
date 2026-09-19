@@ -2983,14 +2983,25 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
-        fprintf(stderr, "  root dims     : %s %d of %d symbolic dimensions\n",
-                settings->root_dimensions_variance_ranked ? "variance-ranked" : "uniform",
-                settings->isax_index_segments, settings->n_segments);
-        fprintf(stderr, "  root dimensions:");
-        for (int slot = 0; slot < settings->isax_index_segments; ++slot)
-            fprintf(stderr, "%s%d", slot == 0 ? " " : ",",
-                    isax_index_dimension_at(settings, slot));
-        fprintf(stderr, "\n");
+        const int learned_transform = settings->function_type == 4 ||
+                                      settings->function_type == 5 ||
+                                      settings->function_type == 6;
+        if (learned_transform && !settings->root_dimensions_variance_ranked) {
+            fprintf(stderr,
+                    "  root dims     : variance-ranked %d of %d symbolic dimensions "
+                    "(selected after binning)\n",
+                    settings->isax_index_segments, settings->n_segments);
+            fprintf(stderr, "  root dimensions: pending variance estimates\n");
+        } else {
+            fprintf(stderr, "  root dims     : %s %d of %d symbolic dimensions\n",
+                    settings->root_dimensions_variance_ranked ? "variance-ranked" : "uniform",
+                    settings->isax_index_segments, settings->n_segments);
+            fprintf(stderr, "  root dimensions:");
+            for (int slot = 0; slot < settings->isax_index_segments; ++slot)
+                fprintf(stderr, "%s%d", slot == 0 ? " " : ",",
+                        isax_index_dimension_at(settings, slot));
+            fprintf(stderr, "\n");
+        }
         fprintf(stderr, "  lower bounds  : all %d symbolic dimensions%s\n",
                 settings->n_segments, settings->SIMD_flag ? " (SIMD enabled)" : "");
         fprintf(stderr, "  iSAX bounds   : node MBR=%s\n",
