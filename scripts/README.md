@@ -56,6 +56,9 @@ track the selected dimension count. Results and logs are isolated below
 `results/segment_scaling/{results,logs}/SYSTEM/segments-N`. The SAX and SFA
 record bounds use blocked SIMD over the complete symbolic word at all three
 widths; use `--dry-run` to inspect the commands.
+Open `notebooks/plot_segment_scaling.ipynb` after the run (or after copying the
+experiment directory to `notebooks/trie_logs/segment_scaling`) to print the
+16/32/64 table and plot the macro-averaged scaling curves.
 
 ## Trie fanout and dynamic alphabets
 
