@@ -23,13 +23,17 @@ double messi_monotonic_seconds(void) {
 
 ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
                            sax_type *sax_cardinalities, float bsf) {
-    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
-        if (index->settings->function_type == 4)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 2.0f);
+    if (index->settings->SIMD_flag && sizeof(sax_type) == 1) {
+        const int dimensions = index->settings->n_segments;
+        if (index->settings->function_type == 4 && index->settings->is_norm)
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 2.0f);
         if (index->settings->function_type == 6)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 1.0f);
         if (index->settings->function_type == 5)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 1.0f);
         return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
     }
     if (index->settings->function_type == 4 || index->settings->function_type == 6)

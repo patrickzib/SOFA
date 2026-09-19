@@ -2964,6 +2964,18 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
             settings->SIMD_flag ? "requested, but AVX2 was not compiled in" : "not compiled in");
 #endif
 
+    if (settings->function_type == 3 || settings->function_type == 4) {
+        fprintf(stderr, "  symbolic LB   : %s across %d dimensions\n",
+                settings->SIMD_flag
+#if defined(__AVX512F__) || ADS_HAVE_AVX2 || defined(__ARM_NEON) || defined(__ARM_NEON__)
+                    ? "blocked SIMD"
+#else
+                    ? "scalar (SIMD unavailable)"
+#endif
+                    : "scalar",
+                settings->n_segments);
+    }
+
     if (settings->function_type == 3) {
         fprintf(stderr, "  transform     : SAX, %d segments, alphabet %d (%d bits)\n",
                 settings->n_segments, settings->sax_alphabet_cardinality,

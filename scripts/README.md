@@ -42,6 +42,21 @@ The wrapper runs query workers at 16, 32, and 64 cores while keeping index
 construction at 64 workers. Use `--dry-run` to inspect commands and
 `--experiment-root PATH` to isolate the generated logs and archives.
 
+For the symbolic-dimension scaling comparison, run:
+
+```bash
+scripts/run_segment_scaling_experiment.sh --datasets astro,obs,pnw
+```
+
+This wrapper fixes query and index construction at 64 workers and evaluates
+16, 32, and 64 symbolic dimensions. It runs SAX+iSAX, both SFA+iSAX binning
+variants without SOFA-v2 bounds, and both SPARTAN/trie variants. SPARTAN keeps
+its 128-dimensional MBR cascade while its record prefix and split candidates
+track the selected dimension count. Results and logs are isolated below
+`results/segment_scaling/{results,logs}/SYSTEM/segments-N`. The SAX and SFA
+record bounds use blocked SIMD over the complete symbolic word at all three
+widths; use `--dry-run` to inspect the commands.
+
 ## Trie fanout and dynamic alphabets
 
 Trie runs support either one fixed fanout or one globally precomputed dynamic

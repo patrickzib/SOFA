@@ -254,16 +254,17 @@ static inline unsigned int messi_residual_only_batch_mask(const float *residuals
 #endif
 }
 
-static inline float messi_lower_bound_16_scalar(const isax_index *index,
-                                                 const float values[16],
-                                                 const sax_type sax[16],
-                                                 const sax_type cardinalities[16],
-                                                 float bsf, float factor) {
+static inline float messi_lower_bound_scalar(const isax_index *index,
+                                              const float *values,
+                                              const sax_type *sax,
+                                              const sax_type *cardinalities,
+                                              int dimensions,
+                                              float bsf, float factor) {
     const int max_bits = index->settings->sax_bit_cardinality;
     const int alphabet = index->settings->sax_alphabet_cardinality;
     const int stride = alphabet - 1;
     float distance = 0.0f;
-    for (int i = 0; i < 16 && distance * factor <= bsf; ++i) {
+    for (int i = 0; i < dimensions && distance * factor <= bsf; ++i) {
         const int shift = max_bits - cardinalities[i];
         const int low = (sax[i] >> shift) << shift;
         const int high = low | (shift == 0 ? 0 : ((1 << shift) - 1));
@@ -274,6 +275,14 @@ static inline float messi_lower_bound_16_scalar(const isax_index *index,
         distance += difference * difference;
     }
     return distance * factor;
+}
+
+static inline float messi_lower_bound_16_scalar(const isax_index *index,
+                                                 const float values[16],
+                                                 const sax_type sax[16],
+                                                 const sax_type cardinalities[16],
+                                                 float bsf, float factor) {
+    return messi_lower_bound_scalar(index, values, sax, cardinalities, 16, bsf, factor);
 }
 
 #if ADS_HAVE_AVX2
@@ -339,7 +348,7 @@ static inline float messi_lower_bound_avx512_block(const isax_index *index,
     const int stride = alphabet - 1;
     int lower_index[16] = {0}, upper_index[16] = {0};
     __mmask16 lower_zero = 0, upper_max = 0;
-    for (int lane = 0; lane < 8; ++lane) {
+    for (int lane = 0; lane < 16; ++lane) {
         const int shift = max_bits - cardinalities[start + lane];
         const int low = (sax[start + lane] >> shift) << shift;
         const int high = low | (shift == 0 ? 0 : ((1 << shift) - 1));
@@ -348,7 +357,7 @@ static inline float messi_lower_bound_avx512_block(const isax_index *index,
         if (high == alphabet - 1) upper_max |= ((__mmask16) 1 << lane);
         else upper_index[lane] = (start + lane) * stride + high;
     }
-    const __mmask16 active = 0x00ff;
+    const __mmask16 active = 0xffff;
     const __m512 lower_gathered = _mm512_mask_i32gather_ps(_mm512_setzero_ps(), active,
         _mm512_loadu_si512((const void *) lower_index), index->binsv, 4);
     const __m512 upper_gathered = _mm512_mask_i32gather_ps(_mm512_setzero_ps(), active,
@@ -404,30 +413,55 @@ static inline float messi_lower_bound_neon_block(const isax_index *index,
 }
 #endif
 
+static inline float messi_lower_bound_simd(const isax_index *index,
+                                           const float *values,
+                                           const sax_type *sax,
+                                           const sax_type *cardinalities,
+                                           int dimensions,
+                                           float bsf, float factor) {
+    float distance = 0.0f;
+    int dimension = 0;
+#if defined(__AVX512F__)
+    for (; dimension + 16 <= dimensions && distance <= bsf; dimension += 16)
+        distance += messi_lower_bound_avx512_block(
+            index, values + dimension, sax, cardinalities, dimension) * factor;
+#elif ADS_HAVE_AVX2
+    for (; dimension + 8 <= dimensions && distance <= bsf; dimension += 8)
+        distance += messi_lower_bound_avx2_block(
+            index, values + dimension, sax, cardinalities, dimension) * factor;
+#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
+    for (; dimension + 8 <= dimensions && distance <= bsf; dimension += 8)
+        distance += messi_lower_bound_neon_block(
+            index, values + dimension, sax, cardinalities, dimension) * factor;
+#else
+    return messi_lower_bound_scalar(index, values, sax, cardinalities,
+                                    dimensions, bsf, factor);
+#endif
+    for (; dimension < dimensions && distance <= bsf; ++dimension) {
+        const int max_bits = index->settings->sax_bit_cardinality;
+        const int alphabet = index->settings->sax_alphabet_cardinality;
+        const int stride = alphabet - 1;
+        const int shift = max_bits - cardinalities[dimension];
+        const int low = (sax[dimension] >> shift) << shift;
+        const int high = low | (shift == 0 ? 0 : ((1 << shift) - 1));
+        const float lower = low == 0 ? MINVAL
+            : index->binsv[dimension * stride + low - 1];
+        const float upper = high == alphabet - 1 ? MAXVAL
+            : index->binsv[dimension * stride + high];
+        const float difference = values[dimension] < lower
+            ? lower - values[dimension]
+            : values[dimension] > upper ? values[dimension] - upper : 0.0f;
+        distance += difference * difference * factor;
+    }
+    return distance;
+}
+
 static inline float messi_lower_bound_16(const isax_index *index,
                                          const float *values,
                                          const sax_type *sax,
                                          const sax_type *cardinalities,
                                          float bsf, float factor) {
-    float first;
-#if defined(__AVX512F__)
-    first = messi_lower_bound_avx512_block(index, values, sax, cardinalities, 0);
-#elif ADS_HAVE_AVX2
-    first = messi_lower_bound_avx2_block(index, values, sax, cardinalities, 0);
-#elif defined(__ARM_NEON) || defined(__ARM_NEON__)
-    first = messi_lower_bound_neon_block(index, values, sax, cardinalities, 0);
-#else
-    return messi_lower_bound_16_scalar(index, values, sax, cardinalities, bsf, factor);
-#endif
-    first *= factor;
-    if (first > bsf) return first;
-#if defined(__AVX512F__)
-    return first + messi_lower_bound_avx512_block(index, values + 8, sax, cardinalities, 8) * factor;
-#elif ADS_HAVE_AVX2
-    return first + messi_lower_bound_avx2_block(index, values + 8, sax, cardinalities, 8) * factor;
-#else
-    return first + messi_lower_bound_neon_block(index, values + 8, sax, cardinalities, 8) * factor;
-#endif
+    return messi_lower_bound_simd(index, values, sax, cardinalities, 16, bsf, factor);
 }
 
 #endif

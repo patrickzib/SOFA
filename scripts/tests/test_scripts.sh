@@ -77,6 +77,27 @@ assert_contains "$OUTPUT" '--threads 64'
 assert_contains "$OUTPUT" '--index-threads 64'
 pass 'suite separates fixed index workers from query-core scaling'
 
+OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --datasets astro --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 15 ]] || \
+    fail 'segment scaling should emit five methods at each of three widths'
+for segments in 16 32 64; do
+    [[ $(printf '%s\n' "$OUTPUT" | grep -c -- "--n-segments $segments") == 5 ]] || \
+        fail "segment scaling did not emit five commands at width $segments"
+    assert_contains "$OUTPUT" "--function-type 5"
+    printf '%s\n' "$OUTPUT" | grep -- "--function-type 5" | grep -- "--n-segments $segments" | \
+        grep -q -- "--trie-split-dimensions $segments" || \
+        fail "SPARTAN split dimensions do not track width $segments"
+done
+assert_contains "$OUTPUT" '--threads 64'
+assert_contains "$OUTPUT" '--index-threads 64'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_not_contains "$OUTPUT" '--enable-sofa-v2'
+assert_not_contains "$OUTPUT" '--isax-node-mbr'
+assert_not_contains "$OUTPUT" '--isax-record-mbr-suffix-bound'
+assert_not_contains "$OUTPUT" '--isax-record-lb-table'
+assert_contains "$(<"$SCRIPT_DIR/run_segment_scaling_experiment.sh")" 'segments-$segments'
+pass 'segment-scaling runner fixes workers, isolates widths, and excludes SOFA-v2 bounds'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-type 3'
 if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --sample-type 4 --dry-run >/dev/null 2>&1; then

@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "ads/lower_bound_simd.h"
+#include "ads/sax/sax.h"
 
 static unsigned int state = 1;
 
@@ -21,28 +22,63 @@ int main(void) {
     settings.sax_bit_cardinality = 8;
     settings.sax_alphabet_cardinality = 256;
     index.settings = &settings;
-    index.binsv = malloc(sizeof(*index.binsv) * 16 * 255);
+    index.binsv = malloc(sizeof(*index.binsv) * 64 * 255);
     if (index.binsv == NULL) return 1;
-    for (int dimension = 0; dimension < 16; ++dimension)
+    for (int dimension = 0; dimension < 64; ++dimension)
         for (int symbol = 0; symbol < 255; ++symbol)
             index.binsv[dimension * 255 + symbol] = ((float) symbol - 127.0f) / 16.0f;
 
+    const int learned_widths[] = {16, 32, 64};
     for (int trial = 0; trial < 1000; ++trial) {
-        float values[16];
-        sax_type sax[16], cardinalities[16];
-        for (int i = 0; i < 16; ++i) {
+        float values[64];
+        sax_type sax[64], cardinalities[64];
+        for (int i = 0; i < 64; ++i) {
             values[i] = ((float) (next_random() & 0xffff) / 4096.0f) - 8.0f;
             sax[i] = (sax_type) (next_random() >> 24);
             cardinalities[i] = (sax_type) (4 + (next_random() % 5));
         }
-        for (int factor_index = 0; factor_index < 2; ++factor_index) {
-            const float factor = factor_index == 0 ? 1.0f : 2.0f;
-            const float reference = messi_lower_bound_16_scalar(
-                &index, values, sax, cardinalities, FLT_MAX, factor);
-            const float actual = messi_lower_bound_16(
-                &index, values, sax, cardinalities, FLT_MAX, factor);
+        for (size_t width = 0; width < sizeof(learned_widths) / sizeof(learned_widths[0]); ++width) {
+            for (int factor_index = 0; factor_index < 2; ++factor_index) {
+                const float factor = factor_index == 0 ? 1.0f : 2.0f;
+                const float limit = trial % 2 == 0 ? FLT_MAX : 5.0f;
+                const float reference = messi_lower_bound_scalar(
+                    &index, values, sax, cardinalities, learned_widths[width], limit, factor);
+                const float actual = messi_lower_bound_simd(
+                    &index, values, sax, cardinalities, learned_widths[width], limit, factor);
+                if ((reference > limit) != (actual > limit) ||
+                    (reference <= limit &&
+                     fabsf(reference - actual) > 1e-4f * fmaxf(1.0f, reference))) {
+                    fprintf(stderr,
+                            "lower-bound mismatch: dims=%d reference=%g actual=%g limit=%g\n",
+                            learned_widths[width], reference, actual, limit);
+                    free(index.binsv);
+                    return 1;
+                }
+            }
+        }
+    }
+
+    /* The direct SAX kernel must consume the complete symbolic word, not
+     * silently stop after the historical first sixteen dimensions. */
+    for (size_t width = 0; width < sizeof(learned_widths) / sizeof(learned_widths[0]); ++width) {
+        const int dimensions = learned_widths[width];
+        float paa[64];
+        sax_type sax[64], cardinalities[64];
+        settings.n_segments = dimensions;
+        settings.mindist_sqrt = 1.0f;
+        for (int trial = 0; trial < 1000; ++trial) {
+            for (int i = 0; i < dimensions; ++i) {
+                paa[i] = ((float) (next_random() & 0xffff) / 8192.0f) - 4.0f;
+                sax[i] = (sax_type) (next_random() >> 24);
+                cardinalities[i] = (sax_type) (4 + (next_random() % 5));
+            }
+            const float reference = minidist_paa_to_isax(
+                paa, sax, cardinalities, &settings, 1);
+            const float actual = minidist_paa_to_isax_raw_SIMD(
+                paa, sax, cardinalities, &settings);
             if (fabsf(reference - actual) > 1e-4f * fmaxf(1.0f, reference)) {
-                fprintf(stderr, "lower-bound mismatch: reference=%g actual=%g\n", reference, actual);
+                fprintf(stderr, "SAX lower-bound mismatch: dims=%d reference=%g actual=%g\n",
+                        dimensions, reference, actual);
                 free(index.binsv);
                 return 1;
             }
