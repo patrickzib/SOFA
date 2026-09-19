@@ -1443,7 +1443,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        if (index_type == MESSI_INDEX_ISAX && time_series_size % n_segments != 0) {
+        if (index_type == MESSI_INDEX_ISAX && function_type <= 3 &&
+            time_series_size % n_segments != 0) {
             fprintf(stderr,
                     "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
                     "is not divisible by n-segments (%d).\n",

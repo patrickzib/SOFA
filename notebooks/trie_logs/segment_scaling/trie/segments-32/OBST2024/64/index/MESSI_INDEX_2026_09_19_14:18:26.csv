@@ -1,0 +1,2 @@
+layout,function type,indexed records,series length,symbolic dimensions,record lower-bound dimensions,binning us,index construction wall us,total construction wall us
+trie,5,4160286,256,128,32,10996661,8017365,19014026

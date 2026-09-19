@@ -320,6 +320,12 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number
 assert_contains "$OUTPUT" '--sfa-n-coefficients 48'
 pass 'short series use the largest valid even coefficient pool'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 \
+    --index-type isax --isax-n-segments 64 --methods sfa-depth --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
+pass 'segment scaling widens the SFA coefficient pool to the symbolic width'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'

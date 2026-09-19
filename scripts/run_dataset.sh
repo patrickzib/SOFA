@@ -660,7 +660,7 @@ print_suite_summary() {
 }
 
 run_method() {
-    local method=$1 function_type histogram_type=
+    local method=$1 function_type histogram_type= sfa_coefficients
     local -a args=("${COMMON_ARGS[@]}")
 
     case "$method" in
@@ -688,7 +688,20 @@ run_method() {
         # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
         # previously issued one scattered seek/read for each sampled record.
         args+=(--sample-size "$SAMPLE_SIZE" --sample-type "$SAMPLE_TYPE" --is-norm --histogram-type "$histogram_type")
-        [[ $function_type == 4 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
+        if [[ $function_type == 4 ]]; then
+            sfa_coefficients=$COEFF_NUMBER
+            # Dataset defaults describe the normal training pool. Wider
+            # segment-scaling runs must enlarge that pool because SFA requires
+            # at least one candidate value per symbolic dimension.
+            if (( sfa_coefficients < ISAX_N_SEGMENTS )); then
+                sfa_coefficients=$ISAX_N_SEGMENTS
+            fi
+            (( sfa_coefficients % 2 == 0 &&
+               sfa_coefficients >= ISAX_N_SEGMENTS &&
+               sfa_coefficients <= TS_SIZE )) || \
+                die "SFA coefficient pool must be even and between $ISAX_N_SEGMENTS and $TS_SIZE"
+            args+=(--sfa-n-coefficients "$sfa_coefficients")
+        fi
     fi
     if [[ $INDEX_TYPE == isax && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
     if [[ $PROFILE == knn ]]; then args+=(--topk --k-size "$K_SIZE"); fi
