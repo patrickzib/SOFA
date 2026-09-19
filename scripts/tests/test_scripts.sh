@@ -78,9 +78,9 @@ assert_contains "$OUTPUT" '--index-threads 64'
 pass 'suite separates fixed index workers from query-core scaling'
 
 OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --datasets astro --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 15 ]] || \
-    fail 'segment scaling should emit five methods at each of three widths'
-for segments in 16 32 64; do
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 20 ]] || \
+    fail 'segment scaling should emit five methods at each of four widths'
+for segments in 16 32 48 64; do
     [[ $(printf '%s\n' "$OUTPUT" | grep -c -- "--n-segments $segments") == 5 ]] || \
         fail "segment scaling did not emit five commands at width $segments"
     assert_contains "$OUTPUT" "--function-type 5"

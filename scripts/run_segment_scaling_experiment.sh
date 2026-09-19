@@ -12,7 +12,7 @@ the symbolic dimensions. Query and index construction use 64 workers by
 default. SOFA-v2 bounds are deliberately excluded.
 
 Options:
-  --segment-list LIST       Symbolic dimensions (default: 16,32,64)
+  --segment-list LIST       Symbolic dimensions (default: 16,32,48,64)
   --threads N               Query workers (default: 64)
   --index-threads N|auto    Index workers (default: 64)
   --experiment-root PATH    Logs/results root (default: ./results/segment_scaling)
@@ -25,7 +25,7 @@ USAGE
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 2; }
 
-SEGMENT_LIST=16,32,64
+SEGMENT_LIST=16,32,48,64
 QUERY_THREADS=64
 INDEX_THREADS=64
 EXPERIMENT_ROOT=${MESSI_SEGMENT_SCALING_ROOT:-"$PWD/results/segment_scaling"}
@@ -78,9 +78,14 @@ IFS=',' read -r -a SEGMENTS <<< "$SEGMENT_LIST"
 [[ ${#SEGMENTS[@]} -gt 0 ]] || die '--segment-list must not be empty'
 for segments in "${SEGMENTS[@]}"; do
     [[ $segments =~ ^[1-9][0-9]*$ ]] || die "invalid segment count '$segments'"
-    (( segments == 16 || segments == 32 || segments == 64 )) || \
-        die '--segment-list supports 16, 32, and 64'
+    (( segments == 16 || segments == 32 || segments == 48 || segments == 64 )) || \
+        die '--segment-list supports 16, 32, 48, and 64'
 done
+
+if [[ ,$SEGMENT_LIST, == *,48,* ]]; then
+    printf '%s\n' \
+        'Warning: SAX/PAA ignores trailing samples when a dataset length is not divisible by 48.' >&2
+fi
 
 run_system() {
     local segments=$1 name=$2 index_type=$3 methods=$4
