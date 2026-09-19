@@ -116,10 +116,13 @@ root_mask_type isax_root_mask_from_sax(const isax_index *index,
     if (uniform_kn < 1) {
         uniform_kn = 1;
     }
-    for (int i = 0; i < settings->n_segments / uniform_kn; ++i) {
+    const int root_dimensions = settings->isax_index_segments / uniform_kn;
+    for (int i = 0; i < root_dimensions; ++i) {
+        const int dimension = (i * settings->n_segments) / root_dimensions;
         for (int j = 0; j < uniform_kn; ++j) {
-            if (sax[i] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
-                mask |= ((root_mask_type) 1 << (settings->n_segments - i * uniform_kn - j - 1));
+            if (sax[dimension] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
+                mask |= ((root_mask_type) 1 <<
+                         (settings->isax_index_segments - i * uniform_kn - j - 1));
             }
         }
     }

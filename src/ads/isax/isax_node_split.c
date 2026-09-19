@@ -221,6 +221,7 @@ static int append_disk_buffers(isax_index *index, isax_node *node,
 int simple_split_decision(isax_node_split_data *split_data, isax_index_settings *settings) {
     int min_index = -1;
     for (int i = 0; i < settings->n_segments; i++) {
+        if (!isax_is_index_dimension(settings, i)) continue;
         if (split_data->split_mask[i] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -272,6 +273,7 @@ int informed_split_decision(isax_node_split_data *split_data,
     int segment_to_split = -1;
     int segment_to_split_b = -1;
     for (i = 0; i < settings->n_segments; i++) {
+        if (!isax_is_index_dimension(settings, i)) continue;
         int new_bit_cardinality = split_data->split_mask[i] + 1;
         if (new_bit_cardinality > settings->sax_bit_cardinality - 1) {
             continue;
@@ -316,6 +318,7 @@ int maxvar_split_decision(isax_node_split_data *split_data,
     double best_variance = -1.0;
 
     for (int segment = 0; segment < settings->n_segments; ++segment) {
+        if (!isax_is_index_dimension(settings, segment)) continue;
         if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -350,6 +353,7 @@ int maxbin_split_decision(isax_node_split_data *split_data,
     int best_imbalance = INT_MAX;
 
     for (int segment = 0; segment < settings->n_segments; ++segment) {
+        if (!isax_is_index_dimension(settings, segment)) continue;
         if (split_data->split_mask[segment] + 1 > settings->sax_bit_cardinality - 1) {
             continue;
         }
@@ -414,9 +418,10 @@ int split_node(isax_index *index, isax_node *node, int inmemory, int kn) {
                node->parent->split_data->split_mask,
                sizeof(sax_type) * index->settings->n_segments);
     } else if (split_data->split_mask != NULL) {
-        int root_segments = index->settings->n_segments / kn;
-        for (int i = 0; i < root_segments; i++) {
-            split_data->split_mask[i] = (sax_type) (kn - 1);
+        int root_segments = index->settings->isax_index_segments / kn;
+        for (int slot = 0; slot < root_segments; slot++) {
+            const int dimension = (slot * index->settings->n_segments) / root_segments;
+            split_data->split_mask[dimension] = (sax_type) (kn - 1);
         }
     }
     if (split_data->split_mask == NULL) {

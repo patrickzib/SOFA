@@ -155,6 +155,8 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 
     settings->timeseries_size = timeseries_size;
     settings->n_segments = n_segments;
+    settings->isax_index_segments = index_type == MESSI_INDEX_ISAX && n_segments > 16
+                                        ? 16 : n_segments;
     // settings->ts_values_per_paa_segment = ceil((float) timeseries_size/ (float) n_segments);
     settings->ts_values_per_paa_segment =timeseries_size/ n_segments;
     settings->max_leaf_size = max_leaf_size;
@@ -187,7 +189,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
     settings->mindist_sqrt = ((float) settings->timeseries_size /
                                    (float) settings->n_segments);
     settings->root_nodes_size = index_type == MESSI_INDEX_ISAX
-                                    ? pow(2, settings->n_segments) : 0;
+                                    ? (1 << settings->isax_index_segments) : 0;
     
     // SEGMENTS * (CARDINALITY)
     float c_size = ceil(log10(settings->sax_alphabet_cardinality + 1));
@@ -196,31 +198,15 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
                                   + 5 + strlen(root_directory);
     
     
-    if(index_type == MESSI_INDEX_ISAX && n_segments > sax_bit_cardinality)
-    {
-        settings->bit_masks = malloc(sizeof(root_mask_type) * (n_segments+1));
-        if(settings->bit_masks == NULL) {
-            fprintf(stderr,"error: could not allocate memory for bit masks.\n");
-            return NULL;
-        }
-        
-        for (; n_segments>=0; n_segments--)
-        {
-            settings->bit_masks[n_segments] = pow(2, n_segments);
-        }
+    const int bit_mask_count = index_type == MESSI_INDEX_ISAX && n_segments > sax_bit_cardinality
+                                   ? n_segments + 1 : sax_bit_cardinality + 1;
+    settings->bit_masks = calloc((size_t) bit_mask_count, sizeof(root_mask_type));
+    if (settings->bit_masks == NULL) {
+        fprintf(stderr,"error: could not allocate memory for bit masks.\n");
+        return NULL;
     }
-    else
-    {
-        settings->bit_masks = malloc(sizeof(root_mask_type) * (sax_bit_cardinality+1));
-        if(settings->bit_masks == NULL) {
-            fprintf(stderr,"error: could not allocate memory for bit masks.\n");
-            return NULL;
-        }
-        
-        for (; sax_bit_cardinality>=0; sax_bit_cardinality--)
-        {
-            settings->bit_masks[sax_bit_cardinality] = pow(2, sax_bit_cardinality);
-        }
+    for (int bit = 0; bit < bit_mask_count && bit < (int) (8 * sizeof(root_mask_type)); ++bit) {
+        settings->bit_masks[bit] = (root_mask_type) 1 << bit;
     }
     
     if(new_index) {
@@ -300,7 +286,7 @@ isax_index * isax_index_init(isax_index_settings *settings)
     index->settings = settings;
     index->first_node = NULL;
     index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
-                                pow(2, settings->n_segments), 
+                                settings->root_nodes_size,
                                 settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     char *sax_filename = malloc((strlen(settings->root_directory) + 15) * sizeof(char));
     sax_filename = strcpy(sax_filename, settings->root_directory);
@@ -700,11 +686,12 @@ enum response create_node_filename(isax_index *index,
     
     // If this has a parent then it is not a root node and as such it does have some 
     // split data on its parent about the cardinalities.
-    node->isax_values = malloc(sizeof(sax_type) * index->settings->n_segments);
-    node->isax_cardinalities = malloc(sizeof(sax_type) * index->settings->n_segments);
+    node->isax_values = calloc((size_t) index->settings->n_segments, sizeof(sax_type));
+    node->isax_cardinalities = calloc((size_t) index->settings->n_segments, sizeof(sax_type));
     
     if (node->parent) {
         for (i=0; i<index->settings->n_segments; i++) {
+            if (!isax_is_index_dimension(index->settings, i)) continue;
             root_mask_type mask = 0x00;
             int k; 
             for (k=0; k <= node->parent->split_data->split_mask[i]; k++) {
@@ -726,7 +713,9 @@ enum response create_node_filename(isax_index *index,
     }
     // If it has no parent it is root node and as such it's cardinality is kn (default 1).
     else {
-        for (i=0; i<index->settings->n_segments/kn; i++) {
+        const int root_dimensions = index->settings->isax_index_segments / kn;
+        for (int slot = 0; slot < root_dimensions; slot++) {
+            i = (slot * index->settings->n_segments) / root_dimensions;
             root_mask_type mask = 0x00;
             for (int j = 0; j < kn; j++) {
                 mask |= (index->settings->bit_masks[index->settings->sax_bit_cardinality - 1 - j] &
@@ -737,7 +726,7 @@ enum response create_node_filename(isax_index *index,
             node->isax_values[i] = (int) mask;
             node->isax_cardinalities[i] = kn;
             
-            if (i==0) {
+            if (slot==0) {
                 l += sprintf(node->filename+l ,"%d.%d", (int) mask, kn);
             }
             else {
@@ -2903,6 +2892,8 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
     }
     fprintf(stderr, "  series length : %d\n", settings->timeseries_size);
     if (settings->index_type == MESSI_INDEX_ISAX) {
+        fprintf(stderr, "  index dims    : %d uniformly selected of %d symbolic dimensions\n",
+                settings->isax_index_segments, settings->n_segments);
         fprintf(stderr, "  iSAX bounds   : node MBR=%s\n",
                 settings->isax_node_mbr ? "on" : "off");
         if (settings->isax_record_mbr_suffix_bound || settings->isax_record_lb_table) {

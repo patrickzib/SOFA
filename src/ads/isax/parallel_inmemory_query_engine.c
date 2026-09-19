@@ -1299,7 +1299,7 @@ exact_search_serial_ParGISG_openmp_inmemory(ts_type *ts, ts_type *paa, isax_inde
 
     SET_APPROXIMATE(approximate_result.distance);
     bsf_distance = approximate_result.distance;
-    int numberofbuffer = pow(2, index->settings->n_segments);
+    int numberofbuffer = index->settings->root_nodes_size;
     pqueue_bsf *pq = pqueue_bsf_init(numberofbuffer);
 
     int kkkk = 0;

@@ -45,6 +45,10 @@ typedef struct {
     int timeseries_size;
     int ts_values_per_paa_segment;
     int n_segments;
+    /* Number of uniformly selected symbolic dimensions used to route and
+     * split the dense iSAX tree.  The complete n_segments-wide word remains
+     * available for node and record lower bounds. */
+    int isax_index_segments;
 	
 	int tight_bound;
 	int aggressive_check;
@@ -140,6 +144,19 @@ typedef struct {
     // int filetype_int;
 
 } isax_index_settings;
+
+static inline int isax_index_dimension_at(const isax_index_settings *settings,
+                                          int slot) {
+    return (slot * settings->n_segments) / settings->isax_index_segments;
+}
+
+static inline int isax_is_index_dimension(const isax_index_settings *settings,
+                                          int dimension) {
+    for (int slot = 0; slot < settings->isax_index_segments; ++slot) {
+        if (isax_index_dimension_at(settings, slot) == dimension) return 1;
+    }
+    return 0;
+}
 
 typedef struct {
     meminfo memory_info;

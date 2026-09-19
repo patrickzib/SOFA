@@ -608,7 +608,7 @@ void isax_index_binary_file_pRecBuf(const char *ifilename, int ts_num, isax_inde
     pthread_barrier_init(&lock_barrier2, NULL, calculate_thread);
     destroy_fbl(index->fbl);
         index->fbl = (first_buffer_layer*)initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->n_segments), 
+                                index->settings->root_nodes_size,
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     // set the thread on decided cpu
 
@@ -882,7 +882,7 @@ void isax_index_binary_file_2RecBuf(const char *ifilename, int ts_num, isax_inde
     pthread_barrier_init(&lock_barrier4, NULL, calculate_thread/2-propotion_number);
     destroy_fbl(index->fbl);
         index->fbl = (first_buffer_layer*)initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->n_segments), 
+                                index->settings->root_nodes_size,
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     // set the thread on decided cpu
     int indexconstructionroundchose=0;
@@ -1265,7 +1265,7 @@ void isax_index_binary_file_2nRecBuf(const char *ifilename, int ts_num, isax_ind
     pthread_barrier_init(&lock_barrier4, NULL, calculate_thread/2-propotion_number);
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer*)initialize_2pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->n_segments), 
+                                index->settings->root_nodes_size,
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
     first_buffer_layer *fbltran;
     // set the thread on decided cpu
@@ -3199,7 +3199,7 @@ root_mask_type isax_2pRecBuf_index_insert(isax_index *index,
     // set the thread on decided cpu
     destroy_fbl(index->fbl);
         index->fbl = initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                pow(2, index->settings->n_segments), 
+                                index->settings->root_nodes_size,
                                 index->settings->max_total_buffer_size+DISK_BUFFER_SIZE*(PROGRESS_CALCULATE_THREAD_NUMBER-1), index);
 
 

@@ -1647,7 +1647,7 @@ int main(int argc, char **argv) {
                 "function type,%d\nSIMD,%u\n"
                 "input type,%s\ndataset header bytes,%lu\nquery header bytes,%lu\n"
                 "apply z-norm,%d\ninput is normalized,%d\n"
-                "symbolic dimensions,%d\nrecord lower-bound dimensions,%d\n"
+                "symbolic dimensions,%d\niSAX index dimensions,%d\nrecord lower-bound dimensions,%d\n"
                 "SAX cardinality bits,%d\nleaf size,%d\nminimum leaf size,%d\n"
                 "initial leaf buffer size,%d\nmaximum total buffer size,%d\n"
                 "initial first-buffer-layer size,%d\nloaded leaves,%d\n"
@@ -1677,7 +1677,8 @@ int main(int argc, char **argv) {
                     (filetype_int == FILE_INPUT_UINT8 ? "uint8" : "float32"),
                 dataset_header_bytes, query_header_bytes,
                 apply_znorm, is_norm,
-                index_settings->n_segments, index_settings->trie_bound_dimensions,
+                index_settings->n_segments, index_settings->isax_index_segments,
+                index_settings->trie_bound_dimensions,
                 sax_cardinality, leaf_size, min_leaf_size,
                 initial_lbl_size, flush_limit, initial_fbl_size, total_loaded_leaves,
                 maxquerythread, index_thread_count, N_PQUEUE, requested_numa_nodes,

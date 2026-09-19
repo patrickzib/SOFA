@@ -54,14 +54,16 @@ variants without SOFA-v2 bounds, and both SPARTAN/trie variants. SPARTAN keeps
 its 128-dimensional MBR cascade while its record prefix and split candidates
 track the selected dimension count. Results and logs are isolated below
 `results/segment_scaling/{results,logs}/SYSTEM/segments-N`. The SAX and SFA
-record bounds use blocked SIMD over the complete symbolic word at all three
-widths; use `--dry-run` to inspect the commands. At 48 dimensions, SAX/PAA
+indexes always route and split on 16 uniformly selected dimensions, avoiding
+the dense `2^N` iSAX root table, while node/record bounds and blocked SIMD use
+the complete symbolic word at all four widths. No second construction word is
+stored. Use `--dry-run` to inspect the commands. At 48 dimensions, SAX/PAA
 ignores trailing samples for series lengths that are not divisible by 48; the
 runner prints a warning so this exploratory point is not mistaken for a
 strictly like-for-like PAA comparison.
 Open `notebooks/plot_segment_scaling.ipynb` after the run (or after copying the
 experiment directory to `notebooks/trie_logs/segment_scaling`) to print the
-16/32/64 table and plot the macro-averaged scaling curves.
+16/32/48/64 table and plot the macro-averaged scaling curves.
 
 ## Trie fanout and dynamic alphabets
 
