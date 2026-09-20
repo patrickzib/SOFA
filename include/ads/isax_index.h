@@ -45,6 +45,10 @@ typedef struct {
     int timeseries_size;
     int ts_values_per_paa_segment;
     int n_segments;
+    /* Number of uniformly selected symbolic dimensions used for the dense
+     * iSAX root partition. Deeper splits and bounds may use the complete
+     * n_segments-wide word. */
+    int isax_index_segments;
 	
 	int tight_bound;
 	int aggressive_check;
@@ -82,6 +86,8 @@ typedef struct {
     int histogram_type;
     int sample_type;
     unsigned int sampling_seed;
+    /* Optional construction settings stream owned by the CLI. */
+    FILE *configuration_log;
     int n_coefficients;
     /* Bytes preceding dense vector payloads.  These are separate because
      * several ANN distributions use a headered base but raw query files. */
@@ -108,13 +114,21 @@ typedef struct {
     char trie_streaming_leaf_scan;
     /* Optional flat IVF/MRB directory inside large terminal trie leaves. */
     int trie_leaf_ivf;
+    int trie_leaf_ivf_min_size;
     /* Certified raw-space centroid/radius bound for trie IVF clusters. */
     char trie_leaf_ivf_raw_ball_bound;
     /* Opt-in per-record centroid-radius triangle bound. */
     char trie_leaf_ivf_radial_bound;
+    char trie_residual_norm_bound;
+    char trie_residual_record_only;
+    char trie_residual_order;
     /* Calibrate the radial bound per query and keep it only when at least
      * one quarter of sampled candidates are rejected. */
     char trie_leaf_ivf_radial_bound_auto;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    /* NULL disables tracing even in an instrumented build. */
+    const char *trie_pruning_curve_path;
+#endif
     /* Trie-only symbolic partition fanout.  Fixed mode accepts 2, 4, or 8;
      * dynamic mode derives per-dimension fanouts up to the 8-bit alphabet. */
     int trie_fanout;
@@ -128,10 +142,28 @@ typedef struct {
      * this contains the number of leading SAX bits used per dimension. */
     char dynamic_root_split_variance;
     sax_type *root_bit_cardinalities;
+    /* One symbolic dimension per fixed root bit. */
+    int *root_dimensions;
+    char root_dimensions_variance_ranked;
 
     // int filetype_int;
 
 } isax_index_settings;
+
+static inline int isax_index_dimension_at(const isax_index_settings *settings,
+                                          int slot) {
+    if (settings->root_dimensions != NULL)
+        return settings->root_dimensions[slot];
+    return (slot * settings->n_segments) / settings->isax_index_segments;
+}
+
+static inline int isax_is_index_dimension(const isax_index_settings *settings,
+                                          int dimension) {
+    for (int slot = 0; slot < settings->isax_index_segments; ++slot) {
+        if (isax_index_dimension_at(settings, slot) == dimension) return 1;
+    }
+    return 0;
+}
 
 typedef struct {
     meminfo memory_info;

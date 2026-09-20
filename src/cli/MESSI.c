@@ -131,6 +131,29 @@ static double monotonic_seconds(void) {
     return (double) now.tv_sec + (double) now.tv_nsec / 1000000000.0;
 }
 
+static enum response run_trie_query_repeats(isax_index *index, const char *path,
+                                            int query_count, int filetype_int,
+                                            int apply_znorm, float minimum_distance,
+                                            int batch, int repeats,
+                                            double *total_seconds) {
+    *total_seconds = 0.0;
+    for (int repeat = 1; repeat <= repeats; ++repeat) {
+        const double start = monotonic_seconds();
+        const enum response status =
+            (batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
+                (index, path, query_count, filetype_int, apply_znorm, minimum_distance);
+        const double elapsed = monotonic_seconds() - start;
+        if (status != SUCCESS) return status;
+        *total_seconds += elapsed;
+        if (repeats > 1) {
+            fprintf(stderr, ">>> query repeat %d/%d wall time: %.6f s\n",
+                    repeat, repeats, elapsed);
+        }
+    }
+    fprintf(stderr, ">>> query wall time: %.6f s\n", *total_seconds);
+    return SUCCESS;
+}
+
 static void format_compact_count(double value, char *buffer, size_t buffer_size) {
     const char *suffix = "";
     double scaled = value;
@@ -393,6 +416,7 @@ int main(int argc, char **argv) {
     static char knnlabel = 0;
     static int min_checked_leaves = -1;
     static int requested_threads = 0;
+    static int requested_index_threads = 0;
     static int requested_numa_nodes = -1;
     static char inmemory_flag = 0;
     /* SIMD is enabled automatically when AVX2 support was compiled in.
@@ -423,9 +447,12 @@ int main(int argc, char **argv) {
     static int trie_streaming_leaf_scan = 1;
     static int trie_streaming_leaf_scan_specified = 0;
     static int trie_leaf_ivf = 0;
+    static int trie_leaf_ivf_min_size = 4096;
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
     static int trie_leaf_ivf_radial_bound = 0;
+    static int trie_residual_record_only = 0;
+    static int trie_residual_order = 0;
     static int trie_leaf_ivf_radial_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
@@ -444,6 +471,10 @@ int main(int argc, char **argv) {
     static int trie_max_fanout = 16;
     static int trie_alphabet_budget_bits = 3;
     static int query_report_interval_requested = 10;
+    static int query_repeats = 1;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    static int trie_pruning_curve = 0;
+#endif
 
     int calculate_thread = 8;
     int function_type = 0;
@@ -483,6 +514,7 @@ int main(int argc, char **argv) {
                 {"min-checked-leaves",  required_argument, 0,    'u'},
                 {"in-memory",           no_argument,       0,    'v'},
                 {"threads",             required_argument, 0,    'I'},
+                {"index-threads",       required_argument, 0,    1046},
                 {"numa",                required_argument, 0,    'J'},
                 {"sax-cardinality",     required_argument, 0,    'x'},
                 {"n-segments",          required_argument, 0,    'B'},
@@ -519,9 +551,12 @@ int main(int argc, char **argv) {
                 {"trie-record-mbr-suffix-bound", no_argument, 0, 1013},
                 {"no-trie-record-mbr-suffix-bound", no_argument, 0, 1016},
                 {"trie-leaf-ivf", required_argument, 0, 1014},
+                {"trie-leaf-ivf-min-size", required_argument, 0, 1043},
                 {"no-trie-leaf-ivf", no_argument, 0, 1025},
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
+                {"trie-residual-record-only", no_argument, 0, 1041},
+                {"trie-residual-order", required_argument, 0, 1042},
                 {"no-trie-leaf-ivf-radial-bound", no_argument, 0, 1033},
                 {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
                 {"trie-streaming-leaf-scan", no_argument, 0, 1024},
@@ -537,6 +572,10 @@ int main(int argc, char **argv) {
                 {"isax-record-lb-table", no_argument, 0, 1020},
                 {"enable-sofa-v2", no_argument, 0, 1021},
                 {"query-report-interval", required_argument, 0, 1006},
+                {"query-repeats", required_argument, 0, 1044},
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                {"trie-pruning-curve", no_argument, 0, 1045},
+#endif
                 {"sampling-seed", required_argument, 0, 1007},
                 {"no-simd",             no_argument,       0, 1008},
                 {NULL,                  0,                 NULL, 0}
@@ -590,6 +629,14 @@ int main(int argc, char **argv) {
             case 1006:
                 query_report_interval_requested = atoi(optarg);
                 break;
+            case 1044:
+                query_repeats = atoi(optarg);
+                break;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            case 1045:
+                trie_pruning_curve = 1;
+                break;
+#endif
             case 1008:
                 SIMD_flag = 0;
                 break;
@@ -639,6 +686,9 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf = atoi(optarg);
                 trie_leaf_ivf_specified = 1;
                 break;
+            case 1043:
+                trie_leaf_ivf_min_size = atoi(optarg);
+                break;
             case 1025:
                 trie_leaf_ivf = 0;
                 trie_leaf_ivf_specified = 1;
@@ -650,6 +700,14 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf_radial_bound_specified = 1;
                 trie_leaf_ivf_radial_bound = 1;
                 trie_leaf_ivf_radial_bound_auto = 0;
+                break;
+            case 1041:
+                trie_residual_record_only = 1;
+                break;
+            case 1042:
+                if (strcmp(optarg, "symbolic-first") == 0) trie_residual_order = 0;
+                else if (strcmp(optarg, "residual-first") == 0) trie_residual_order = 1;
+                else { fprintf(stderr, "error: --trie-residual-order expects symbolic-first or residual-first.\n"); return EXIT_FAILURE; }
                 break;
             case 1028:
                 trie_leaf_ivf_radial_bound_specified = 1;
@@ -773,6 +831,17 @@ int main(int argc, char **argv) {
                     requested_threads = atoi(optarg);
                     if (requested_threads <= 0) {
                         fprintf(stderr, "error: threads must be a positive integer or 'auto'.\n");
+                        return EXIT_FAILURE;
+                    }
+                }
+                break;
+            case 1046:
+                if (strcmp(optarg, "auto") == 0) {
+                    requested_index_threads = 0;
+                } else {
+                    requested_index_threads = atoi(optarg);
+                    if (requested_index_threads <= 0) {
+                        fprintf(stderr, "error: index-threads must be a positive integer or 'auto'.\n");
                         return EXIT_FAILURE;
                     }
                 }
@@ -906,11 +975,16 @@ int main(int argc, char **argv) {
                        "\n"
                        "Query execution:\n"
                        "  --threads N|auto               Workers (default: available physical CPU cores)\n"
+                       "  --index-threads N|auto         Index-construction workers (default: --threads)\n"
                        "  --queue-number N               Priority queues\n"
                        "  --numa auto|none|N             CPU affinity policy\n"
                        "  --tight-bound                  Enable tight iSAX leaf pruning\n"
                        "  --aggressive-check             Enable aggressive pruning\n"
                        "  --query-report-interval N      Progress rows (0 disables; default: 10)\n"
+                       "  --query-repeats N              Repeat queries after one in-memory trie build\n"
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                       "  --trie-pruning-curve           Write paper-matched per-bound pruning/timing CSV\n"
+#endif
                        "\n"
                        "Transforms and binning:\n"
                        "  --function-type N              0 build only; 1 ParIS-TS; 2 ParIS; 3 MESSI-SAX;\n"
@@ -942,6 +1016,8 @@ int main(int argc, char **argv) {
                        "  --trie-query-parallel          Parallelize each query (default)\n"
                        "  --trie-query-batch             Batch independent queries\n"
                        "  --trie-mbr-dimensions N        MBR dimensions (default: min(128, series length))\n"
+                       "  --trie-residual-record-only    ResSPARTAN residual checks only at records\n"
+                       "  --trie-residual-order MODE     Residual ordering: symbolic-first or residual-first\n"
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
@@ -951,6 +1027,7 @@ int main(int argc, char **argv) {
                        "  --no-trie-leaf-ivf             Disable flat leaf IVF groups\n"
                        "  --no-trie-leaf-ivf-raw-ball-bound  Disable certified centroid/radius pruning\n"
                        "  --trie-leaf-ivf-radial-bound  Always SIMD-prune IVF records by float32 centroid radius (default with IVF)\n"
+                       "  --trie-leaf-ivf-min-size N     Minimum leaf size eligible for IVF (default: 4096)\n"
                        "  --no-trie-leaf-ivf-radial-bound  Disable record-radius pruning\n"
                        "  --trie-leaf-ivf-radial-bound-auto  Keep radial pruning only after a 25%% sampled rejection rate\n"
                        "  --trie-fanout 2|4|8            Fixed symbolic fanout (default: 8)\n"
@@ -1025,6 +1102,20 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: query report interval must be zero or positive.\n");
         return EXIT_FAILURE;
     }
+    if (query_repeats < 1) {
+        fprintf(stderr, "error: --query-repeats must be positive.\n");
+        return EXIT_FAILURE;
+    }
+    if (query_repeats > 1 &&
+        (!inmemory_flag || index_type != MESSI_INDEX_TRIE || use_index)) {
+        fprintf(stderr,
+                "error: --query-repeats greater than one requires a newly built in-memory trie.\n");
+        return EXIT_FAILURE;
+    }
+    if (queries_size > INT_MAX / query_repeats) {
+        fprintf(stderr, "error: queries-size times query-repeats is too large.\n");
+        return EXIT_FAILURE;
+    }
     query_report_interval = query_report_interval_requested;
 
     if (index_type == MESSI_INDEX_TRIE) {
@@ -1058,6 +1149,10 @@ int main(int argc, char **argv) {
             (trie_leaf_ivf < 2 || trie_leaf_ivf > 64 ||
              (function_type != 4 && function_type != 5 && function_type != 6))) {
             fprintf(stderr, "error: --trie-leaf-ivf requires trie SFA, SPARTAN, or PISA and K between 2 and 64.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_leaf_ivf_min_size < 1) {
+            fprintf(stderr, "error: --trie-leaf-ivf-min-size must be positive.\n");
             return EXIT_FAILURE;
         }
         if (trie_leaf_ivf_radial_bound && trie_leaf_ivf == 0) {
@@ -1100,10 +1195,39 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-leaf-ivf requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
+    if (trie_residual_record_only && (index_type != MESSI_INDEX_TRIE || function_type != 5 || use_index)) {
+        fprintf(stderr, "error: --trie-residual-record-only requires a newly built SPARTAN trie.\n");
+        return EXIT_FAILURE;
+    }
     if (trie_leaf_ivf_radial_bound && index_type != MESSI_INDEX_TRIE) {
         fprintf(stderr, "error: --trie-leaf-ivf-radial-bound requires --index-type trie.\n");
         return EXIT_FAILURE;
     }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    if (trie_pruning_curve) {
+        if (index_type != MESSI_INDEX_TRIE || function_type != 5 || use_index || !inmemory_flag) {
+            fprintf(stderr, "error: --trie-pruning-curve requires a newly built in-memory SPARTAN trie.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_query_batch) {
+            fprintf(stderr, "error: --trie-pruning-curve is incompatible with --trie-query-batch.\n");
+            return EXIT_FAILURE;
+        }
+        if (trie_leaf_ivf == 0 || trie_leaf_ivf_raw_ball_bound ||
+            !trie_leaf_ivf_radial_bound || trie_leaf_ivf_radial_bound_auto ||
+            !trie_record_mbr_suffix_bound || !trie_streaming_leaf_scan ||
+            !trie_residual_record_only || trie_residual_order != 0) {
+            fprintf(stderr,
+                    "error: --trie-pruning-curve requires the paper cascade: IVF, unconditional radial, "
+                    "record-MBR suffix, symbolic-first residual, streaming scan, and no raw-ball bound.\n");
+            return EXIT_FAILURE;
+        }
+        if (query_repeats != 1) {
+            fprintf(stderr, "error: --trie-pruning-curve currently requires --query-repeats 1.\n");
+            return EXIT_FAILURE;
+        }
+    }
+#endif
     if (index_type != MESSI_INDEX_ISAX &&
         (isax_node_mbr_specified || isax_record_mbr_suffix_bound || isax_record_lb_table ||
          isax_mbr_dimensions_specified || enable_sofa_v2)) {
@@ -1170,7 +1294,7 @@ int main(int argc, char **argv) {
         perror("pthread_setaffinity_np");
         return EXIT_FAILURE;
     }
-    fprintf(stderr, ">>> using %d worker threads on %d physical cores (%d logical CPUs)%s%s\n",
+    fprintf(stderr, ">>> using %d query workers on %d physical cores (%d logical CPUs)%s%s\n",
             thread_count, physical_cores, usable_cpus,
             requested_numa_nodes == 0 ? " (affinity disabled)" : "",
             detected_numa_nodes > 0 ? " across detected NUMA nodes" : "");
@@ -1185,10 +1309,18 @@ int main(int argc, char **argv) {
         thread_count = available_cpus;
     }
     fprintf(stderr,
-            ">>> using %d worker threads on %d physical cores (%d logical CPUs); NUMA affinity is unavailable on this platform.\n",
+            ">>> using %d query workers on %d physical cores (%d logical CPUs); NUMA affinity is unavailable on this platform.\n",
             thread_count, physical_cores, available_cpus);
 #endif
-    calculate_thread = thread_count;
+    int index_thread_count = requested_index_threads > 0 ? requested_index_threads : thread_count;
+    if (index_thread_count > available_cpus) {
+        fprintf(stderr, "warning: requested %d index threads but only %d CPUs are available; capping index threads.\n",
+                index_thread_count, available_cpus);
+        index_thread_count = available_cpus;
+    }
+    fprintf(stderr, ">>> resolved index workers: %d (query workers: %d)\n",
+            index_thread_count, thread_count);
+    calculate_thread = index_thread_count;
     maxquerythread = thread_count;
     /* Keep the default work distribution proportional to the active query
      * workers.  An explicit --queue-number always takes precedence. */
@@ -1311,7 +1443,8 @@ int main(int argc, char **argv) {
             fprintf(stderr, "ERROR: PAA segments may not be larger than timeseries-size!\n");
             return -1;
         }
-        if (index_type == MESSI_INDEX_ISAX && time_series_size % n_segments != 0) {
+        if (index_type == MESSI_INDEX_ISAX && function_type <= 3 &&
+            time_series_size % n_segments != 0) {
             fprintf(stderr,
                     "WARNING: PAA ignores the final %d sample(s) because timeseries-size (%d) "
                     "is not divisible by n-segments (%d).\n",
@@ -1353,6 +1486,9 @@ int main(int argc, char **argv) {
         char log_filename_tree[FILENAME_LENGTH];
         char log_filename_index[FILENAME_LENGTH];
         char log_filename_query[FILENAME_LENGTH];
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        char log_filename_curve[FILENAME_LENGTH] = {0};
+#endif
 
         char default_log_root[FILENAME_LENGTH];
         const char *log_root = getenv("MESSI_LOG_ROOT");
@@ -1372,11 +1508,19 @@ int main(int argc, char **argv) {
         snprintf(log_filename_tree, sizeof(log_filename_tree), "%s/tree", log_root);
         snprintf(log_filename_index, sizeof(log_filename_index), "%s/index", log_root);
         snprintf(log_filename_query, sizeof(log_filename_query), "%s/query", log_root);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trie_pruning_curve)
+            snprintf(log_filename_curve, sizeof(log_filename_curve), "%s/trie_pruning_curve", log_root);
+#endif
 
         if (ensure_directory(log_filename) != 0 ||
             ensure_directory(log_filename_tree) != 0 ||
             ensure_directory(log_filename_index) != 0 ||
-            ensure_directory(log_filename_query) != 0) {
+            ensure_directory(log_filename_query) != 0
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            || (trie_pruning_curve && ensure_directory(log_filename_curve) != 0)
+#endif
+            ) {
             fprintf(stderr, "warning: cannot create MESSI log directories below %s: %s\n",
                     log_root, strerror(errno));
         }
@@ -1396,6 +1540,13 @@ int main(int argc, char **argv) {
         strcat(log_filename_query, "/MESSI_QUERY_");
         strcat(log_filename_query, time_str);
         strcat(log_filename_query, ".csv");
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trie_pruning_curve) {
+            strcat(log_filename_curve, "/MESSI_TRIE_PRUNING_CURVE_");
+            strcat(log_filename_curve, time_str);
+            strcat(log_filename_curve, ".csv");
+        }
+#endif
 
         strcat(index_directory, time_str);
 
@@ -1466,15 +1617,23 @@ int main(int argc, char **argv) {
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_streaming_leaf_scan = trie_streaming_leaf_scan;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
+        index_settings->trie_leaf_ivf_min_size = trie_leaf_ivf_min_size;
         index_settings->trie_leaf_ivf_raw_ball_bound = trie_leaf_ivf_raw_ball_bound;
         index_settings->trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound;
+        index_settings->trie_residual_norm_bound = trie_residual_record_only;
+        index_settings->trie_residual_record_only = trie_residual_record_only;
+        index_settings->trie_residual_order = trie_residual_order;
         index_settings->trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        index_settings->trie_pruning_curve_path = trie_pruning_curve ? log_filename_curve : NULL;
+#endif
         index_settings->trie_fanout = trie_fanout;
         index_settings->trie_dynamic_alphabet = trie_dynamic_alphabet;
         index_settings->trie_min_bits = fanout_to_bits(trie_min_fanout);
         index_settings->trie_max_bits = fanout_to_bits(trie_max_fanout);
         index_settings->trie_alphabet_budget_bits = trie_alphabet_budget_bits;
         index_settings->sampling_seed = sampling_seed;
+        index_settings->configuration_log = logfile;
         index_settings->dynamic_root_split_variance =
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE;
 
@@ -1490,15 +1649,15 @@ int main(int argc, char **argv) {
                 "function type,%d\nSIMD,%u\n"
                 "input type,%s\ndataset header bytes,%lu\nquery header bytes,%lu\n"
                 "apply z-norm,%d\ninput is normalized,%d\n"
-                "symbolic dimensions,%d\nrecord lower-bound dimensions,%d\n"
+                "symbolic dimensions,%d\niSAX root dimensions,%d\nrecord lower-bound dimensions,%d\n"
                 "SAX cardinality bits,%d\nleaf size,%d\nminimum leaf size,%d\n"
                 "initial leaf buffer size,%d\nmaximum total buffer size,%d\n"
                 "initial first-buffer-layer size,%d\nloaded leaves,%d\n"
-                "threads,%d\nqueue count,%d\nrequested NUMA nodes,%d\n"
+                "threads,%d\nindex threads,%d\nqueue count,%d\nrequested NUMA nodes,%d\n"
                 "tight bound,%d\naggressive check,%d\nminimum distance,%.9g\n"
                 "node split criterion,%d\nroot split mode,%s\nuniform root bits,%d\n"
                 "histogram type,%d\nsample size,%d\nsample type,%d\nsampling seed,%u\n"
-                "SFA coefficients,%d\nquery report interval,%d\nprofile query phases,%d\n"
+                "SFA coefficients,%d\nquery report interval,%d\nquery repeats,%d\nprofile query phases,%d\n"
                 "use existing index,%d\ncompletion type,%d\nserial scan,%d\ntop-k,%d\nk,%d\n"
                 "iSAX node MBR,%d\niSAX record-MBR suffix bound,%d\n"
                 "iSAX record-LB table,%d\niSAX MBR dimensions,%d\n"
@@ -1507,7 +1666,11 @@ int main(int argc, char **argv) {
                 "trie leaf IVF raw-ball bound,%d\ntrie leaf IVF radial bound,%d\n"
                 "trie leaf IVF radial bound auto,%d\ntrie fanout,%d\n"
                 "trie dynamic alphabet,%d\ntrie minimum fanout,%d\n"
-                "trie maximum fanout,%d\ntrie alphabet budget bits,%d\n",
+                "trie maximum fanout,%d\ntrie alphabet budget bits,%d\n"
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                "trie pruning trace compiled,1\ntrie pruning curve,%d\n"
+#endif
+                ,
                 dataset, queries, index_path,
                 index_type == MESSI_INDEX_TRIE ? "trie" : "isax", inmemory_flag,
                 dataset_size, queries_size, time_series_size,
@@ -1516,17 +1679,18 @@ int main(int argc, char **argv) {
                     (filetype_int == FILE_INPUT_UINT8 ? "uint8" : "float32"),
                 dataset_header_bytes, query_header_bytes,
                 apply_znorm, is_norm,
-                index_settings->n_segments, index_settings->trie_bound_dimensions,
+                index_settings->n_segments, index_settings->isax_index_segments,
+                index_settings->trie_bound_dimensions,
                 sax_cardinality, leaf_size, min_leaf_size,
                 initial_lbl_size, flush_limit, initial_fbl_size, total_loaded_leaves,
-                maxquerythread, N_PQUEUE, requested_numa_nodes,
+                maxquerythread, index_thread_count, N_PQUEUE, requested_numa_nodes,
                 tight_bound, aggressive_check, minimum_distance,
                 node_split_criterion,
                 root_split_mode == MESSI_ROOT_SPLIT_VARIANCE ? "variance" :
                     (root_split_mode == MESSI_ROOT_SPLIT_UNIFORM ? "uniform" : "default"),
                 dynamic_index,
                 histogram_type, sample_size, sample_type, sampling_seed,
-                n_coefficients, query_report_interval, profile_query_phases,
+                n_coefficients, query_report_interval, query_repeats, profile_query_phases,
                 use_index, complete_type, serial_scan, topk, k_size,
                 isax_node_mbr, isax_record_mbr_suffix_bound,
                 isax_record_lb_table, isax_mbr_dimensions,
@@ -1535,7 +1699,11 @@ int main(int argc, char **argv) {
                 trie_leaf_ivf_raw_ball_bound, trie_leaf_ivf_radial_bound,
                 trie_leaf_ivf_radial_bound_auto, trie_fanout,
                 trie_dynamic_alphabet, trie_min_fanout,
-                trie_max_fanout, trie_alphabet_budget_bits);
+                trie_max_fanout, trie_alphabet_budget_bits
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                , trie_pruning_curve
+#endif
+                );
         fflush(logfile);
 
         if (!inmemory_flag) {
@@ -1566,21 +1734,21 @@ int main(int argc, char **argv) {
         /// ########################################
 
         double query_wall_seconds = 0.0;
-        if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+    if (inmemory_flag && index_type == MESSI_INDEX_TRIE && function_type == 3) {
+            maxquerythread = index_thread_count;
             if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: trie construction failed.\n");
                 return EXIT_FAILURE;
             }
+            maxquerythread = thread_count;
             INIT_INDEX_STATS_FILE(logfile_index);
             INIT_SAVE_FILE(logfile_query);
-            double query_wall_start = monotonic_seconds();
-            if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)
-                    (idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) {
+            if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                       apply_znorm, minimum_distance, trie_query_batch,
+                                       query_repeats, &query_wall_seconds) != SUCCESS) {
                 fprintf(stderr, "error: trie query processing failed.\n");
                 return EXIT_FAILURE;
             }
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
 
         //MESSI-SFA: in-memory flag set with function-type 4
         } else if (inmemory_flag && function_type == 4) {
@@ -1588,18 +1756,20 @@ int main(int argc, char **argv) {
             sfa_bins_init(idx);
 
             //set bins
-            if (sfa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (sfa_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                              apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: SFA bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
@@ -1618,31 +1788,37 @@ int main(int argc, char **argv) {
             //                                             min_checked_leaves, k_size, filetype_int, apply_znorm,
             //                                             &exact_topk_MESSImq_inmemory);//MESSI topk
             // } else {
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag && function_type == 5) {
             //initialize bins
             spartan_bins_init(idx);
 
             //set bins
-            if (spartan_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (spartan_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                                  apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: SPARTAN bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
@@ -1661,31 +1837,37 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag && function_type == 6) {
             //initialize bins
             pisa_bins_init(idx);
 
             //set bins
-            if (pisa_set_bins(idx, dataset, dataset_size, maxquerythread, filetype_int,
+            if (pisa_set_bins(idx, dataset, dataset_size, index_thread_count, filetype_int,
                               apply_znorm) != SUCCESS) {
                 fprintf(stderr, "error: PISA bin preparation failed; aborting index creation.\n");
                 return EXIT_FAILURE;
             }
 
             //build index
+            maxquerythread = index_thread_count;
             if (index_type == MESSI_INDEX_TRIE) {
                 if (symbolic_trie_build(idx, dataset, dataset_size, filetype_int, apply_znorm) != SUCCESS) {
                     fprintf(stderr, "error: trie construction failed.\n"); return EXIT_FAILURE;
                 }
             } else index_creation_pRecBuf(dataset, dataset_size, filetype_int, apply_znorm, idx, dynamic_index);
+            maxquerythread = thread_count;
 
             //calculate depth (for analysis logfile only)
             if (index_type == MESSI_INDEX_ISAX) calculate_average_depth(logfile_tree, idx);
@@ -1704,13 +1886,17 @@ int main(int argc, char **argv) {
                                                         min_checked_leaves, k_size, filetype_int, apply_znorm,
                                                         &exact_topk_MESSImq_inmemory);//MESSI topk
             } else {*/
-            double query_wall_start = monotonic_seconds();
             if (index_type == MESSI_INDEX_TRIE) {
-                if ((trie_query_batch ? symbolic_trie_query_file_batch : symbolic_trie_query_file)(idx, queries, queries_size, filetype_int, apply_znorm, minimum_distance) != SUCCESS) return EXIT_FAILURE;
-            } else isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
-                                                       filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
-            query_wall_seconds = monotonic_seconds() - query_wall_start;
-            fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+                if (run_trie_query_repeats(idx, queries, queries_size, filetype_int,
+                                           apply_znorm, minimum_distance, trie_query_batch,
+                                           query_repeats, &query_wall_seconds) != SUCCESS) return EXIT_FAILURE;
+            } else {
+                double query_wall_start = monotonic_seconds();
+                isax_query_binary_file_traditional(queries, queries_size, idx, minimum_distance, min_checked_leaves,
+                                                   filetype_int, apply_znorm, dynamic_index, &exact_search_MESSI);
+                query_wall_seconds = monotonic_seconds() - query_wall_start;
+                fprintf(stderr, ">>> query wall time: %.6f s\n", query_wall_seconds);
+            }
 
         } else if (inmemory_flag) {
             // MESSI: parallel in memory index creation 
@@ -1805,11 +1991,12 @@ int main(int argc, char **argv) {
             }
         }
 
-        SAVE_STATS_TOTAL(logfile_query, queries_size)
-        if (queries_size > 0 && query_wall_seconds > 0.0) {
-            const double avg_checked_nodes = (double) checked_nodes_all / queries_size;
-            const double avg_lower_bounds = (double) LBDcalculationnumber_all / queries_size;
-            const double avg_exact_distances = (double) RDcalculationnumber_all / queries_size;
+        const int reported_queries = queries_size * query_repeats;
+        SAVE_STATS_TOTAL(logfile_query, reported_queries)
+        if (reported_queries > 0 && query_wall_seconds > 0.0) {
+            const double avg_checked_nodes = (double) checked_nodes_all / reported_queries;
+            const double avg_lower_bounds = (double) LBDcalculationnumber_all / reported_queries;
+            const double avg_exact_distances = (double) RDcalculationnumber_all / reported_queries;
             const double checked_node_percent = total_tree_nodes > 0
                                                 ? 100.0 * avg_checked_nodes / total_tree_nodes
                                                 : 0.0;
@@ -1823,16 +2010,11 @@ int main(int argc, char **argv) {
              * symbolic MBR, raw ball, or radial bound is not also credited to
              * a later stage.  Only radial survivors receive a symbolic record
              * lower-bound evaluation. */
-            const double avg_cluster_records_pruned = queries_size > 0
-                ? (double) trie_cluster_records_pruned_all / queries_size : 0.0;
-            const double avg_cluster_symbolic_records_pruned = queries_size > 0
-                ? (double) trie_cluster_symbolic_records_pruned_all / queries_size : 0.0;
-            const double avg_cluster_raw_ball_records_pruned = queries_size > 0
-                ? (double) trie_cluster_raw_ball_records_pruned_all / queries_size : 0.0;
-            const double avg_radial_candidates = queries_size > 0
-                ? (double) trie_radial_candidates_all / queries_size : 0.0;
-            const double avg_radial_pruned = queries_size > 0
-                ? (double) trie_radial_pruned_all / queries_size : 0.0;
+            const double avg_cluster_records_pruned = (double) trie_cluster_records_pruned_all / reported_queries;
+            const double avg_cluster_symbolic_records_pruned = (double) trie_cluster_symbolic_records_pruned_all / reported_queries;
+            const double avg_cluster_raw_ball_records_pruned = (double) trie_cluster_raw_ball_records_pruned_all / reported_queries;
+            const double avg_radial_candidates = (double) trie_radial_candidates_all / reported_queries;
+            const double avg_radial_pruned = (double) trie_radial_pruned_all / reported_queries;
             /* No new per-record counter: every symbolic record LB either
              * reaches exact distance or prunes the record (including heap
              * entries skipped after BSF improves). */
@@ -1881,7 +2063,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "=== Query summary ===\n"
                    "  queries          : %d\n"
                    "  wall time        : %s (%.3f ms/query)\n",
-                   queries_size, wall_time, 1000.0 * query_wall_seconds / queries_size);
+                   reported_queries, wall_time, 1000.0 * query_wall_seconds / reported_queries);
             fprintf(stderr,
                    "  checked nodes    : %s/query (%.2f%% of %s index nodes)\n",
                    nodes, checked_node_percent, index_nodes);
@@ -1893,9 +2075,11 @@ int main(int argc, char **argv) {
             if (index_type == MESSI_INDEX_TRIE) {
                 const char *record_bound_name = idx->settings->trie_record_mbr_suffix_bound
                     ? "prefix + MBR suffix" : "symbolic record bound";
+                if (idx->settings->trie_residual_norm_bound) record_bound_name = "symbolic + residual";
                 fprintf(stderr, "  pruning breakdown:\n"
                        "    %-20s : %s records/query (%.2f%% of indexed series)\n",
-                       "node MBRs", node_pruned, node_mbr_percent);
+                       "node MBRs",
+                       node_pruned, node_mbr_percent);
                 if (trie_cluster_bounds_all != 0) {
                     const double cluster_symbolic_prune_percent =
                         100.0 * (double) trie_cluster_symbolic_pruned_all / trie_cluster_bounds_all;
@@ -1941,21 +2125,21 @@ int main(int argc, char **argv) {
                        "    node MBR bounds  : %.3f\n"
                        "    record bounds    : %.3f\n"
                        "    exact distances  : %.3f\n",
-                       total_mbr_dist_calc_time_all / (1000.0 * queries_size),
-                       total_record_lb_dist_calc_time_all / (1000.0 * queries_size),
-                       total_real_dist_calc_time_all / (1000.0 * queries_size));
+                       total_mbr_dist_calc_time_all / (1000.0 * reported_queries),
+                       total_record_lb_dist_calc_time_all / (1000.0 * reported_queries),
+                       total_real_dist_calc_time_all / (1000.0 * reported_queries));
                 if (index_type == MESSI_INDEX_TRIE) {
                     fprintf(stderr, "    frontier traversal: %.3f\n"
                            "    queue locks/pops : %.3f\n"
                            "    candidate heap   : %.3f\n"
                            "    synchronization/wait: %.3f\n",
-                           total_trie_frontier_time_all / (1000.0 * queries_size),
-                           total_trie_queue_time_all / (1000.0 * queries_size),
-                           total_trie_heap_time_all / (1000.0 * queries_size),
-                           total_trie_sync_time_all / (1000.0 * queries_size));
+                           total_trie_frontier_time_all / (1000.0 * reported_queries),
+                           total_trie_queue_time_all / (1000.0 * reported_queries),
+                           total_trie_heap_time_all / (1000.0 * reported_queries),
+                           total_trie_sync_time_all / (1000.0 * reported_queries));
                 } else {
                     fprintf(stderr, "    traversal/queues : %.3f\n",
-                           total_tree_pass_time_all / (1000.0 * queries_size));
+                           total_tree_pass_time_all / (1000.0 * reported_queries));
                 }
             }
         }

@@ -372,7 +372,7 @@ void index_creation_m2(const char *ifilename, long int ts_num, isax_index *index
     // set the thread on decided cpu
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer *) initialize_simrec(index->settings->initial_fbl_buffer_size,
-                                                          pow(2, index->settings->n_segments),
+                                                          index->settings->root_nodes_size,
                                                           index->settings->max_total_buffer_size +
                                                           DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                           index);
@@ -510,7 +510,7 @@ void index_creation_gpu(const char *ifilename, long int ts_num, isax_index *inde
     // set the thread on decided cpu
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer *) initialize_simrec(index->settings->initial_fbl_buffer_size,
-                                                          pow(2, index->settings->n_segments),
+                                                          index->settings->root_nodes_size,
                                                           index->settings->max_total_buffer_size +
                                                           DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                           index);
@@ -729,7 +729,7 @@ void index_generate_inmemory_pRecBuf(const char *ifilename, long int ts_num, isa
 
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer *) initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                                           pow(2, index->settings->n_segments),
+                                                           index->settings->root_nodes_size,
                                                            index->settings->max_total_buffer_size +
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
@@ -873,7 +873,7 @@ void index_creation_pRecBuf(const char *ifilename, long int ts_num, int filetype
 
     destroy_fbl(index->fbl);
     index->fbl = (first_buffer_layer *) initialize_pRecBuf(index->settings->initial_fbl_buffer_size,
-                                                           pow(2, index->settings->n_segments),
+                                                           index->settings->root_nodes_size,
                                                            index->settings->max_total_buffer_size +
                                                            DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1),
                                                            index);
@@ -2219,7 +2219,7 @@ isax_index *isax_index_init_inmemory(isax_index_settings *settings) {
     index->fbl = NULL;
     if (settings->index_type == MESSI_INDEX_ISAX) {
         index->fbl = initialize_fbl(settings->initial_fbl_buffer_size,
-                                    pow(2, settings->n_segments),
+                                    settings->root_nodes_size,
                                     settings->max_total_buffer_size +
                                     DISK_BUFFER_SIZE * (PROGRESS_CALCULATE_THREAD_NUMBER - 1), index);
     }

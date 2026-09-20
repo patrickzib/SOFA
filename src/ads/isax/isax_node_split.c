@@ -231,7 +231,7 @@ int simple_split_decision(isax_node_split_data *split_data, isax_index_settings 
     if (min_index == -1) {
         fprintf(stderr, "split_mask (n_segments=%d):", settings->n_segments);
         for (int i = 0; i < settings->n_segments; i++) {
-            fprintf(stderr, " %u", (unsigned) split_data->split_mask[i]);
+            fprintf(stderr, " %d", (int) split_data->split_mask[i]);
         }
         fprintf(stderr, "\n");
     }
@@ -408,15 +408,28 @@ int split_node(isax_index *index, isax_node *node, int inmemory, int kn) {
         return 0;
     }
 
-    split_data->split_mask = calloc(index->settings->n_segments, sizeof(sax_type));
+    split_data->split_mask = malloc(sizeof(*split_data->split_mask) *
+                                    (size_t) index->settings->n_segments);
     if (split_data->split_mask != NULL && node->parent != NULL) {
         memcpy(split_data->split_mask,
                node->parent->split_data->split_mask,
-               sizeof(sax_type) * index->settings->n_segments);
+               sizeof(*split_data->split_mask) * (size_t) index->settings->n_segments);
     } else if (split_data->split_mask != NULL) {
-        int root_segments = index->settings->n_segments / kn;
-        for (int i = 0; i < root_segments; i++) {
-            split_data->split_mask[i] = (sax_type) (kn - 1);
+        memset(split_data->split_mask, -1,
+               sizeof(*split_data->split_mask) * (size_t) index->settings->n_segments);
+        if (index->settings->root_bit_cardinalities != NULL) {
+            for (int dimension = 0; dimension < index->settings->n_segments; ++dimension) {
+                const int bits = index->settings->root_bit_cardinalities[dimension];
+                if (bits > 0) split_data->split_mask[dimension] = (int8_t) (bits - 1);
+            }
+        } else {
+            int root_segments = index->settings->isax_index_segments / kn;
+            for (int slot = 0; slot < root_segments; slot++) {
+                const int dimension = kn == 1
+                    ? isax_index_dimension_at(index->settings, slot)
+                    : (slot * index->settings->n_segments) / root_segments;
+                split_data->split_mask[dimension] = (int8_t) (kn - 1);
+            }
         }
     }
     if (split_data->split_mask == NULL) {

@@ -23,13 +23,17 @@ double messi_monotonic_seconds(void) {
 
 ts_type messi_minidist_raw(isax_index *index, float *paa_or_fft, sax_type *sax,
                            sax_type *sax_cardinalities, float bsf) {
-    if (index->settings->n_segments == 16 && sizeof(sax_type) == 1) {
-        if (index->settings->function_type == 4)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 2.0f);
+    if (index->settings->SIMD_flag && sizeof(sax_type) == 1) {
+        const int dimensions = index->settings->n_segments;
+        if (index->settings->function_type == 4 && index->settings->is_norm)
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 2.0f);
         if (index->settings->function_type == 6)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 1.0f);
         if (index->settings->function_type == 5)
-            return messi_lower_bound_16(index, paa_or_fft, sax, sax_cardinalities, bsf, 1.0f);
+            return messi_lower_bound_simd(index, paa_or_fft, sax, sax_cardinalities,
+                                          dimensions, bsf, 1.0f);
         return minidist_paa_to_isax_raw_SIMD(paa_or_fft, sax, sax_cardinalities, index->settings);
     }
     if (index->settings->function_type == 4 || index->settings->function_type == 6)
@@ -94,7 +98,7 @@ root_mask_type isax_root_mask_from_sax(const isax_index *index,
     root_mask_type mask = 0;
 
     if (settings->root_bit_cardinalities != NULL) {
-        int bit = settings->n_segments - 1;
+        int bit = settings->isax_index_segments - 1;
         for (int i = 0; i < settings->n_segments && bit >= 0; ++i) {
             int count = settings->root_bit_cardinalities[i];
             if (count > settings->sax_bit_cardinality) {
@@ -112,14 +116,68 @@ root_mask_type isax_root_mask_from_sax(const isax_index *index,
     if (uniform_kn < 1) {
         uniform_kn = 1;
     }
-    for (int i = 0; i < settings->n_segments / uniform_kn; ++i) {
+    const int root_dimensions = settings->isax_index_segments / uniform_kn;
+    for (int i = 0; i < root_dimensions; ++i) {
+        const int dimension = uniform_kn == 1
+                                  ? isax_index_dimension_at(settings, i)
+                                  : (i * settings->n_segments) / root_dimensions;
         for (int j = 0; j < uniform_kn; ++j) {
-            if (sax[i] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
-                mask |= ((root_mask_type) 1 << (settings->n_segments - i * uniform_kn - j - 1));
+            if (sax[dimension] & settings->bit_masks[settings->sax_bit_cardinality - 1 - j]) {
+                mask |= ((root_mask_type) 1 <<
+                         (settings->isax_index_segments - i * uniform_kn - j - 1));
             }
         }
     }
     return mask;
+}
+
+enum response configure_root_dimensions(isax_index_settings *settings,
+                                        const double *variance,
+                                        int dimensions) {
+    if (settings == NULL || variance == NULL || dimensions != settings->n_segments ||
+        settings->root_dimensions == NULL || settings->isax_index_segments <= 0 ||
+        settings->isax_index_segments > dimensions) {
+        return FAILURE;
+    }
+
+    int *order = malloc(sizeof(*order) * (size_t) dimensions);
+    if (order == NULL) return FAILURE;
+    for (int i = 0; i < dimensions; ++i) order[i] = i;
+    for (int i = 1; i < dimensions; ++i) {
+        int candidate = order[i];
+        int j = i;
+        while (j > 0 && variance[order[j - 1]] < variance[candidate]) {
+            order[j] = order[j - 1];
+            --j;
+        }
+        order[j] = candidate;
+    }
+    memcpy(settings->root_dimensions, order,
+           sizeof(*order) * (size_t) settings->isax_index_segments);
+    settings->root_dimensions_variance_ranked = 1;
+    free(order);
+
+    fprintf(stderr, ">>> root dims: variance-ranked %d of %d\n",
+            settings->isax_index_segments, dimensions);
+    fprintf(stderr, ">>> root dimensions:");
+    for (int i = 0; i < settings->isax_index_segments; ++i)
+        fprintf(stderr, "%s%d", i == 0 ? " " : ",", settings->root_dimensions[i]);
+    fprintf(stderr, "\n");
+    fprintf(stderr, ">>> lower-bound dimensions: all %d symbolic dimensions\n", dimensions);
+    if (settings->configuration_log != NULL) {
+        fprintf(settings->configuration_log,
+                "root dimension policy,variance-ranked\nroot dimension count,%d\n"
+                "root dimensions,\"",
+                settings->isax_index_segments);
+        for (int i = 0; i < settings->isax_index_segments; ++i)
+            fprintf(settings->configuration_log, "%s%d", i == 0 ? "" : ",",
+                    settings->root_dimensions[i]);
+        fprintf(settings->configuration_log,
+                "\"\nlower-bound evaluation,all %d symbolic dimensions\n",
+                dimensions);
+        fflush(settings->configuration_log);
+    }
+    return SUCCESS;
 }
 
 enum response configure_dynamic_bit_allocation(isax_index *index,
@@ -129,9 +187,6 @@ enum response configure_dynamic_bit_allocation(isax_index *index,
                                                  int min_bit_val,
                                                  int max_bit_val) {
     isax_index_settings *settings = index->settings;
-    if (!settings->dynamic_root_split_variance && settings->index_type != MESSI_INDEX_TRIE) {
-        return SUCCESS;
-    }
     if (variance == NULL || dimensions <= 0 || budget < 0 || min_bit_val < 0 || max_bit_val <= 0 ||
         min_bit_val > max_bit_val) {
         return FAILURE;
@@ -153,6 +208,15 @@ enum response configure_dynamic_bit_allocation(isax_index *index,
     memcpy(stored_variance, variance, sizeof(*stored_variance) * (size_t) dimensions);
     free(settings->symbolic_variances);
     settings->symbolic_variances = stored_variance;
+
+    if (settings->index_type == MESSI_INDEX_ISAX &&
+        (settings->function_type == 4 || settings->function_type == 5 ||
+         settings->function_type == 6) &&
+        configure_root_dimensions(settings, stored_variance, dimensions) != SUCCESS) {
+        free(settings->symbolic_variances);
+        settings->symbolic_variances = NULL;
+        return FAILURE;
+    }
 
     if (!allocate_bits) return SUCCESS;
 

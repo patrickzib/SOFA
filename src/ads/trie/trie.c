@@ -10,6 +10,7 @@
 #include "ads/sfa/dft.h"
 #include "ads/spartan/pca.h"
 #include "ads/spartan/spartan.h"
+#include "ads/spartan/residual.h"
 #include "ads/pisa/pisa.h"
 #include "ads/inmemory_index_engine.h"
 #include "ads/build_progress.h"
@@ -78,7 +79,11 @@ typedef struct symbolic_trie_node {
     float *cluster_raw_radii;
     /* Per-record centroid radii in the existing IVF-cluster record order. */
     float *record_raw_radii;
+    float *record_residuals;
     int cluster_count;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    long trace_subtree_size;
+#endif
 } symbolic_trie_node;
 
 struct symbolic_trie_index {
@@ -97,6 +102,8 @@ struct symbolic_trie_index {
     unsigned long long cluster_count;
     unsigned long radial_leaves;
     unsigned long long radial_records;
+    spartan_residual_model residual;
+    float *residual_arena;
 };
 
 static int trie_dimension_is_used(const symbolic_trie_node *node, int dimension) {
@@ -133,6 +140,30 @@ static int trie_dimension_fanout(const struct symbolic_trie_index *trie,
 #define TRIE_ROOT_SPLIT_SAMPLE_SIZE 1000000L
 #define TRIE_PCA_PROJECTION_BLOCK_RECORDS 16384U
 
+#ifdef MESSI_TRIE_PRUNING_TRACE
+typedef enum {
+    TRIE_TRACE_NODE_MBR,
+    TRIE_TRACE_GROUP_MBR,
+    TRIE_TRACE_RADIAL,
+    TRIE_TRACE_SYMBOLIC,
+    TRIE_TRACE_RESIDUAL,
+    TRIE_TRACE_EXACT,
+    TRIE_TRACE_STAGE_COUNT
+} trie_trace_stage;
+
+typedef struct {
+    unsigned long long checks;
+    unsigned long long pruned;
+    unsigned long long microseconds;
+} trie_trace_stage_stats;
+
+#define TRIE_TRACE_PARAMETER , trie_trace_stage trace_stage
+#define TRIE_TRACE_ARGUMENT(stage) , stage
+#else
+#define TRIE_TRACE_PARAMETER
+#define TRIE_TRACE_ARGUMENT(stage)
+#endif
+
 typedef struct trie_query_stats {
     unsigned long checked_nodes;
     unsigned long lower_bounds;
@@ -157,8 +188,36 @@ typedef struct trie_query_stats {
     unsigned long radial_candidates;
     unsigned long radial_pruned;
     float approximate_distance;
+    unsigned long residual_checks[3], residual_wins[3], residual_prunes[3];
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    int trace_enabled;
+    trie_trace_stage_stats trace[TRIE_TRACE_STAGE_COUNT];
+    unsigned long long trace_worker_microseconds;
+#endif
 } trie_query_stats;
 static unsigned long long trie_monotonic_microseconds(void);
+
+#ifdef MESSI_TRIE_PRUNING_TRACE
+static inline unsigned long long trie_trace_start(const trie_query_stats *stats) {
+    return stats != NULL && stats->trace_enabled ? trie_monotonic_microseconds() : 0;
+}
+
+static inline void trie_trace_time(trie_query_stats *stats, trie_trace_stage stage,
+                                   unsigned long long start) {
+    if (start != 0) stats->trace[stage].microseconds +=
+        trie_monotonic_microseconds() - start;
+}
+
+static inline void trie_trace_check(trie_query_stats *stats, trie_trace_stage stage,
+                                    unsigned long long checks) {
+    if (stats != NULL && stats->trace_enabled) stats->trace[stage].checks += checks;
+}
+
+static inline void trie_trace_pruned(trie_query_stats *stats, trie_trace_stage stage,
+                                     unsigned long long records) {
+    if (stats != NULL && stats->trace_enabled) stats->trace[stage].pruned += records;
+}
+#endif
 
 /* The index settings describe the full split word (normally 64 dimensions).
  * Lower bounds intentionally see only the configured bound prefix.  A local
@@ -167,9 +226,13 @@ static unsigned long long trie_monotonic_microseconds(void);
 static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index *index,
                               const ts_type *transform, sax_type *sax_min,
                               sax_type *sax_max, int dimensions, float bsf,
-                              trie_query_stats *stats) {
+                              trie_query_stats *stats TRIE_TRACE_PARAMETER) {
     unsigned long long start = 0;
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    const unsigned long long trace_start = trie_trace_start(stats);
+    trie_trace_check(stats, trace_stage, 1);
+#endif
     isax_index shadow_index = *index;
     isax_index_settings shadow_settings = *index->settings;
     shadow_settings.n_segments = dimensions;
@@ -177,6 +240,9 @@ static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index
     float result = messi_minidist_range_raw(&shadow_index, (float *) transform, sax_min, sax_max,
                                             shadow_settings.max_sax_cardinalities, bsf);
     if (start != 0) stats->mbr_bound_microseconds += trie_monotonic_microseconds() - start;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    trie_trace_time(stats, trace_stage, trace_start);
+#endif
     return result;
 }
 
@@ -204,7 +270,86 @@ typedef struct {
     float record_lb_table[MESSI_RECORD_LB_MAX_DIMENSIONS][256];
     int record_lb_table_ready;
     trie_radial_auto_gate *radial_auto_gate;
+    spartan_residual_value residual_query;
+    int residual_ready;
 } trie_query_scratch;
+
+static double trie_residual_coordinate_gap(const isax_index *index, const float *transform,
+                                           int d, int low, int high) {
+    const int cardinality = index->settings->sax_alphabet_cardinality;
+    double lower = low == 0 ? -INFINITY : index->bins[d][low-1];
+    double upper = high >= cardinality-1 ? INFINITY : index->bins[d][high];
+    return fmax(0.0, fmax(lower-transform[d], transform[d]-upper));
+}
+static void trie_residual_prepare(isax_index *index, const float *query,
+                                  const float *transform, trie_query_scratch *scratch) {
+    scratch->residual_ready = index->trie->residual.enabled;
+    if (scratch->residual_ready)
+        scratch->residual_query = spartan_residual_encode(index, &index->trie->residual,
+            query, transform, index->trie->bound_dimensions);
+}
+static void trie_residual_store(isax_index *index, struct symbolic_trie_index *trie,
+                                long record, const float *raw, const float *projection) {
+    if (trie->residual_arena)
+        trie->residual_arena[record] = spartan_residual_encode(index, &trie->residual,
+            raw, projection, trie->bound_dimensions).radius;
+}
+
+/* Suffix and residual overlap; no floating-point correction is applied. */
+static float trie_residual_bound(isax_index *index, const float *transform,
+                                 const sax_type *minimum, const sax_type *maximum,
+                                 const sax_type *suffix_min, const sax_type *suffix_max,
+                                 float rmin, float rmax, const trie_query_scratch *scratch,
+                                 float bsf, trie_query_stats *stats, int level) {
+    const struct symbolic_trie_index *trie = index->trie;
+    if (!trie->residual.enabled || scratch == NULL || !scratch->residual_ready) return 0.0f;
+    /* Residual checks are intentionally record-only. Node/IVF checks perform
+     * substantial repeated bound work and have not paid for themselves. Keep
+     * this guard unconditional so the legacy full flag is an alias. */
+    if (level != 2) return 0.0f;
+    const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
+    double gap = spartan_residual_gap(scratch->residual_query.radius, rmin, rmax);
+    double prefix = 0.0, suffix = 0.0;
+    for (int d = 0; d < trie->dimensions; ++d) {
+        int tail = d >= trie->bound_dimensions;
+        if (tail && suffix_min == NULL) break;
+        double delta = trie_residual_coordinate_gap(index, transform, d,
+            tail ? suffix_min[d] : minimum[d], tail ? suffix_max[d] : maximum[d]);
+        if (tail) suffix += delta*delta; else prefix += delta*delta;
+    }
+    float lower = (float)(prefix + fmax(suffix, gap*gap));
+    if (stats) {
+        ++stats->residual_checks[level];
+        stats->residual_wins[level] += gap*gap > suffix;
+        stats->residual_prunes[level] += lower > bsf;
+    }
+    if (start) stats->mbr_bound_microseconds += trie_monotonic_microseconds()-start;
+    return lower;
+}
+
+static int trie_residual_finish(struct symbolic_trie_index *trie, symbolic_trie_node *node,
+                                int ts_length) {
+    if (!node->leaf) {
+        for (int c = 0; c < node->split_fanout; ++c) if (node->children[c]) {
+            if (!trie_residual_finish(trie, node->children[c], ts_length)) return 0;
+        }
+        return 1;
+    }
+    if (!node->size) return 1;
+    node->record_residuals = malloc((size_t)node->size * sizeof(float));
+    if (!node->record_residuals) return 0;
+    for (int r = 0; r < node->size; ++r) {
+        float value = trie->residual_arena[node->positions[r]/ts_length];
+        node->record_residuals[r] = value;
+    }
+    return 1;
+}
+
+static void trie_residual_clear(symbolic_trie_node *node) {
+    if (node == NULL) return;
+    free(node->record_residuals); node->record_residuals = NULL;
+    for (int c = 0; c < node->split_fanout; ++c) trie_residual_clear(node->children[c]);
+}
 
 static int trie_radial_auto_gate_init(const isax_index *index,
                                       trie_radial_auto_gate *gate) {
@@ -322,6 +467,7 @@ static symbolic_trie_node *trie_node_create(int dimensions, symbolic_trie_node *
 
 static void trie_node_destroy(symbolic_trie_node *node) {
     if (node == NULL) return;
+    free(node->record_residuals);
     for (int i = 0; i < TRIE_MAX_FANOUT; ++i) trie_node_destroy(node->children[i]);
     free(node->words); free(node->batch_words); free(node->positions); free(node->min_word); free(node->max_word);
     free(node->clusters); free(node->cluster_min_words); free(node->cluster_max_words);
@@ -419,11 +565,92 @@ static unsigned long trie_collect_split_diagnostics(const symbolic_trie_node *no
     return total;
 }
 
+#ifdef MESSI_TRIE_PRUNING_TRACE
+static long trie_trace_set_subtree_sizes(symbolic_trie_node *node) {
+    if (node == NULL) return 0;
+    long size = node->leaf ? node->size : 0;
+    if (!node->leaf)
+        for (int i = 0; i < node->split_fanout; ++i)
+            size += trie_trace_set_subtree_sizes(node->children[i]);
+    node->trace_subtree_size = size;
+    return size;
+}
+
+static int trie_trace_contains(const symbolic_trie_node *node,
+                               const symbolic_trie_node *descendant) {
+    for (const symbolic_trie_node *current = descendant; current != NULL;
+         current = current->parent)
+        if (current == node) return 1;
+    return 0;
+}
+
+static void trie_trace_node_rejection(trie_query_stats *stats,
+                                      const symbolic_trie_node *node,
+                                      const symbolic_trie_node *skip_leaf) {
+    if (stats == NULL || !stats->trace_enabled || node == NULL) return;
+    long records = node->trace_subtree_size;
+    if (skip_leaf != NULL && trie_trace_contains(node, skip_leaf))
+        records -= skip_leaf->trace_subtree_size;
+    if (records > 0)
+        trie_trace_pruned(stats, TRIE_TRACE_NODE_MBR,
+                          (unsigned long long) records);
+}
+#endif
+
 static unsigned long long trie_monotonic_microseconds(void) {
     struct timespec time;
     clock_gettime(CLOCK_MONOTONIC, &time);
     return (unsigned long long) time.tv_sec * 1000000ULL + (unsigned long long) time.tv_nsec / 1000ULL;
 }
+
+#ifdef MESSI_TRIE_PRUNING_TRACE
+static void trie_trace_write_header(FILE *file) {
+    fprintf(file,
+            "query,total_records,query_wall_us,worker_search_us,"
+            "node_mbr_checks,node_mbr_pruned,node_mbr_us,"
+            "group_mbr_checks,group_mbr_pruned,group_mbr_us,"
+            "radial_checks,radial_pruned,radial_us,"
+            "symbolic_checks,symbolic_pruned,symbolic_us,"
+            "residual_checks,residual_pruned,residual_us,"
+            "exact_evaluated,exact_us,other_worker_us\n");
+}
+
+static int trie_trace_write_row(FILE *file, int query_index, long total_records,
+                                const trie_query_stats *stats) {
+    if (file == NULL || stats == NULL || !stats->trace_enabled) return 1;
+    unsigned long long resolved = stats->trace[TRIE_TRACE_EXACT].checks;
+    unsigned long long measured = 0;
+    for (int stage = 0; stage < TRIE_TRACE_STAGE_COUNT; ++stage) {
+        measured += stats->trace[stage].microseconds;
+        if (stage != TRIE_TRACE_EXACT) resolved += stats->trace[stage].pruned;
+    }
+    const unsigned long long other = stats->trace_worker_microseconds > measured
+        ? stats->trace_worker_microseconds - measured : 0;
+    if (resolved != (unsigned long long) total_records) {
+        fprintf(stderr,
+                "error: trie pruning trace query %d resolves %llu of %ld records.\n",
+                query_index, resolved, total_records);
+        return 0;
+    }
+#define TRIE_TRACE_VALUES(stage) \
+    stats->trace[stage].checks, stats->trace[stage].pruned, \
+    stats->trace[stage].microseconds
+    fprintf(file,
+            "%d,%ld,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,"
+            "%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu,%llu\n",
+            query_index, total_records, stats->total_microseconds,
+            stats->trace_worker_microseconds,
+            TRIE_TRACE_VALUES(TRIE_TRACE_NODE_MBR),
+            TRIE_TRACE_VALUES(TRIE_TRACE_GROUP_MBR),
+            TRIE_TRACE_VALUES(TRIE_TRACE_RADIAL),
+            TRIE_TRACE_VALUES(TRIE_TRACE_SYMBOLIC),
+            TRIE_TRACE_VALUES(TRIE_TRACE_RESIDUAL),
+            stats->trace[TRIE_TRACE_EXACT].checks,
+            stats->trace[TRIE_TRACE_EXACT].microseconds, other);
+#undef TRIE_TRACE_VALUES
+    return ferror(file) == 0;
+}
+#endif
 
 static void trie_print_query_stats(int query_index, const struct symbolic_trie_index *trie,
                                    const trie_query_stats *stats, float distance,
@@ -470,6 +697,12 @@ static void trie_save_query_stats(const struct symbolic_trie_index *trie,
     trie_radial_candidates = stats->radial_candidates;
     trie_radial_pruned = stats->radial_pruned;
     SAVE_STATS(distance)
+    if (trie->residual.enabled && profile_query_phases) {
+        const char *levels[] = {"node", "ivf", "record"};
+        for (int level = 0; level < 3; ++level)
+            fprintf(stderr, ">>> ResSPARTAN %s: checks=%lu wins-over-suffix=%lu prunes=%lu\n",
+                levels[level], stats->residual_checks[level], stats->residual_wins[level], stats->residual_prunes[level]);
+    }
 }
 
 static void trie_node_update_mbb(symbolic_trie_node *node, const sax_type *word, int dimensions) {
@@ -507,7 +740,6 @@ static void trie_node_merge_child_mbbs(symbolic_trie_node *node,
     }
 }
 
-#define TRIE_LEAF_IVF_MIN_SIZE 4096
 #define TRIE_LEAF_IVF_TRAIN_SIZE 2048
 #define TRIE_LEAF_IVF_MAX_ITERATIONS 10
 
@@ -523,9 +755,9 @@ static double trie_cluster_distance(const sax_type *word, const float *centroid,
 
 static int trie_cluster_leaf(symbolic_trie_node *node, int dimensions, int alphabet,
                              int cluster_count, const float *centers, int ts_length,
-                             int radial_enabled) {
+                             int radial_enabled, int min_size) {
     const int size = node->size;
-    if (size < TRIE_LEAF_IVF_MIN_SIZE || cluster_count >= size || centers == NULL) return 1;
+    if (size < min_size || cluster_count >= size || centers == NULL) return 1;
     const int train_size = size < TRIE_LEAF_IVF_TRAIN_SIZE ? size : TRIE_LEAF_IVF_TRAIN_SIZE;
     float *centroids = calloc((size_t) cluster_count * dimensions, sizeof(*centroids));
     float *sums = calloc((size_t) cluster_count * dimensions, sizeof(*sums));
@@ -692,14 +924,14 @@ typedef struct {
  * on one thread, then let workers cluster independent leaves without sharing
  * per-leaf scratch state or modifying common tree counters. */
 static int trie_collect_cluster_leaves(symbolic_trie_node *node,
-                                       trie_cluster_leaf_list *leaves) {
+                                       trie_cluster_leaf_list *leaves, int min_size) {
     if (node == NULL) return 1;
     if (!node->leaf) {
         for (int i = 0; i < node->split_fanout; ++i)
-            if (!trie_collect_cluster_leaves(node->children[i], leaves)) return 0;
+            if (!trie_collect_cluster_leaves(node->children[i], leaves, min_size)) return 0;
         return 1;
     }
-    if (node->size < TRIE_LEAF_IVF_MIN_SIZE) return 1;
+    if (node->size < min_size) return 1;
     if (leaves->size == leaves->capacity) {
         size_t capacity = leaves->capacity == 0 ? 128 : leaves->capacity * 2;
         if (capacity > SIZE_MAX / sizeof(*leaves->items)) return 0;
@@ -716,7 +948,7 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
                                         const isax_index *index, const float *centers,
                                         int *active_workers, size_t *eligible_leaves) {
     trie_cluster_leaf_list leaves = {0};
-    if (!trie_collect_cluster_leaves(trie->root, &leaves)) {
+    if (!trie_collect_cluster_leaves(trie->root, &leaves, index->settings->trie_leaf_ivf_min_size)) {
         free(leaves.items);
         return 0;
     }
@@ -740,7 +972,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
             if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
                                    index->settings->trie_leaf_ivf, centers,
                                    index->settings->timeseries_size,
-                                   index->settings->trie_leaf_ivf_radial_bound)) {
+                                   index->settings->trie_leaf_ivf_radial_bound,
+                                   index->settings->trie_leaf_ivf_min_size)) {
                 failed = 1;
                 continue;
             }
@@ -760,7 +993,8 @@ static int trie_cluster_leaves_parallel(struct symbolic_trie_index *trie,
         if (!trie_cluster_leaf(node, trie->dimensions, index->settings->sax_alphabet_cardinality,
                                index->settings->trie_leaf_ivf, centers,
                                index->settings->timeseries_size,
-                               index->settings->trie_leaf_ivf_radial_bound)) {
+                               index->settings->trie_leaf_ivf_radial_bound,
+                               index->settings->trie_leaf_ivf_min_size)) {
             failed = 1;
             continue;
         }
@@ -823,8 +1057,15 @@ static float trie_exact_distance(const ts_type *query, const ts_type *record,
                                  int length, float bsf, trie_query_stats *stats) {
     unsigned long long start = 0;
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    const unsigned long long trace_start = trie_trace_start(stats);
+    trie_trace_check(stats, TRIE_TRACE_EXACT, 1);
+#endif
     float result = ts_ed((ts_type *) query, (ts_type *) record, length, bsf);
     if (start != 0) stats->exact_distance_microseconds += trie_monotonic_microseconds() - start;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    trie_trace_time(stats, TRIE_TRACE_EXACT, trace_start);
+#endif
     return result;
 }
 
@@ -1228,6 +1469,8 @@ static enum response trie_build_pca_block(isax_index *index,
             ts_type *values = projection + (size_t) row * dimensions;
             for (int k = 0; k < index->pca_components_count; ++k)
                 values[k] += (ts_type) index->pca_bias[k];
+            trie_residual_store(index, trie, record,
+                                rawfile + (size_t)record * ts_length, values);
             if (function_type == 5) spartan_from_pca(index, values, word);
             else sfa_from_fft(index, values, word);
             trie->root->words[record] = word;
@@ -1342,6 +1585,18 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     trie->word_arena = malloc((size_t) ts_num * (size_t) trie->dimensions * sizeof(*trie->word_arena));
     trie->root->capacity = trie->root->size = (int) ts_num;
     int failed = trie->root->words == NULL || trie->root->positions == NULL || trie->word_arena == NULL;
+    if (!failed && index->settings->trie_residual_norm_bound) {
+        trie->residual = spartan_residual_init(index);
+        if (index->settings->function_type == 5 && trie->residual.enabled &&
+            trie->bound_dimensions <= MESSI_RECORD_LB_MAX_DIMENSIONS &&
+            index->settings->sax_alphabet_cardinality <= 256 &&
+            (size_t)ts_num <= SIZE_MAX/sizeof(float))
+            trie->residual_arena = malloc((size_t)ts_num*sizeof(float));
+        if (trie->residual_arena == NULL) {
+            trie->residual.enabled = 0;
+            fprintf(stderr, "warning: ResSPARTAN unavailable; using ordinary SPARTAN bounds.\n");
+        }
+    }
     unsigned long transform_completed = 0;
 #if HAVE_CBLAS
     if ((index->settings->function_type == 5 || index->settings->function_type == 6) && !failed) {
@@ -1410,6 +1665,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
             } else {
                 trie->root->words[i] = word;
                 trie->root->positions[i] = (file_position_type) ((size_t) i * index->settings->timeseries_size);
+                trie_residual_store(index, trie, i, ts, transform);
             }
             if (++transform_pending == 1024 || i + 1 == ts_num) {
                 unsigned long completed = __sync_add_and_fetch(&transform_completed,
@@ -1425,7 +1681,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         pthread_mutex_unlock(&trie_fftw_plan_lock);
     }
     }
-    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
+    if (failed) { trie_node_destroy(trie->root); free(trie->word_arena); free(trie->residual_arena); free(trie); free(rawfile); rawfile = NULL; messi_build_progress_abort(&build_progress); return FAILURE; }
     double transform_end = messi_monotonic_seconds();
     messi_build_progress_update(&build_progress, 55.0);
 
@@ -1435,7 +1691,7 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     if (trie->root->size > index->settings->max_leaf_size) {
         int root_split = trie_split_root_sampled_parallel(trie, index, trie->root);
         if (root_split < 0) {
-            trie_node_destroy(trie->root); free(trie->word_arena); free(trie); free(rawfile); rawfile = NULL;
+            trie_node_destroy(trie->root); free(trie->word_arena); free(trie->residual_arena); free(trie); free(rawfile); rawfile = NULL;
             messi_build_progress_abort(&build_progress);
             return FAILURE;
         }
@@ -1502,6 +1758,9 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
     trie_collect_split_diagnostics(trie->root, &internal_nodes, &nonempty_children,
                                    &child_slots,
                                    &largest_child_share);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    trie_trace_set_subtree_sizes(trie->root);
+#endif
     double split_end = messi_monotonic_seconds();
     /* Clustering is the final operation that reorders records within leaves. */
     if (!trie_compact_words(trie, (size_t) ts_num))
@@ -1513,6 +1772,19 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
         if (failed_leaves)
             fprintf(stderr, "warning: unable to transpose %lu trie leaves; using record-wise bounds there.\n", failed_leaves);
     }
+    if (trie->residual.enabled) {
+        if (!trie_residual_finish(trie, trie->root, index->settings->timeseries_size)) {
+            trie_residual_clear(trie->root);
+            trie->residual.enabled = 0;
+            fprintf(stderr, "warning: ResSPARTAN residual allocation failed; disabling.\n");
+        } else {
+            fprintf(stderr, ">>> ResSPARTAN: float32 residual after %d PCs; no floating-point correction\n",
+                    trie->bound_dimensions);
+            fprintf(stderr, ">>> ResSPARTAN payload: %zu record bytes; %zu model bytes\n",
+                    (size_t)ts_num*sizeof(float), sizeof(trie->residual)+sizeof(trie->residual_arena));
+        }
+    }
+    free(trie->residual_arena); trie->residual_arena = NULL;
     const double compact_end = messi_monotonic_seconds();
     index->trie = trie;
     index->total_records = ts_num;
@@ -1544,7 +1816,36 @@ enum response symbolic_trie_build(isax_index *index, const char *path, long ts_n
 
 static float trie_refine_record_distance(isax_index *index, const symbolic_trie_node *node,
                                          int record, const ts_type *query, float bsf,
-                                         trie_query_stats *stats, file_position_type *best_position) {
+                                         trie_query_stats *stats, file_position_type *best_position,
+                                         float symbolic_bound, float mbr_suffix, trie_query_scratch *scratch) {
+    if (index->trie->residual.enabled && node->record_residuals != NULL) {
+        const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        const unsigned long long trace_start = trie_trace_start(stats);
+        trie_trace_check(stats, TRIE_TRACE_RESIDUAL, 1);
+#endif
+        const float radius = node->record_residuals[record];
+        const double gap = scratch && scratch->residual_ready ?
+            spartan_residual_gap(scratch->residual_query.radius, radius, radius) : 0.0;
+        /* Reuse prefix+suffix already accumulated by the symbolic kernel. */
+        const float lower = symbolic_bound + (float)fmax(0.0, gap*gap-mbr_suffix);
+        if (stats) {
+            ++stats->residual_checks[2];
+            stats->residual_wins[2] += gap*gap > mbr_suffix;
+            stats->residual_prunes[2] += lower > bsf;
+            if (start) stats->record_bound_microseconds += trie_monotonic_microseconds()-start;
+        }
+        if (lower > bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            trie_trace_pruned(stats, TRIE_TRACE_RESIDUAL, 1);
+            trie_trace_time(stats, TRIE_TRACE_RESIDUAL, trace_start);
+#endif
+            return bsf;
+        }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_time(stats, TRIE_TRACE_RESIDUAL, trace_start);
+#endif
+    }
     if (stats != NULL) ++stats->exact_distances;
     const float distance = trie_exact_distance(query, rawfile + node->positions[record],
                                                index->settings->timeseries_size, bsf, stats);
@@ -1564,15 +1865,26 @@ static float trie_refine_streaming_record(isax_index *index, const symbolic_trie
     if (stats != NULL) ++stats->lower_bounds;
     const unsigned long long bound_start = profile_query_phases && stats != NULL
                                                ? trie_monotonic_microseconds() : 0;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    const unsigned long long trace_start = trie_trace_start(stats);
+    trie_trace_check(stats, TRIE_TRACE_SYMBOLIC, 1);
+#endif
     const float lower = trie_record_lower_bound(index->trie, index, transform,
                                                 node->words[record], bsf,
                                                 mbr_suffix, scratch);
     if (bound_start != 0)
         stats->record_bound_microseconds += trie_monotonic_microseconds() - bound_start;
     if (lower > bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_pruned(stats, TRIE_TRACE_SYMBOLIC, 1);
+        trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, trace_start);
+#endif
         return bsf;
     }
-    return trie_refine_record_distance(index, node, record, query, bsf, stats, best_position);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, trace_start);
+#endif
+    return trie_refine_record_distance(index, node, record, query, bsf, stats, best_position, lower, mbr_suffix, scratch);
 }
 
 static inline int trie_radial_simd_lanes(const isax_index *index) {
@@ -1653,9 +1965,17 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             const int base = record - first;
             const int take = end - record < lanes - first ? end - record : lanes - first;
             unsigned int active = ((1U << take) - 1U) << first;
+            if (scratch->residual_ready && node->record_residuals != NULL &&
+                index->settings->trie_residual_order == 1 && first == 0 && take == lanes)
+                active = messi_residual_only_batch_mask(node->record_residuals + base,
+                    scratch->residual_query.radius, bsf, active);
             const unsigned long long batch_start = streaming && profile_query_phases && stats != NULL
                                                        ? trie_monotonic_microseconds() : 0;
             if (radial_applied) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                const unsigned int radial_input = active;
+                const unsigned long long radial_start = trie_trace_start(stats);
+#endif
                 if (!radial_window_valid || radial_window_bsf != bsf) {
                     radial_window = messi_radial_window_from_bsf(query_radius, bsf);
                     radial_window_bsf = bsf;
@@ -1666,6 +1986,13 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 else for (int lane = first; lane < first + take; ++lane)
                     if (!messi_radial_radius_in_window(record_radii[base + lane], radial_window))
                         active &= ~(1U << lane);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                trie_trace_check(stats, TRIE_TRACE_RADIAL,
+                                 (unsigned long long) __builtin_popcount(radial_input));
+                trie_trace_pruned(stats, TRIE_TRACE_RADIAL,
+                                  (unsigned long long) __builtin_popcount(radial_input & ~active));
+                trie_trace_time(stats, TRIE_TRACE_RADIAL, radial_start);
+#endif
                 if (radial_sampling && stats == NULL)
                     sampled_survivors += (unsigned long) __builtin_popcount(active);
             }
@@ -1674,8 +2001,35 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             const int dimensions = index->trie->bound_dimensions;
             const sax_type *symbols = node->batch_words +
                 (size_t) (base / 16) * dimensions * 16 + base % 16;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            const unsigned int symbolic_input = active;
+            const unsigned long long symbolic_start = trie_trace_start(stats);
+#endif
             unsigned int survivors = messi_record_lb_table_batch(scratch->record_lb_table, symbols,
                 dimensions, bsf - mbr_suffix, active, lower);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            trie_trace_check(stats, TRIE_TRACE_SYMBOLIC,
+                             (unsigned long long) __builtin_popcount(symbolic_input));
+            trie_trace_pruned(stats, TRIE_TRACE_SYMBOLIC,
+                              (unsigned long long) __builtin_popcount(symbolic_input & ~survivors));
+            trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, symbolic_start);
+#endif
+            if (survivors != 0U && scratch->residual_ready &&
+                node->record_residuals != NULL && first == 0 && take == lanes) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                const unsigned int residual_input = survivors;
+                const unsigned long long residual_start = trie_trace_start(stats);
+#endif
+                survivors = messi_residual_batch_mask(node->record_residuals + base,
+                    scratch->residual_query.radius, lower, mbr_suffix, bsf, survivors);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                trie_trace_check(stats, TRIE_TRACE_RESIDUAL,
+                                 (unsigned long long) __builtin_popcount(residual_input));
+                trie_trace_pruned(stats, TRIE_TRACE_RESIDUAL,
+                                  (unsigned long long) __builtin_popcount(residual_input & ~survivors));
+                trie_trace_time(stats, TRIE_TRACE_RESIDUAL, residual_start);
+#endif
+            }
             if (batch_start != 0)
                 stats->record_bound_microseconds += trie_monotonic_microseconds() - batch_start;
             while (survivors != 0U) {
@@ -1683,9 +2037,14 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 survivors &= survivors - 1U;
                 const float bound = mbr_suffix + lower[lane];
                 /* Earlier survivors can tighten BSF within this same batch. */
-                if (bound > bsf) continue;
+                if (bound > bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                    trie_trace_pruned(stats, TRIE_TRACE_SYMBOLIC, 1);
+#endif
+                    continue;
+                }
                 if (streaming)
-                    bsf = trie_refine_record_distance(index, node, base + lane, query, bsf, stats, best_position);
+                    bsf = trie_refine_record_distance(index, node, base + lane, query, bsf, stats, best_position, bound, mbr_suffix, scratch);
                 else {
                     scratch->candidates[candidate_count].lower_bound = bound;
                     scratch->candidates[candidate_count++].record_index = base + lane;
@@ -1702,6 +2061,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 continue;
             }
             if (stats != NULL) ++stats->lower_bounds;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            const unsigned long long symbolic_start = trie_trace_start(stats);
+            trie_trace_check(stats, TRIE_TRACE_SYMBOLIC, 1);
+#endif
             const float lower = trie_record_lower_bound(index->trie, index, transform,
                                                         node->words[record], bsf,
                                                         mbr_suffix, scratch);
@@ -1709,6 +2072,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                 scratch->candidates[candidate_count].lower_bound = lower;
                 scratch->candidates[candidate_count++].record_index = record;
             }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            else trie_trace_pruned(stats, TRIE_TRACE_SYMBOLIC, 1);
+            trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, symbolic_start);
+#endif
         }
     } else {
         if (stats != NULL) stats->radial_candidates += (unsigned long) count;
@@ -1722,8 +2089,17 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
             int lanes = 1;
             if (radial_lanes > 1 && block + radial_lanes <= end)
                 lanes = radial_lanes;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            const unsigned long long radial_start = trie_trace_start(stats);
+#endif
             unsigned int survivors = trie_radial_survivor_mask(
                 record_radii + block, radial_window, lanes);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            trie_trace_check(stats, TRIE_TRACE_RADIAL, (unsigned long long) lanes);
+            trie_trace_pruned(stats, TRIE_TRACE_RADIAL,
+                              (unsigned long long) lanes - __builtin_popcount(survivors));
+            trie_trace_time(stats, TRIE_TRACE_RADIAL, radial_start);
+#endif
             if (radial_sampling && stats == NULL)
                 sampled_survivors += (unsigned long) __builtin_popcount(survivors);
             while (survivors != 0U) {
@@ -1737,6 +2113,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                     continue;
                 }
                 if (stats != NULL) ++stats->lower_bounds;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                const unsigned long long symbolic_start = trie_trace_start(stats);
+                trie_trace_check(stats, TRIE_TRACE_SYMBOLIC, 1);
+#endif
                 const float lower = trie_record_lower_bound(index->trie, index, transform,
                                                             node->words[record], bsf,
                                                             mbr_suffix, scratch);
@@ -1744,6 +2124,10 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
                     scratch->candidates[candidate_count].lower_bound = lower;
                     scratch->candidates[candidate_count++].record_index = record;
                 }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                else trie_trace_pruned(stats, TRIE_TRACE_SYMBOLIC, 1);
+                trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, symbolic_start);
+#endif
             }
             block += lanes;
         }
@@ -1772,14 +2156,8 @@ static float trie_scan_leaf_range(isax_index *index, const symbolic_trie_node *n
         const trie_leaf_candidate candidate = trie_heap_pop(scratch->candidates, &candidate_count);
         if (heap_start != 0)
             stats->candidate_heap_microseconds += trie_monotonic_microseconds() - heap_start;
-        if (stats != NULL) ++stats->exact_distances;
-        const float distance = trie_exact_distance(query,
-            rawfile + node->positions[candidate.record_index],
-            index->settings->timeseries_size, bsf, stats);
-        if (distance < bsf) {
-            bsf = distance;
-            if (best_position != NULL) *best_position = node->positions[candidate.record_index];
-        }
+        bsf = trie_refine_record_distance(index, node, candidate.record_index, query, bsf,
+                                          stats, best_position, candidate.lower_bound, mbr_suffix, scratch);
     }
     return bsf;
 }
@@ -1789,8 +2167,14 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
                                        trie_query_stats *stats, trie_query_scratch *scratch,
                                        file_position_type *best_position) {
     if (node->cluster_count == 0) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        const unsigned long long symbolic_start = trie_trace_start(stats);
+#endif
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     node->min_word, node->max_word, scratch);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, symbolic_start);
+#endif
         return trie_scan_leaf_range(index, node, 0, node->size, suffix, NULL,
                                     (messi_distance_interval) { 0.0, 0.0 },
                                     query, transform, bsf, stats, scratch, best_position);
@@ -1805,10 +2189,10 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
     for (int cluster = 0; cluster < node->cluster_count; ++cluster) {
         const trie_leaf_cluster *group = &node->clusters[cluster];
         if (stats != NULL) ++stats->cluster_bounds;
-        const float symbolic_bound = trie_lower_bound(index->trie, index, transform,
+        float symbolic_bound = trie_lower_bound(index->trie, index, transform,
             node->cluster_min_words + (size_t) cluster * index->trie->dimensions,
             node->cluster_max_words + (size_t) cluster * index->trie->dimensions,
-            index->trie->dimensions, bsf, stats);
+            index->trie->dimensions, bsf, stats TRIE_TRACE_ARGUMENT(TRIE_TRACE_GROUP_MBR));
         if (symbolic_bound >= bsf) {
             if (stats != NULL) {
                 ++stats->cluster_symbolic_pruned;
@@ -1816,6 +2200,10 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
                 ++stats->cluster_pruned;
                 stats->cluster_records_pruned += (unsigned long) group->size;
             }
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            trie_trace_pruned(stats, TRIE_TRACE_GROUP_MBR,
+                              (unsigned long long) group->size);
+#endif
             continue;
         }
         messi_distance_interval query_radius = { 0.0, 0.0 };
@@ -1824,9 +2212,16 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
              trie_radial_auto_gate_allows(scratch));
         const int needs_query_radius = index->settings->trie_leaf_ivf_raw_ball_bound ||
                                        radial_may_run;
-        if (needs_query_radius)
+        if (needs_query_radius) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            const unsigned long long radial_start = trie_trace_start(stats);
+#endif
             query_radius = trie_cluster_query_radius(node, cluster, query,
                                                      index->settings->timeseries_size);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            trie_trace_time(stats, TRIE_TRACE_RADIAL, radial_start);
+#endif
+        }
         float raw_ball_bound = 0.0f;
         if (index->settings->trie_leaf_ivf_raw_ball_bound) {
             if (stats != NULL) ++stats->cluster_raw_ball_bounds;
@@ -1854,8 +2249,14 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
         const trie_leaf_cluster *group = &node->clusters[cluster];
         const sax_type *minimum = node->cluster_min_words + (size_t) cluster * index->trie->dimensions;
         const sax_type *maximum = node->cluster_max_words + (size_t) cluster * index->trie->dimensions;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        const unsigned long long symbolic_start = trie_trace_start(stats);
+#endif
         const float suffix = trie_record_mbr_suffix(index->trie, index, transform,
                                                     minimum, maximum, scratch);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_time(stats, TRIE_TRACE_SYMBOLIC, symbolic_start);
+#endif
         bsf = trie_scan_leaf_range(index, node, group->offset, group->size, suffix,
                                    node->record_raw_radii, ordered[i].query_radius,
                                    query, transform, bsf, stats, scratch, best_position);
@@ -1870,8 +2271,14 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
     if (node == skip_leaf) return bsf;
     if (stats != NULL) ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                                   index->trie->dimensions, bsf, stats);
-    if (lower > bsf) return bsf;
+                                   index->trie->dimensions, bsf, stats
+                                   TRIE_TRACE_ARGUMENT(TRIE_TRACE_NODE_MBR));
+    if (lower > bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_node_rejection(stats, node, skip_leaf);
+#endif
+        return bsf;
+    }
     if (!node->leaf) {
         typedef struct { const symbolic_trie_node *node; float bound; } trie_child_bound;
         trie_child_bound ordered[TRIE_MAX_FANOUT];
@@ -1880,16 +2287,22 @@ static float trie_search_node(isax_index *index, const symbolic_trie_node *node,
             ordered[n].node = node->children[i];
             ordered[n++].bound = trie_lower_bound(index->trie, index, transform,
                 node->children[i]->min_word, node->children[i]->max_word,
-                index->trie->dimensions, bsf, stats);
+                index->trie->dimensions, bsf, stats
+                TRIE_TRACE_ARGUMENT(TRIE_TRACE_NODE_MBR));
         }
         for (int i = 1; i < n; ++i) {
             trie_child_bound current = ordered[i]; int j = i - 1;
             while (j >= 0 && ordered[j].bound > current.bound) { ordered[j + 1] = ordered[j]; --j; }
             ordered[j + 1] = current;
         }
-        for (int i = 0; i < n; ++i) if (ordered[i].bound <= bsf)
-            bsf = trie_search_node(index, ordered[i].node, query, transform, bsf, stats, skip_leaf, scratch,
-                                   best_position);
+        for (int i = 0; i < n; ++i) {
+            if (ordered[i].bound <= bsf)
+                bsf = trie_search_node(index, ordered[i].node, query, transform, bsf, stats, skip_leaf, scratch,
+                                       best_position);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            else trie_trace_node_rejection(stats, ordered[i].node, skip_leaf);
+#endif
+        }
         return bsf;
     }
     return trie_scan_leaf_best_first(index, node, query, transform, bsf, stats, scratch, best_position);
@@ -1907,7 +2320,8 @@ static const symbolic_trie_node *trie_seed_leaf(isax_index *index, const sax_typ
                 float bound = trie_lower_bound(index->trie, index, transform,
                                                 node->children[i]->min_word,
                                                 node->children[i]->max_word,
-                                                index->trie->dimensions, best_bound, stats);
+                                                index->trie->dimensions, best_bound, stats
+                                                TRIE_TRACE_ARGUMENT(TRIE_TRACE_NODE_MBR));
                 if (bound < best_bound) {
                     best_bound = bound;
                     next = node->children[i];
@@ -1926,6 +2340,7 @@ static float trie_seed_search(isax_index *index, const ts_type *query,
                                trie_query_stats *stats, trie_query_scratch *scratch,
                                const symbolic_trie_node **seed_leaf,
                                file_position_type *position) {
+    trie_residual_prepare(index, query, transform, scratch);
     *seed_leaf = trie_seed_leaf(index, word, transform, stats);
     const float bsf = *seed_leaf == NULL ? FLT_MAX :
         trie_search_node(index, *seed_leaf, query, transform, FLT_MAX,
@@ -2036,12 +2451,19 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
                                          const ts_type *transform, float bsf,
                                          const symbolic_trie_node *skip_leaf,
                                          trie_leaf_queue *queues, int queue_count,
-                                         int *next_queue, trie_query_stats *stats, int *failed) {
+                                         int *next_queue, trie_query_stats *stats, int *failed,
+                                         const trie_query_scratch *scratch) {
     if (node == skip_leaf || __atomic_load_n(failed, __ATOMIC_RELAXED)) return;
     ++stats->checked_nodes;
     float lower = trie_lower_bound(index->trie, index, transform, node->min_word, node->max_word,
-                                   index->trie->dimensions, bsf, stats);
-    if (lower >= bsf) return;
+                                   index->trie->dimensions, bsf, stats
+                                   TRIE_TRACE_ARGUMENT(TRIE_TRACE_NODE_MBR));
+    if (lower >= bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        trie_trace_node_rejection(stats, node, skip_leaf);
+#endif
+        return;
+    }
     if (node->leaf) {
         int queue_number = __sync_fetch_and_add(next_queue, 1) % queue_count;
         if (!trie_leaf_queue_push(&queues[queue_number], (trie_leaf_work) {node, lower}, stats))
@@ -2050,7 +2472,7 @@ static void trie_parallel_collect_leaves(isax_index *index, const symbolic_trie_
     }
     for (int i = 0; i < node->split_fanout; ++i) if (node->children[i] != NULL)
         trie_parallel_collect_leaves(index, node->children[i], transform, bsf, skip_leaf,
-                                     queues, queue_count, next_queue, stats, failed);
+                                     queues, queue_count, next_queue, stats, failed, scratch);
 }
 
 static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
@@ -2058,11 +2480,19 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
                                         const symbolic_trie_node *skip_leaf,
                                         trie_query_stats *result_stats,
                                         file_position_type *result_position,
-                                        trie_radial_auto_gate *radial_auto_gate) {
+                                        trie_radial_auto_gate *radial_auto_gate,
+                                        const trie_query_scratch *query_scratch) {
     if (result_stats != NULL) memset(result_stats, 0, sizeof(*result_stats));
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    if (result_stats != NULL)
+        result_stats->trace_enabled = index->settings->trie_pruning_curve_path != NULL;
+#endif
 #ifndef _OPENMP
     trie_query_scratch scratch = {0};
+    scratch.residual_query = query_scratch->residual_query;
+    scratch.residual_ready = query_scratch->residual_ready;
     scratch.radial_auto_gate = radial_auto_gate;
+    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
     float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates);
@@ -2080,12 +2510,20 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     if (frontier == NULL || queues == NULL || worker_stats == NULL || worker_scratch == NULL) {
         free(frontier); free(queues); free(worker_stats); free(worker_scratch);
         trie_query_scratch scratch = {0};
+        scratch.residual_query = query_scratch->residual_query;
+        scratch.residual_ready = query_scratch->residual_ready;
         scratch.radial_auto_gate = radial_auto_gate;
+        trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         float distance = trie_search_node(index, index->trie->root, query, transform, bsf,
                                           result_stats, skip_leaf, &scratch, result_position);
         free(scratch.candidates); return distance;
     }
     for (int i = 0; i < workers; ++i) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        worker_stats[i].trace_enabled = result_stats != NULL && result_stats->trace_enabled;
+#endif
+        worker_scratch[i].residual_query = query_scratch->residual_query;
+        worker_scratch[i].residual_ready = query_scratch->residual_ready;
         worker_scratch[i].radial_auto_gate = radial_auto_gate;
         trie_prepare_record_lb_table(index->trie, index, transform, &worker_scratch[i]);
     }
@@ -2107,7 +2545,7 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
 #pragma omp for schedule(dynamic, 1) nowait
         for (int i = 0; i < frontier_count; ++i)
             trie_parallel_collect_leaves(index, frontier[i], transform, traversal_bsf, skip_leaf,
-                                         queues, queue_count, &next_queue, stats, &failed);
+                                         queues, queue_count, &next_queue, stats, &failed, &worker_scratch[worker]);
         if (profile_query_phases) {
             const unsigned long long elapsed = trie_monotonic_microseconds() - frontier_start;
             const unsigned long long direct = (stats->mbr_bound_microseconds - mbr_before_frontier) +
@@ -2121,7 +2559,12 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
             while (trie_leaf_queue_pop(&queues[queue_number], &work, stats)) {
                 float current_bsf;
                 pthread_rwlock_rdlock(&bsf_lock); current_bsf = shared_bsf; pthread_rwlock_unlock(&bsf_lock);
-                if (work.lower_bound > current_bsf) continue;
+                if (work.lower_bound > current_bsf) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+                    trie_trace_node_rejection(stats, work.node, NULL);
+#endif
+                    continue;
+                }
                 file_position_type candidate_position;
                 pthread_rwlock_rdlock(&bsf_lock);
                 candidate_position = shared_position;
@@ -2140,6 +2583,9 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
             }
         }
         unsigned long long worker_elapsed = trie_monotonic_microseconds() - worker_start;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (stats->trace_enabled) stats->trace_worker_microseconds += worker_elapsed;
+#endif
         if (profile_query_phases) {
             const unsigned long long bounded = stats->mbr_bound_microseconds +
                                                stats->record_bound_microseconds + stats->exact_distance_microseconds +
@@ -2163,6 +2609,11 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->candidate_heap_microseconds += worker_stats[i].candidate_heap_microseconds;
         result_stats->synchronization_microseconds += worker_stats[i].synchronization_microseconds;
         result_stats->cluster_bounds += worker_stats[i].cluster_bounds;
+        for (int level = 0; level < 3; ++level) {
+            result_stats->residual_checks[level] += worker_stats[i].residual_checks[level];
+            result_stats->residual_wins[level] += worker_stats[i].residual_wins[level];
+            result_stats->residual_prunes[level] += worker_stats[i].residual_prunes[level];
+        }
         result_stats->cluster_pruned += worker_stats[i].cluster_pruned;
         result_stats->cluster_records_pruned += worker_stats[i].cluster_records_pruned;
         result_stats->cluster_symbolic_pruned += worker_stats[i].cluster_symbolic_pruned;
@@ -2172,6 +2623,14 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
         result_stats->cluster_raw_ball_records_pruned += worker_stats[i].cluster_raw_ball_records_pruned;
         result_stats->radial_candidates += worker_stats[i].radial_candidates;
         result_stats->radial_pruned += worker_stats[i].radial_pruned;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        result_stats->trace_worker_microseconds += worker_stats[i].trace_worker_microseconds;
+        for (int stage = 0; stage < TRIE_TRACE_STAGE_COUNT; ++stage) {
+            result_stats->trace[stage].checks += worker_stats[i].trace[stage].checks;
+            result_stats->trace[stage].pruned += worker_stats[i].trace[stage].pruned;
+            result_stats->trace[stage].microseconds += worker_stats[i].trace[stage].microseconds;
+        }
+#endif
     }
     for (int i = 0; i < workers; ++i) free(worker_scratch[i].candidates);
     for (int i = 0; i < queue_count; ++i) { pthread_mutex_destroy(&queues[i].lock); free(queues[i].items); }
@@ -2184,7 +2643,10 @@ static float trie_parallel_exact_search(isax_index *index, const ts_type *query,
     /* Queue allocation failed mid-search.  Re-run serially rather than ever
      * returning a partial result. */
     trie_query_scratch scratch = {0};
+    scratch.residual_query = query_scratch->residual_query;
+    scratch.residual_ready = query_scratch->residual_ready;
     scratch.radial_auto_gate = radial_auto_gate;
+    trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
     float distance = trie_search_node(index, index->trie->root, query, transform, shared_bsf,
                                       result_stats, skip_leaf, &scratch, result_position);
     free(scratch.candidates); return distance;
@@ -2196,7 +2658,23 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     if (index == NULL || path == NULL || query_count < 0) return FAILURE;
     FILE *file = fopen(path, "rb");
     if (file == NULL) return FAILURE;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    FILE *trace_file = NULL;
+    if (index->settings->trie_pruning_curve_path != NULL) {
+        trace_file = fopen(index->settings->trie_pruning_curve_path, "w");
+        if (trace_file == NULL) {
+            fprintf(stderr, "error: cannot open trie pruning curve %s.\n",
+                    index->settings->trie_pruning_curve_path);
+            fclose(file);
+            return FAILURE;
+        }
+        trie_trace_write_header(trace_file);
+    }
+#endif
     if (fseek(file, (long) index->settings->query_header_bytes, SEEK_SET) != 0) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trace_file != NULL) fclose(trace_file);
+#endif
         fclose(file);
         return FAILURE;
     }
@@ -2208,6 +2686,9 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
     trie_query_scratch scratch = {0};
     fftw_workspace fftw = {0}; fftw_workspace_init(&fftw, ts_length);
     if (query == NULL || (filetype_int && query_int == NULL) || transform == NULL || word == NULL) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trace_file != NULL) fclose(trace_file);
+#endif
         fclose(file); free(query); free(query_int); free(transform); free(word); fftw_workspace_destroy(&fftw); return FAILURE;
     }
     unsigned long long cumulative_microseconds = 0;
@@ -2221,11 +2702,17 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             read_ok = fread(query, sizeof(*query), (size_t) ts_length, file) == (size_t) ts_length;
         }
         if (!read_ok || (apply_znorm && (znorm(query, ts_length), 0))) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            if (trace_file != NULL) fclose(trace_file);
+#endif
             fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
         unsigned long long query_start = trie_monotonic_microseconds();
         if (trie_word_from_ts(index, query, word, transform, &fftw) != SUCCESS) {
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            if (trace_file != NULL) fclose(trace_file);
+#endif
             fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
             fftw_workspace_destroy(&fftw); return FAILURE;
         }
@@ -2236,9 +2723,16 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         trie_prepare_record_lb_table(index->trie, index, transform, &scratch);
         /* The transform drives lower bounds; the word selects the seed path. */
         trie_query_stats stats = {0};
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        stats.trace_enabled = trace_file != NULL;
+#endif
         unsigned long long search_start = trie_monotonic_microseconds();
         const symbolic_trie_node *seed_leaf;
         float bsf = trie_seed_search(index, query, transform, word, &stats, &scratch, &seed_leaf, NULL);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (stats.trace_enabled && maxquerythread > 1)
+            stats.trace_worker_microseconds += trie_monotonic_microseconds() - search_start;
+#endif
         float distance;
         if (maxquerythread > 1) {
             if (profile_query_phases) {
@@ -2254,8 +2748,13 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             trie_query_stats parallel_stats = {0};
             distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf,
                                                   &parallel_stats, NULL,
-                                                  scratch.radial_auto_gate);
+                                                  scratch.radial_auto_gate, &scratch);
             stats.checked_nodes += parallel_stats.checked_nodes;
+            for (int level = 0; level < 3; ++level) {
+                stats.residual_checks[level] += parallel_stats.residual_checks[level];
+                stats.residual_wins[level] += parallel_stats.residual_wins[level];
+                stats.residual_prunes[level] += parallel_stats.residual_prunes[level];
+            }
             stats.lower_bounds += parallel_stats.lower_bounds;
             stats.exact_distances += parallel_stats.exact_distances;
             stats.mbr_bound_microseconds += parallel_stats.mbr_bound_microseconds;
@@ -2276,9 +2775,21 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             stats.cluster_raw_ball_records_pruned += parallel_stats.cluster_raw_ball_records_pruned;
             stats.radial_candidates += parallel_stats.radial_candidates;
             stats.radial_pruned += parallel_stats.radial_pruned;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            stats.trace_worker_microseconds += parallel_stats.trace_worker_microseconds;
+            for (int stage = 0; stage < TRIE_TRACE_STAGE_COUNT; ++stage) {
+                stats.trace[stage].checks += parallel_stats.trace[stage].checks;
+                stats.trace[stage].pruned += parallel_stats.trace[stage].pruned;
+                stats.trace[stage].microseconds += parallel_stats.trace[stage].microseconds;
+            }
+#endif
         } else {
             distance = trie_search_node(index, index->trie->root, query, transform,
                                         minimum_distance < bsf ? minimum_distance : bsf, &stats, seed_leaf, &scratch, NULL);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+            if (stats.trace_enabled)
+                stats.trace_worker_microseconds = trie_monotonic_microseconds() - search_start;
+#endif
         }
         if (profile_query_phases && maxquerythread <= 1) {
             const unsigned long long search_elapsed = trie_monotonic_microseconds() - search_start;
@@ -2292,6 +2803,14 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
         trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
         scratch.radial_auto_gate = NULL;
         stats.total_microseconds = trie_monotonic_microseconds() - query_start;
+#ifdef MESSI_TRIE_PRUNING_TRACE
+        if (trace_file != NULL &&
+            !trie_trace_write_row(trace_file, i, index->total_records, &stats)) {
+            fclose(trace_file); fclose(file); free(query); free(query_int);
+            free(transform); free(word); free(scratch.candidates);
+            fftw_workspace_destroy(&fftw); return FAILURE;
+        }
+#endif
         cumulative_microseconds += stats.total_microseconds;
         trie_save_query_stats(index->trie, &stats, distance, cumulative_microseconds);
         if (SHOULD_REPORT_QUERY(i, query_count)) {
@@ -2299,7 +2818,11 @@ enum response symbolic_trie_query_file(isax_index *index, const char *path, int 
             trie_print_query_stats(i, index->trie, &stats, distance, cumulative_microseconds);
         }
     }
-    fclose(file); free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
+    fclose(file);
+#ifdef MESSI_TRIE_PRUNING_TRACE
+    if (trace_file != NULL) fclose(trace_file);
+#endif
+    free(query); free(query_int); free(transform); free(word); free(scratch.candidates);
     fftw_workspace_destroy(&fftw); return SUCCESS;
 }
 
@@ -2436,7 +2959,7 @@ query_result symbolic_trie_exact_search(isax_index *index, const ts_type *query,
     }
     else result.distance = trie_parallel_exact_search(index, query, transform, bsf, seed_leaf, NULL,
                                                        &result.record_position,
-                                                       radial_auto_initialized ? &radial_auto_gate : NULL);
+                                                       radial_auto_initialized ? &radial_auto_gate : NULL, &scratch);
     free(scratch.candidates);
     trie_radial_auto_gate_destroy(&radial_auto_gate, radial_auto_initialized);
     return result;

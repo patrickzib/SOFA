@@ -24,6 +24,16 @@ else
 	AC_DEFINE(BENCHMARK, [], [Create a benchmark version])
 fi
 
+AC_ARG_ENABLE([trie-pruning-trace],
+    [AS_HELP_STRING([--enable-trie-pruning-trace],
+        [compile the paper-matched S3-Trie pruning profiler (default=no)])],
+    [],
+    [enable_trie_pruning_trace=no])
+if test "x$enable_trie_pruning_trace" = "xyes"; then
+    AC_DEFINE([MESSI_TRIE_PRUNING_TRACE], [1],
+        [Define to compile the paper-matched trie pruning profiler])
+fi
+
 AC_ARG_WITH(with_debug, [  --with-debug            enable stuff])
 if test "$with_debug" == "yes"
 then

@@ -17,7 +17,8 @@ struct isax_node;
 
 typedef struct isax_node_split_data {
     int splitpoint;
-    sax_type * split_mask;
+    /* Cardinality minus one; -1 means that this dimension has no root bit. */
+    int8_t * split_mask;
 } isax_node_split_data;
 
 typedef struct isax_node {

@@ -59,7 +59,7 @@ assert_not_contains "$OUTPUT" '--query-header-bytes'
 pass 'BigANN, SpaceV, and Text-to-Image encodings match their files'
 
 OUTPUT=$(MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'default trie standard profile should emit four commands'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 2 ]] || fail 'default trie standard profile should emit two SPARTAN commands'
 assert_contains "$OUTPUT" '--threads 7'
 assert_contains "$OUTPUT" '--index-type trie'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
@@ -68,6 +68,35 @@ assert_contains "$OUTPUT" '--trie-split-dimensions 64'
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
 assert_contains "$OUTPUT" '--trie-streaming-leaf-scan'
 pass 'runner defaults to the trie benchmark profile and physical-core thread count'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets astro --threads 16,32,64 \
+    --index-threads 64 --index-type trie --methods spartan-depth --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--threads 16'
+assert_contains "$OUTPUT" '--threads 32'
+assert_contains "$OUTPUT" '--threads 64'
+assert_contains "$OUTPUT" '--index-threads 64'
+pass 'suite separates fixed index workers from query-core scaling'
+
+OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --datasets astro --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 20 ]] || \
+    fail 'segment scaling should emit five methods at each of four widths'
+for segments in 16 32 48 64; do
+    [[ $(printf '%s\n' "$OUTPUT" | grep -c -- "--n-segments $segments") == 5 ]] || \
+        fail "segment scaling did not emit five commands at width $segments"
+    assert_contains "$OUTPUT" "--function-type 5"
+    printf '%s\n' "$OUTPUT" | grep -- "--function-type 5" | grep -- "--n-segments $segments" | \
+        grep -q -- "--trie-split-dimensions $segments" || \
+        fail "SPARTAN split dimensions do not track width $segments"
+done
+assert_contains "$OUTPUT" '--threads 64'
+assert_contains "$OUTPUT" '--index-threads 64'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_not_contains "$OUTPUT" '--enable-sofa-v2'
+assert_not_contains "$OUTPUT" '--isax-node-mbr'
+assert_not_contains "$OUTPUT" '--isax-record-mbr-suffix-bound'
+assert_not_contains "$OUTPUT" '--isax-record-lb-table'
+assert_contains "$(<"$SCRIPT_DIR/run_segment_scaling_experiment.sh")" 'segments-$segments'
+pass 'segment-scaling runner fixes workers, isolates widths, and excludes SOFA-v2 bounds'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-type 3'
@@ -85,9 +114,8 @@ assert_not_contains "$OUTPUT" '--queue-number'
 pass 'queue count is optional and defaults in MESSI'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type trie --dry-run 2>/dev/null)
-[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 4 ]] || fail 'trie standard profile should exclude SAX and PISA by default'
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 2 ]] || fail 'trie standard profile should run only SPARTAN by default'
 assert_not_contains "$OUTPUT" '--function-type 3'
-assert_contains "$OUTPUT" '--function-type 4'
 assert_contains "$OUTPUT" '--function-type 5'
 assert_not_contains "$OUTPUT" '--function-type 6'
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
@@ -171,6 +199,14 @@ pass 'trie streaming leaf scan defaults on, supports heap opt-out, and is scoped
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
     --trie-leaf-ivf 16 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --trie-leaf-ivf 8 --trie-leaf-ivf-min-size 2048 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-leaf-ivf 8'
+assert_contains "$OUTPUT" '--trie-leaf-ivf-min-size 2048'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type trie \
+    --trie-leaf-ivf 8 --trie-leaf-ivf-min-size 0 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted a non-positive trie IVF minimum size'
+fi
 if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type isax \
     --trie-leaf-ivf 16 --dry-run >/dev/null 2>&1; then
     fail 'runner accepted trie leaf IVF for iSAX'
@@ -189,6 +225,33 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --index-type tr
     fail 'runner accepted trie IVF radial bound with IVF disabled'
 fi
 pass 'explicit trie IVF radial bound is forwarded and requires IVF'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 64 --queue-number 64 \
+    --methods spartan-depth --trie-mbr-dims 128 --n-segments 64 --trie-split-dims 64 \
+    --trie-leaf-ivf 16 --trie-leaf-ivf-min-size 4096 \
+    --no-trie-leaf-ivf-raw-ball-bound --trie-leaf-ivf-radial-bound \
+    --trie-record-mbr-suffix-bound --trie-streaming-leaf-scan \
+    --trie-residual-record-only --trie-residual-order symbolic-first \
+    --trie-pruning-curve --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-pruning-curve'
+assert_contains "$OUTPUT" '--no-trie-leaf-ivf-raw-ball-bound'
+assert_contains "$OUTPUT" '--trie-residual-order symbolic-first'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --methods spartan-depth \
+    --trie-residual-record-only --trie-pruning-curve --dry-run >/dev/null 2>&1; then
+    fail 'pruning trace accepted a configuration containing the non-paper raw-ball bound'
+fi
+pass 'paper pruning trace forwards and validates the five-bound cascade'
+
+OUTPUT=$("$SCRIPT_DIR/run_paper_pruning_experiment.sh" --datasets astro \
+    --threads 1 --queue-number 1 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--function-type 5'
+assert_contains "$OUTPUT" '--apply-z-norm'
+assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
+assert_contains "$OUTPUT" '--no-trie-leaf-ivf-raw-ball-bound'
+assert_contains "$OUTPUT" '--trie-pruning-curve'
+pass 'paper pruning experiment fixes the LaTeX configuration and five bounds'
 
 for runner in dataset suite; do
     if [[ $runner == dataset ]]; then
@@ -231,6 +294,14 @@ if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-report-
 fi
 pass 'query report interval is forwarded and validated'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 36 --index-type trie \
+    --query-repeats 3 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--query-repeats 3'
+if "$SCRIPT_DIR/run_dataset.sh" astro high-frequency --threads 1 --query-repeats 0 --dry-run >/dev/null 2>&1; then
+    fail 'runner accepted zero query repeats'
+fi
+pass 'query repeats are forwarded and validated'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann high-frequency --threads 36 --queue-number 36 --index-type isax --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--apply-z-norm'
 assert_contains "$OUTPUT" '--filetype-int'
@@ -249,22 +320,28 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number
 assert_contains "$OUTPUT" '--sfa-n-coefficients 48'
 pass 'short series use the largest valid even coefficient pool'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" deep1b standard --threads 1 --queue-number 1 \
+    --index-type isax --isax-n-segments 64 --methods sfa-depth --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--n-segments 64'
+assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
+pass 'segment scaling widens the SFA coefficient pool to the symbolic width'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 64 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 64'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 64'
-pass 'trie MBR dimensions are capped by series length, not half length'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
+pass 'trie MBR dimensions are capped by series length, not half length and SPARTAN is the default'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
 pass 'trie supports 128 MBR dimensions for 128-value series'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" bigann standard --threads 1 --index-type trie \
     --trie-mbr-dims 128 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-mbr-dimensions 128'
-assert_contains "$OUTPUT" '--sfa-n-coefficients 128'
+assert_not_contains "$OUTPUT" '--sfa-n-coefficients'
 pass 'BigANN trie MBR dimensions use the corrected 128-value series length'
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --threads 1 --queue-number 1 --dataset-size 100k --dry-run 2>&1)
@@ -312,6 +389,21 @@ if MESSI_LOG_ROOT="$TEMP_ROOT/logs" MESSI_RESULTS_ROOT="$TEMP_ROOT/results" "$SC
     fail 'archive helper accepted an escaping label'
 fi
 pass 'result replacement is bounded by the configured results root'
+
+SEGMENT_RESUME_ROOT="$TEMP_ROOT/segment-resume"
+mkdir -p "$SEGMENT_RESUME_ROOT/results/messi/segments-16/ASTRO" \
+         "$SEGMENT_RESUME_ROOT/results/sofa/segments-16/ASTRO" \
+         "$SEGMENT_RESUME_ROOT/results/trie/segments-16/ASTRO" \
+         "$SEGMENT_RESUME_ROOT/logs/messi/segments-16"
+printf 'partial\n' > "$SEGMENT_RESUME_ROOT/logs/messi/segments-16/interrupted.log"
+OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --segment-list 16 \
+    --datasets astro --experiment-root "$SEGMENT_RESUME_ROOT" \
+    --binary /tmp/does-not-exist 2>&1)
+[[ $(printf '%s\n' "$OUTPUT" | grep -c 'Skipping dataset=astro') == 3 ]] || \
+    fail 'segment-scaling resume did not skip all three completed system archives'
+[[ $(find "$SEGMENT_RESUME_ROOT/incomplete/messi/segments-16" -name interrupted.log | wc -l | tr -d ' ') == 1 ]] || \
+    fail 'segment-scaling resume did not preserve partial logs separately'
+pass 'segment-scaling runner resumes by default at dataset/system/segment archive boundaries'
 
 TEST_RUN_MESSI="$TEMP_ROOT/test_run_messi"
 printf '%s\n' '#!/usr/bin/env bash' 'printf "%s\\n" "$*"' > "$TEST_RUN_MESSI"
@@ -376,6 +468,10 @@ OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --ind
     --leaf-size 10k --min-leaf-size 5k --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--leaf-size 10000'
 assert_contains "$OUTPUT" '--min-leaf-size 5000'
+assert_contains "$OUTPUT" '--initial-lbl-size 10000'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 64 --datasets astro --index-type trie \
+    --leaf-size 40k --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--initial-lbl-size 40000'
 pass 'suite forwards leaf capacity and minimum occupancy'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
@@ -393,9 +489,19 @@ assert_not_contains "$OUTPUT" ' --trie-streaming-leaf-scan'
 pass 'suite defaults to streaming leaf refinement and forwards heap opt-out'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
-    --trie-leaf-ivf 16 --dry-run 2>/dev/null)
+    --trie-leaf-ivf 16 --trie-leaf-ivf-min-size 8192 --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--trie-leaf-ivf 16'
-pass 'suite forwards trie leaf IVF'
+assert_contains "$OUTPUT" '--trie-leaf-ivf-min-size 8192'
+pass 'suite forwards trie leaf IVF and its minimum eligible leaf size'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
+    --query-repeats 3 --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--query-repeats 3'
+if "$SCRIPT_DIR/run_suite.sh" standard --threads 1 --datasets astro --index-type isax \
+    --query-repeats 3 --dry-run >/dev/null 2>&1; then
+    fail 'suite accepted repeated queries for iSAX'
+fi
+pass 'suite forwards in-memory trie query repeats'
 
 OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --threads 36 --datasets astro --index-type trie \
     --trie-leaf-ivf 16 --trie-leaf-ivf-radial-bound --dry-run 2>/dev/null)
@@ -484,5 +590,78 @@ if [[ ${RUN_MESSI_INTEGRATION:-0} == 1 ]]; then
 else
     printf '# SKIP set RUN_MESSI_INTEGRATION=1 for the real MESSI fixture test\n'
 fi
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" sald standard --methods spartan-depth --trie-residual-record-only --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-residual-record-only'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets SALD --methods spartan-depth --trie-residual-record-only --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--trie-residual-record-only'
+if "$SCRIPT_DIR/run_dataset.sh" sald standard --methods pisa-depth --trie-residual-record-only --dry-run >/dev/null 2>&1; then
+    fail 'residual bound must reject PISA'
+fi
+if "$SCRIPT_DIR/run_dataset.sh" sald standard --index-type isax --methods spartan-depth --trie-residual-record-only --dry-run >/dev/null 2>&1; then
+    fail 'residual bound must reject iSAX'
+fi
+pass 'ResSPARTAN is forwarded and rejects unsupported method/layout combinations'
+
+OUTPUT=$("$SCRIPT_DIR/tune_trie_dataset.sh" --help)
+assert_contains "$OUTPUT" 'spartan-depth or spartan-width to win'
+assert_contains "$OUTPUT" 'best-config.env'
+assert_contains "$OUTPUT" 'Final query repetitions per built finalist'
+assert_contains "$OUTPUT" 'DATASET[,DATASET...]'
+pass 'dataset-specific trie tuner documents joint method selection and safe result outputs'
+
+TUNER_FAKE_MESSI="$TEMP_ROOT/tuner_fake_messi"
+printf '%s\n' '#!/usr/bin/env bash' \
+    'histogram=1; repeats=1' \
+    'while (( $# )); do case "$1" in --histogram-type) histogram=$2; shift 2 ;; --query-repeats) repeats=$2; shift 2 ;; *) shift ;; esac; done' \
+    'query=1.000; (( histogram == 1 )) || query=0.500' \
+    'printf "    eligible leaves  : 10\n    clusters         : 160\n"' \
+    'printf ">>> trie build timing\n    total      : 2.000 s\n"' \
+    'if (( repeats > 1 )); then for ((i=1; i<=repeats; ++i)); do printf ">>> query repeat %d/%d wall time: %s s\n" "$i" "$repeats" "$query"; done; fi' \
+    'printf ">>> query wall time: %s s\n" "$query"' \
+    'printf "=== Query summary ===\n  wall time        : %s s (1.000 ms/query)\n" "$query"' \
+    'printf "  symbolic record bounds: 1.00 M/query (1.00%% of 100.00 M indexed series)\n"' \
+    'printf "  exact distances  : 1.00 K/query (0.00%% of 100.00 M indexed series)\n"' \
+    > "$TUNER_FAKE_MESSI"
+chmod +x "$TUNER_FAKE_MESSI"
+TUNER_ROOT="$TEMP_ROOT/tuner"
+"$SCRIPT_DIR/tune_trie_dataset.sh" astro --threads 1 --repeats 3 \
+    --output-root "$TUNER_ROOT" --binary "$TUNER_FAKE_MESSI" \
+    --dataset-file "$TEMP_ROOT/astro.bin" --query-file "$TEMP_ROOT/astro_queries.bin" \
+    --dataset-size 1 --query-size 1 >/dev/null
+assert_contains "$(<"$TUNER_ROOT/astro/best-config.env")" 'METHOD=spartan-width'
+[[ $(awk -F '\t' '$3 == "01-structure" && $2 == "spartan-depth" { found=1 } END { print found+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 1 ]] ||
+    fail 'joint tuner did not screen spartan-depth'
+[[ $(awk -F '\t' '$3 == "01-structure" && $2 == "spartan-width" { found=1 } END { print found+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 1 ]] ||
+    fail 'joint tuner did not screen spartan-width'
+for method in spartan-depth spartan-width; do
+    for phase in 01-structure 02-mbr 03-ivf-groups 04-ivf-min-size 05-residual 06-final-query-only; do
+        [[ -d $TUNER_ROOT/astro/$method/$phase ]] || fail "missing $method/$phase"
+    done
+done
+[[ $(awk -F '\t' '$3 == "06-final-query-only" { count++ } END { print count+0 }' "$TUNER_ROOT/astro/all-runs.tsv") == 12 ]] ||
+    fail 'joint tuner did not record three query repeats for both finalists'
+[[ $(awk 'END {print NR}' "$TUNER_ROOT/astro/final-ranking.tsv") == 5 ]] ||
+    fail 'final ranking must contain four distinct method/configuration finalists'
+pass 'trie tuner completes both methods and compares all four finalists'
+
+# Simulate an older completed output that stopped depth after stage 1.
+LEGACY_SAVED="$TEMP_ROOT/legacy-saved"
+mkdir -p "$LEGACY_SAVED"
+mv "$TUNER_ROOT/astro/.complete-both-methods" "$LEGACY_SAVED/"
+for phase in 02-mbr 03-ivf-groups 04-ivf-min-size 05-residual 06-final-query-only; do
+    mv "$TUNER_ROOT/astro/spartan-depth/$phase" "$LEGACY_SAVED/"
+done
+cp "$TUNER_ROOT/astro/spartan-width/06-final-query-only/candidate-1/metrics.tsv" "$LEGACY_SAVED/width-metrics.tsv"
+"$SCRIPT_DIR/tune_trie_dataset.sh" astro --threads 1 --repeats 3 \
+    --output-root "$TUNER_ROOT" --binary "$TUNER_FAKE_MESSI" \
+    --dataset-file "$TEMP_ROOT/astro.bin" --query-file "$TEMP_ROOT/astro_queries.bin" \
+    --dataset-size 1 --query-size 1 >/dev/null
+[[ -f $TUNER_ROOT/astro/.complete-both-methods ]] || fail 'legacy output was not upgraded'
+[[ -d $TUNER_ROOT/astro/spartan-depth/06-final-query-only ]] || fail 'missing method was not resumed'
+cmp -s "$LEGACY_SAVED/width-metrics.tsv" "$TUNER_ROOT/astro/spartan-width/06-final-query-only/candidate-1/metrics.tsv" ||
+    fail 'completed finalist metrics changed during resume'
+[[ $(awk 'END {print NR}' "$TUNER_ROOT/astro/final-ranking.tsv") == 5 ]] || fail 'resumed ranking missing finalists'
+pass 'legacy single-method completion resumes missing stages and preserves completed runs'
 
 printf '1..%d\n' "$TEST_COUNT"

@@ -7,12 +7,13 @@ source "$SCRIPT_DIR/lib/datasets.sh"
 
 usage() {
     cat <<'USAGE'
-Usage: run_dataset.sh DATASET PROFILE [--threads N|auto] [--queue-number N] [OPTIONS]
+Usage: run_dataset.sh DATASET PROFILE [--threads N|auto] [--index-threads N|auto] [--queue-number N] [OPTIONS]
 
 Profiles: standard, high-frequency, knn, sampling
 
 Options:
   --threads N|auto         Workers (default: available physical CPU cores)
+  --index-threads N|auto   Index-construction workers (default: --threads)
   --dataset-file PATH       Override the dataset filename/path
   --query-file PATH         Override the query filename/path
   --dataset-size N          Override dataset records; accepts 100m, 1mio, 20k
@@ -27,6 +28,8 @@ Options:
   --sample-size N           Override the sample size; accepts count suffixes
   --sample-type 1|2|3       Binning sampling: first values, uniform (default), or random
   --sampling-seed N         Seed for random direct-CLI sampling (benchmark runners use uniform sampling)
+  --apply-z-norm            Z-normalize every database series and query
+  --no-apply-z-norm         Use input values without runner-requested normalization
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
   --index-type TYPE         Index layout: trie (default) or isax
@@ -38,6 +41,10 @@ Options:
   --isax-mbr-dims N         Extended iSAX MBR dimensions (default: 32)
   --isax-record-lb-table    Use query-local iSAX record lower-bound tables
   --trie-mbr-dims N         Trie MBR dimensions (default: 128; capped by series length)
+  --trie-residual-record-only Enable residual pruning only for records
+  --no-trie-residual-record-only
+                            Disable the default trie residual record bound
+  --trie-residual-order MODE  Residual ordering: symbolic-first or residual-first
   --n-segments N            Trie record-prefix lower-bound dimensions (default: 64; range: 16--64;
                             alias: --trie-record-lb-dims)
   --trie-split-dims N       Trie split-candidate dimensions (default: min(32, MBR dimensions))
@@ -50,6 +57,8 @@ Options:
   --no-trie-streaming-leaf-scan
                             Use the record lower-bound heap instead
   --trie-leaf-ivf K         Build K flat IVF MBR groups inside large trie leaves (default: 16)
+  --trie-leaf-ivf-min-size N
+                            Minimum leaf size eligible for IVF (default: 4096)
   --no-trie-leaf-ivf        Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                             Disable certified raw centroid/radius cluster pruning
@@ -72,7 +81,9 @@ Options:
   --trie-query-parallel     Parallelize each trie query (default; retained for compatibility)
   --trie-query-batch        Batch independent trie queries instead
   --query-report-interval N Print first, every Nth completed, and final query row (0=none; default: 10)
+  --query-repeats N         Repeat queries after one in-memory trie build (default: 1)
   --profile-query-phases    Measure traversal, lower-bound, and exact-distance work
+  --trie-pruning-curve      Write the paper-matched five-bound pruning trace
   --tight-bound             Enable iSAX tight-bound pruning (default for iSAX)
   --binary PATH             MESSI executable
   MESSI_SHELL_LOG_DIR       Directory for per-method shell output logs
@@ -179,6 +190,7 @@ case "$PROFILE" in
 esac
 
 THREADS=$(physical_core_count) || die 'unable to detect physical CPU cores; pass --threads N'
+INDEX_THREADS=
 NUMA_MODE=auto
 QUEUE_NUMBER=
 DATASET_OVERRIDE=
@@ -195,6 +207,7 @@ SAMPLE_FACTOR=0.01
 SAMPLE_SIZE_OVERRIDE=
 SAMPLE_TYPE=2
 SAMPLING_SEED=1
+APPLY_Z_NORM_OVERRIDE=
 NO_SIMD=false
 METHODS_OVERRIDE=
 INDEX_TYPE=trie
@@ -209,9 +222,13 @@ TRIE_RECORD_MBR_SUFFIX_BOUND=
 TRIE_STREAMING_LEAF_SCAN=true
 TRIE_STREAMING_LEAF_SCAN_SPECIFIED=false
 TRIE_LEAF_IVF=16
+TRIE_LEAF_IVF_MIN_SIZE=4096
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
 TRIE_LEAF_IVF_RADIAL_BOUND=false
+TRIE_RESIDUAL_RECORD_ONLY=false
+TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=false
+TRIE_RESIDUAL_ORDER=symbolic-first
 TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=false
 TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false
 TRIE_FANOUT=8
@@ -220,7 +237,9 @@ TRIE_MIN_FANOUT=2
 TRIE_MAX_FANOUT=16
 TRIE_ALPHABET_BUDGET_BITS=3
 PROFILE_QUERY_PHASES=false
+TRIE_PRUNING_CURVE=false
 QUERY_REPORT_INTERVAL=
+QUERY_REPEATS=1
 # Resolved after parsing because the default depends on --index-type.
 DYNAMIC_ROOT_SPLIT_VARIANCE=
 DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=false
@@ -245,6 +264,7 @@ SEISBENCH_QUERY_ROOT=${MESSI_SEISBENCH_QUERY_ROOT:-}
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --threads) [[ $# -ge 2 ]] || die "$1 requires a value"; THREADS=$2; shift 2 ;;
+        --index-threads) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_THREADS=$2; shift 2 ;;
         --numa) [[ $# -ge 2 ]] || die "$1 requires a value"; NUMA_MODE=$2; shift 2 ;;
         --queue-number) [[ $# -ge 2 ]] || die "$1 requires a value"; QUEUE_NUMBER=$2; shift 2 ;;
         --dataset-file) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASET_OVERRIDE=$2; shift 2 ;;
@@ -261,6 +281,8 @@ while [[ $# -gt 0 ]]; do
         --sample-size) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_SIZE_OVERRIDE=$2; shift 2 ;;
         --sample-type) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_TYPE=$2; shift 2 ;;
         --sampling-seed) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLING_SEED=$2; shift 2 ;;
+        --apply-z-norm) APPLY_Z_NORM_OVERRIDE=true; shift ;;
+        --no-apply-z-norm) APPLY_Z_NORM_OVERRIDE=false; shift ;;
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
         --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
@@ -280,8 +302,12 @@ while [[ $# -gt 0 ]]; do
         --trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=true; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
+        --trie-leaf-ivf-min-size) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF_MIN_SIZE=$2; shift 2 ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
+        --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=true; shift ;;
+        --no-trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=false; TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=true; shift ;;
+        --trie-residual-order) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_RESIDUAL_ORDER=$2; [[ $TRIE_RESIDUAL_ORDER == symbolic-first || $TRIE_RESIDUAL_ORDER == residual-first ]] || die '--trie-residual-order expects symbolic-first or residual-first'; shift 2 ;;
         --trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=true; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
         --trie-leaf-ivf-radial-bound-auto) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=true; shift ;;
         --no-trie-leaf-ivf-radial-bound) TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED=true; TRIE_LEAF_IVF_RADIAL_BOUND=false; TRIE_LEAF_IVF_RADIAL_BOUND_AUTO=false; shift ;;
@@ -291,7 +317,9 @@ while [[ $# -gt 0 ]]; do
         --trie-max-fanout) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_MAX_FANOUT=$2; shift 2 ;;
         --trie-alphabet-budget-bits) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_ALPHABET_BUDGET_BITS=$2; shift 2 ;;
         --query-report-interval) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPORT_INTERVAL=$2; shift 2 ;;
+        --query-repeats) [[ $# -ge 2 ]] || die "$1 requires a value"; QUERY_REPEATS=$2; shift 2 ;;
         --profile-query-phases) PROFILE_QUERY_PHASES=true; shift ;;
+        --trie-pruning-curve) TRIE_PRUNING_CURVE=true; shift ;;
         --dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=true; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --no-dynamic-root-split-variance) DYNAMIC_ROOT_SPLIT_VARIANCE=false; DYNAMIC_ROOT_SPLIT_VARIANCE_SPECIFIED=true; shift ;;
         --tight-bound) TIGHT_BOUND=true; shift ;;
@@ -309,6 +337,8 @@ done
 
 load_dataset "$DATASET_ARG" "$PROFILE"
 
+[[ -n $APPLY_Z_NORM_OVERRIDE ]] && APPLY_Z_NORM=$APPLY_Z_NORM_OVERRIDE
+
 [[ -n $DATASET_OVERRIDE ]] && DATASET_FILE=$DATASET_OVERRIDE
 [[ -n $QUERY_OVERRIDE ]] && QUERY_FILE=$QUERY_OVERRIDE
 [[ -n $DATASET_SIZE_OVERRIDE ]] && DATASET_SIZE=$DATASET_SIZE_OVERRIDE
@@ -320,6 +350,7 @@ fi
 [[ -n $QUERY_HEADER_BYTES_OVERRIDE ]] && QUERY_HEADER_BYTES=$QUERY_HEADER_BYTES_OVERRIDE
 
 [[ $THREADS == auto ]] || is_positive_integer "$THREADS" || die '--threads must be a positive integer or auto'
+[[ -z $INDEX_THREADS || $INDEX_THREADS == auto ]] || is_positive_integer "$INDEX_THREADS" || die '--index-threads must be a positive integer or auto'
 [[ $NUMA_MODE == auto || $NUMA_MODE == none ]] || is_positive_integer "$NUMA_MODE" || die '--numa must be auto, none, or a positive integer'
 [[ -z $QUEUE_NUMBER ]] || is_positive_integer "$QUEUE_NUMBER" || die '--queue-number must be a positive integer'
 is_nonnegative_integer "$SAMPLING_SEED" || die '--sampling-seed must be a nonnegative integer'
@@ -328,10 +359,20 @@ is_nonnegative_integer "$QUERY_HEADER_BYTES" || die '--query-header-bytes must b
 [[ $SAMPLE_TYPE == 1 || $SAMPLE_TYPE == 2 || $SAMPLE_TYPE == 3 ]] || \
     die '--sample-type must be 1 (first values), 2 (uniform), or 3 (random)'
 [[ -z $QUERY_REPORT_INTERVAL ]] || is_nonnegative_integer "$QUERY_REPORT_INTERVAL" || die '--query-report-interval must be zero or a positive integer'
+is_positive_integer "$QUERY_REPEATS" || die '--query-repeats must be a positive integer'
+(( QUERY_REPEATS == 1 )) || [[ $INDEX_TYPE == trie ]] || die '--query-repeats greater than one requires --index-type trie'
 [[ -n $DATASET_FILE ]] || die '--dataset-file is required for this dataset'
 [[ -n $QUERY_FILE ]] || die '--query-file is required for this dataset'
 DATASET_SIZE=$(normalize_count "$DATASET_SIZE") || die '--dataset-size must be a positive integer or use k/m/mio/g'
 [[ $INDEX_TYPE == isax || $INDEX_TYPE == trie ]] || die '--index-type must be isax or trie'
+if [[ $INDEX_TYPE != trie && $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == false ]]; then
+    # ResSPARTAN is a trie record-bound extension; keep trie defaults from
+    # affecting SOFA/MESSI iSAX runs.
+    TRIE_RESIDUAL_RECORD_ONLY=false
+elif [[ $PROFILE == standard && -z $METHODS_OVERRIDE && $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == false ]]; then
+    # The current standard TRIE benchmark defaults are ResSPARTAN depth/width.
+    TRIE_RESIDUAL_RECORD_ONLY=true
+fi
 if [[ -z $DYNAMIC_ROOT_SPLIT_VARIANCE ]]; then
     DYNAMIC_ROOT_SPLIT_VARIANCE=false
 fi
@@ -344,6 +385,7 @@ is_positive_integer "$ISAX_N_SEGMENTS" || die '--isax-n-segments must be a posit
 [[ $TRIE_STREAMING_LEAF_SCAN_SPECIFIED == false || $INDEX_TYPE == trie ]] || die 'trie streaming leaf-scan options require --index-type trie'
 [[ $TRIE_LEAF_IVF_SPECIFIED == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == true || $INDEX_TYPE == trie ]] || die '--no-trie-leaf-ivf-raw-ball-bound requires --index-type trie'
+[[ $TRIE_RESIDUAL_RECORD_ONLY == false || $INDEX_TYPE == trie ]] || die '--trie-residual-record-only requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound requires --index-type trie'
 [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $INDEX_TYPE == trie ]] || die '--trie-leaf-ivf-radial-bound-auto requires --index-type trie'
 [[ $TRIE_FANOUT == 8 || $INDEX_TYPE == trie ]] || die '--trie-fanout requires --index-type trie'
@@ -387,6 +429,7 @@ if [[ $INDEX_TYPE == trie ]]; then
     if (( TRIE_LEAF_IVF != 0 )); then
         is_positive_integer "$TRIE_LEAF_IVF" || die '--trie-leaf-ivf must be a positive integer'
         (( TRIE_LEAF_IVF >= 2 && TRIE_LEAF_IVF <= 64 )) || die '--trie-leaf-ivf must be between 2 and 64'
+        is_positive_integer "$TRIE_LEAF_IVF_MIN_SIZE" || die '--trie-leaf-ivf-min-size must be a positive integer'
     fi
     (( TRIE_MBR_DIMS <= COEFF_NUMBER )) || COEFF_NUMBER=$TRIE_MBR_DIMS
 if [[ $TRIE_DYNAMIC_ALPHABET == false ]]; then
@@ -434,7 +477,7 @@ case "$PROFILE" in
 esac
 if [[ $INDEX_TYPE == trie ]]; then
     case "$PROFILE" in
-        standard) DEFAULT_METHODS=sfa-depth,sfa-width,spartan-depth,spartan-width ;;
+        standard) DEFAULT_METHODS=spartan-depth,spartan-width ;;
         knn) DEFAULT_METHODS=sfa-depth,sfa-width ;;
     esac
 fi
@@ -442,6 +485,24 @@ METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
 
 IFS=',' read -r -a METHOD_LIST <<< "$METHODS"
 [[ ${#METHOD_LIST[@]} -gt 0 ]] || die 'at least one method is required'
+if [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]]; then
+    for residual_method in "${METHOD_LIST[@]}"; do
+        [[ $residual_method == spartan-depth || $residual_method == spartan-width ]] || \
+            die '--trie-residual-record-only requires --methods spartan-depth,spartan-width (or either one)'
+    done
+fi
+if [[ $TRIE_PRUNING_CURVE == true ]]; then
+    [[ $INDEX_TYPE == trie ]] || die '--trie-pruning-curve requires --index-type trie'
+    [[ $TRIE_QUERY_BATCH == false ]] || die '--trie-pruning-curve is incompatible with --trie-query-batch'
+    [[ ${#METHOD_LIST[@]} -eq 1 && ${METHOD_LIST[0]} == spartan-depth ]] || \
+        die '--trie-pruning-curve requires --methods spartan-depth'
+    [[ $TRIE_LEAF_IVF != 0 && $TRIE_LEAF_IVF_RAW_BALL_BOUND == false &&
+       $TRIE_LEAF_IVF_RADIAL_BOUND == true && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false &&
+       $TRIE_RECORD_MBR_SUFFIX_BOUND == true && $TRIE_STREAMING_LEAF_SCAN == true &&
+       $TRIE_RESIDUAL_RECORD_ONLY == true && $TRIE_RESIDUAL_ORDER == symbolic-first ]] || \
+        die '--trie-pruning-curve requires the paper cascade (IVF, radial, suffix, symbolic-first residual, streaming, no raw ball)'
+    (( QUERY_REPEATS == 1 )) || die '--trie-pruning-curve requires --query-repeats 1'
+fi
 
 COMMON_ARGS=(
     --dataset "$DATASET_PATH"
@@ -465,9 +526,10 @@ COMMON_ARGS+=(
     --numa "$NUMA_MODE"
     --leaf-size "$LEAF_SIZE"
     --min-leaf-size "$MIN_LEAF_SIZE"
-    --initial-lbl-size 20000
+    --initial-lbl-size "$LEAF_SIZE"
     --sampling-seed "$SAMPLING_SEED"
 )
+[[ -n $INDEX_THREADS ]] && COMMON_ARGS+=(--index-threads "$INDEX_THREADS")
 [[ $NO_SIMD == true ]] && COMMON_ARGS+=(--no-simd)
 [[ -n $QUEUE_NUMBER ]] && COMMON_ARGS+=(--queue-number "$QUEUE_NUMBER")
 [[ $INDEX_TYPE == trie ]] && COMMON_ARGS+=(--trie-mbr-dimensions "$TRIE_MBR_DIMS")
@@ -490,8 +552,11 @@ if [[ $INDEX_TYPE == trie ]]; then
 fi
 if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
+    [[ $TRIE_LEAF_IVF != 0 ]] && COMMON_ARGS+=(--trie-leaf-ivf-min-size "$TRIE_LEAF_IVF_MIN_SIZE")
     [[ $TRIE_LEAF_IVF == 0 ]] && COMMON_ARGS+=(--no-trie-leaf-ivf)
     [[ $TRIE_LEAF_IVF_RAW_BALL_BOUND == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-raw-ball-bound)
+        [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && COMMON_ARGS+=(--trie-residual-record-only)
+        [[ $TRIE_RESIDUAL_RECORD_ONLY == true ]] && COMMON_ARGS+=(--trie-residual-order "$TRIE_RESIDUAL_ORDER")
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == true ]] && COMMON_ARGS+=(--trie-leaf-ivf-radial-bound-auto)
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_SPECIFIED == true && $TRIE_LEAF_IVF_RADIAL_BOUND == false && $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false ]] && COMMON_ARGS+=(--no-trie-leaf-ivf-radial-bound)
@@ -513,9 +578,11 @@ fi
 if [[ $PROFILE_QUERY_PHASES == true ]]; then
     COMMON_ARGS+=(--profile-query-phases)
 fi
+$TRIE_PRUNING_CURVE && COMMON_ARGS+=(--trie-pruning-curve)
 if [[ -n $QUERY_REPORT_INTERVAL ]]; then
     COMMON_ARGS+=(--query-report-interval "$QUERY_REPORT_INTERVAL")
 fi
+(( QUERY_REPEATS == 1 )) || COMMON_ARGS+=(--query-repeats "$QUERY_REPEATS")
 
 SUMMARY_ROWS=
 collect_run_summary() {
@@ -558,8 +625,8 @@ collect_run_summary() {
         sfa-width) method_name=SFA; binning=width ;;
         pisa-depth) method_name=PISA; binning=depth ;;
         pisa-width) method_name=PISA; binning=width ;;
-        spartan-depth) method_name=SPARTAN; binning=depth ;;
-        spartan-width) method_name=SPARTAN; binning=width ;;
+        spartan-depth) method_name=SPARTAN; binning=depth; [[ $TRIE_RESIDUAL_RECORD_ONLY == false ]] || method_name=ResSPARTAN ;;
+        spartan-width) method_name=SPARTAN; binning=width; [[ $TRIE_RESIDUAL_RECORD_ONLY == false ]] || method_name=ResSPARTAN ;;
     esac
     [[ $INDEX_TYPE == trie ]] && layout=Trie || layout=iSAX
     leaf_cap=$(format_count "$LEAF_SIZE")
@@ -593,7 +660,7 @@ print_suite_summary() {
 }
 
 run_method() {
-    local method=$1 function_type histogram_type=
+    local method=$1 function_type histogram_type= sfa_coefficients
     local -a args=("${COMMON_ARGS[@]}")
 
     case "$method" in
@@ -621,7 +688,20 @@ run_method() {
         # Uniformly spaced samples keep binning I/O monotonic.  Random sampling
         # previously issued one scattered seek/read for each sampled record.
         args+=(--sample-size "$SAMPLE_SIZE" --sample-type "$SAMPLE_TYPE" --is-norm --histogram-type "$histogram_type")
-        [[ $function_type == 4 ]] && args+=(--sfa-n-coefficients "$COEFF_NUMBER")
+        if [[ $function_type == 4 ]]; then
+            sfa_coefficients=$COEFF_NUMBER
+            # Dataset defaults describe the normal training pool. Wider
+            # segment-scaling runs must enlarge that pool because SFA requires
+            # at least one candidate value per symbolic dimension.
+            if (( sfa_coefficients < ISAX_N_SEGMENTS )); then
+                sfa_coefficients=$ISAX_N_SEGMENTS
+            fi
+            (( sfa_coefficients % 2 == 0 &&
+               sfa_coefficients >= ISAX_N_SEGMENTS &&
+               sfa_coefficients <= TS_SIZE )) || \
+                die "SFA coefficient pool must be even and between $ISAX_N_SEGMENTS and $TS_SIZE"
+            args+=(--sfa-n-coefficients "$sfa_coefficients")
+        fi
     fi
     if [[ $INDEX_TYPE == isax && $TIGHT_BOUND == true ]]; then args+=(--tight-bound); fi
     if [[ $PROFILE == knn ]]; then args+=(--topk --k-size "$K_SIZE"); fi

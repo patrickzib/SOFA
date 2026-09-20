@@ -236,6 +236,26 @@ enum response sfa_set_bins(
 
     ts_type **root_split_coefficients =
             use_variance ? dft_mem_array_coeff : dft_mem_array;
+    if (index->settings->symbolic_variances == NULL) {
+        index->settings->symbolic_variances =
+            calloc((size_t) n_segments, sizeof(*index->settings->symbolic_variances));
+        if (index->settings->symbolic_variances == NULL) {
+            free(input_data);
+            free_dft_memory(index, n_segments, root_split_coefficients);
+            return FAILURE;
+        }
+        for (int dimension = 0; dimension < n_segments; ++dimension) {
+            double mean = 0.0;
+            for (unsigned int sample = 0; sample < sample_size; ++sample)
+                mean += root_split_coefficients[dimension][sample];
+            mean /= (double) sample_size;
+            for (unsigned int sample = 0; sample < sample_size; ++sample) {
+                const double diff = root_split_coefficients[dimension][sample] - mean;
+                index->settings->symbolic_variances[dimension] += diff * diff;
+            }
+            index->settings->symbolic_variances[dimension] /= (double) sample_size;
+        }
+    }
     double variance_mean = 0.0;
     for (int i = 0; i < n_segments; ++i) variance_mean += index->settings->symbolic_variances[i];
     variance_mean /= (double) n_segments;
@@ -246,8 +266,7 @@ enum response sfa_set_bins(
     const int root_budget = index->settings->index_type == MESSI_INDEX_TRIE &&
                                     index->settings->trie_dynamic_alphabet
                                 ? index->settings->trie_alphabet_budget_bits * n_segments
-                                : (n_segments < (int) (sizeof(root_mask_type) * 8)
-                                       ? n_segments : (int) (sizeof(root_mask_type) * 8));
+                                : index->settings->isax_index_segments;
     if (configure_dynamic_bit_allocation(index, index->settings->symbolic_variances,
                                            n_segments, root_budget,
                                            index->settings->index_type == MESSI_INDEX_TRIE &&
@@ -440,8 +459,13 @@ ts_type **calculate_variance_coeff(isax_index *index, ts_type **dft_mem_array) {
     double *selected_variance = calloc((size_t) n_segments, sizeof(*selected_variance));
     if (selected_variance == NULL) return NULL;
     for (int i = 0; i < n_segments / 2; ++i) {
-        selected_variance[i * 2] = var_coeff_index[i].variance_real;
-        selected_variance[i * 2 + 1] = var_coeff_index[i].variance_imag;
+        for (int candidate = 0; candidate < candidate_complex; ++candidate) {
+            if (var_coeff_index[candidate].coeff_index == index->coefficients[i]) {
+                selected_variance[i * 2] = var_coeff_index[candidate].variance_real;
+                selected_variance[i * 2 + 1] = var_coeff_index[candidate].variance_imag;
+                break;
+            }
+        }
     }
     free(index->settings->symbolic_variances);
     index->settings->symbolic_variances = selected_variance;

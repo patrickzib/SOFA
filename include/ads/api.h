@@ -44,6 +44,7 @@ typedef struct {
     char trie_record_mbr_suffix_bound;
     char trie_streaming_leaf_scan;
     int trie_leaf_ivf;
+    int trie_leaf_ivf_min_size;
     char trie_leaf_ivf_radial_bound;
     char trie_leaf_ivf_radial_bound_auto;
     int trie_fanout;
@@ -52,6 +53,9 @@ typedef struct {
     int trie_max_fanout;
     int trie_alphabet_budget_bits;
     char dynamic_root_split_variance;
+    char trie_residual_norm_bound;
+    char trie_residual_record_only;
+    char trie_residual_order;
 } messi_index_params;
 
 messi_index *messi_index_create(const messi_index_params *params);

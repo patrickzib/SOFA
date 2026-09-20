@@ -561,3 +561,54 @@ def select_best_faiss_config(df):
     )
 
     return result
+
+
+def select_median_query_repeat(
+      df,
+      queries_per_repeat=100,
+  ):
+      group_columns = [
+          "dataset",
+          "method",
+          "layout",
+      ]
+
+      selected = []
+
+      for keys, group in df.groupby(
+          group_columns,
+          sort=False,
+          dropna=False,
+      ):
+          group = group.reset_index(drop=True).copy()
+
+          if len(group) % queries_per_repeat != 0:
+              raise ValueError(
+                  f"{keys}: found {len(group)} rows, which is not "
+                  f"divisible by {queries_per_repeat}"
+              )
+
+          group["repeat"] = (
+              np.arange(len(group)) // queries_per_repeat
+          )
+          group["query_id"] = (
+              np.arange(len(group)) % queries_per_repeat
+          )
+
+          repeat_times = (
+              group.groupby("repeat")["querying time"]
+              .sum()
+              .sort_values()
+          )
+
+          # With five repetitions, this selects the third-fastest run.
+          median_repeat = repeat_times.index[
+              len(repeat_times) // 2
+          ]
+
+          selected.append(
+              group.loc[group["repeat"] == median_repeat]
+              .drop(columns=["repeat"])
+          )
+
+      return pd.concat(selected, ignore_index=True)    

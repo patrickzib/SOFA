@@ -28,7 +28,7 @@ make clean || true
 CPPFLAGS="$CPPFLAGS" LDFLAGS="$LDFLAGS" LIBS="$LIBS" \
 LAPACK_LIBS="$LAPACK_LIBS" CBLAS_LIBS="$CBLAS_LIBS" \
 CFLAGS="$CFLAGS" CXXFLAGS="$CXXFLAGS" \
-./configure --with-fftw="$FFTW_PREFIX"
+./configure --with-fftw="$FFTW_PREFIX" "$@"
 make -j
 
 # python3 -m pip install -e ./python --no-build-isolation

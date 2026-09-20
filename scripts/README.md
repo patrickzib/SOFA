@@ -6,6 +6,9 @@ runners default to trie indexes with 128 MBR dimensions (capped by series
 length), 64 record-bound dimensions, and 16 leaf-IVF groups. If `--threads`
 is omitted, they use the physical cores available to the process; set
 `MESSI_PHYSICAL_CORES=N` when platform or scheduler topology is unavailable.
+Use `--index-threads N` to keep index construction at a fixed worker count
+while varying query workers with `--threads N`; without it, indexing uses the
+query worker count.
 
 ```bash
 scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
@@ -16,7 +19,7 @@ scripts/run_dataset.sh simsearchnet standard --threads 36
 ```
 
 The profiles preserve the existing experiment matrices. With the default trie
-layout, `standard` runs SFA and SPARTAN variants and `knn` runs SFA variants;
+layout, `standard` runs SPARTAN variants and `knn` runs SFA variants;
 select `--index-type isax` for the wider legacy matrices below:
 
 - `standard`: SAX, SFA, PISA, and SPARTAN variants
@@ -27,6 +30,49 @@ select `--index-type isax` for the wider legacy matrices below:
 Use `run_suite.sh` for the complete benchmark matrices. It also exposes the
 `generated-queries`, `hard-queries`, and `noise-workloads` suites migrated from
 `scripts/old/`.
+
+For the compact core-scaling comparison across TRIE/SPARTAN, SOFA/SFA+iSAX,
+and MESSI/SAX+iSAX, run:
+
+```bash
+scripts/run_core_scaling_experiment.sh --datasets astro,obs,pnw
+```
+
+The wrapper runs query workers at 16, 32, and 64 cores while keeping index
+construction at 64 workers. Use `--dry-run` to inspect commands and
+`--experiment-root PATH` to isolate the generated logs and archives.
+
+For the symbolic-dimension scaling comparison, run:
+
+```bash
+scripts/run_segment_scaling_experiment.sh --datasets astro,obs,pnw
+```
+
+This wrapper fixes query and index construction at 64 workers and evaluates
+16, 32, 48, and 64 symbolic dimensions. It runs SAX+iSAX, both SFA+iSAX binning
+variants without SOFA-v2 bounds, and both SPARTAN/trie variants. SPARTAN keeps
+its 128-dimensional MBR cascade while its record prefix and split candidates
+track the selected dimension count. Results and logs are isolated below
+`results/segment_scaling/{results,logs}/SYSTEM/segments-N`. SAX uses 16
+uniformly selected root dimensions, while SFA uses its 16 highest-variance
+symbolic dimensions, avoiding a dense `2^N` iSAX root table. Deeper splits,
+node/record bounds, and blocked SIMD use the complete symbolic word at all four
+widths. No second construction
+word is stored. Use `--dry-run` to inspect the commands. At 48 dimensions, SAX/PAA
+ignores trailing samples for series lengths that are not divisible by 48; the
+runner prints a warning so this exploratory point is not mistaken for a
+strictly like-for-like PAA comparison.
+
+Runs resume by default. A dataset is skipped only
+when its archive already exists under the matching system and segment width;
+an interrupted, unarchived dataset is rerun from the beginning. The default
+can be overridden with `--rerun-existing` for deliberate repeat experiments.
+Before rerunning an incomplete unit, its partial logs are moved to
+`incomplete/SYSTEM/segments-N/attempt-TIMESTAMP-PID` so they cannot be mixed
+with the completed archive.
+Open `notebooks/plot_segment_scaling.ipynb` after the run (or after copying the
+experiment directory to `notebooks/trie_logs/segment_scaling`) to print the
+16/32/48/64 table and plot the macro-averaged scaling curves.
 
 ## Trie fanout and dynamic alphabets
 
@@ -94,10 +140,12 @@ query files. Seismic remains opt-in because its current local distribution
 contains all-NaN records.
 
 For trie runs, `--trie-leaf-ivf 16` adds a flat, post-build 16-list IVF/MRB
-directory inside terminal leaves with at least 4 K records. It is enabled by
-default and can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
-Construction clusters eligible leaves independently in parallel, using the
-existing `--threads` setting; the build log reports the active worker count.
+directory inside terminal leaves with at least 4 K records by default. Change
+the threshold with `--trie-leaf-ivf-min-size`; IVF is enabled by default and
+can be disabled with `--no-trie-leaf-ivf` for A/B benchmarking.
+Construction clusters eligible leaves independently in parallel, using
+`--index-threads` (or `--threads` when omitted); the build log reports the
+active worker count.
 
 `--trie-leaf-ivf-radial-bound` is enabled by default with trie leaf IVF; use
 `--no-trie-leaf-ivf-radial-bound` to disable it. It stores each record's distance from its raw-space
@@ -122,12 +170,83 @@ symbolic record bound. Each line reports an average count per query, its
 stage-local pruning rate, and its share of all indexed records, so overlapping
 bounds are not double-counted.
 
+## Paper lower-bound pruning experiment
+
+The paper describes a five-stage cascade: internal-node MBR, leaf-group MBR,
+per-series radial, symbolic prefix plus MBR suffix, and residual refinement,
+followed by exact distance. The raw centroid/ball group bound available in the
+implementation is not part of that cascade.
+
+Configure a separate instrumented build so normal S3-Trie runs retain no trace
+counter or timer overhead:
+
+```bash
+./configure --enable-trie-pruning-trace
+make -j
+```
+
+Then run the historical eight-dataset experiment with the paper defaults:
+
+```bash
+MESSI_BINARY="$PWD/bin/MESSI" \
+MESSI_RESULTS_ROOT="$PWD/results/trie_pruning_curves" \
+scripts/run_paper_pruning_experiment.sh
+```
+
+The runner fixes 64 workers, `D=min(128,n)`, `B=64`, fanout 8, leaf capacity
+20,000, 16 IVF groups above 4,096 records, uniform sampling capped at one
+million series, 100 queries, and independent z-normalization. It enables only
+the five paper bounds and rejects configurations that add the raw-ball bound,
+omit a paper stage, batch queries, repeat queries, or select another method.
+Each CSV row records exclusive pruned-record counts, checks, summed worker time
+per stage, query wall time, and exact evaluations; writing fails if the stages
+do not account for every indexed record exactly.
+
+Plot either the new schema or the historical schema with:
+
+```bash
+python3 scripts/plot_trie_pruning_curve.py \
+  --curve-root results/trie_pruning_curves
+```
+
 Trie leaf refinement streams by default: it computes each record's lower bound
 and immediately runs exact distance when that bound passes, so an improved BSF
 affects the very next record. Cluster and leaf traversal ordering is unchanged.
 Use `--no-trie-streaming-leaf-scan` to restore the best-first record heap for
 A/B benchmarks; `--trie-streaming-leaf-scan` remains as an explicit spelling
 of the default.
+
+## Dataset-specific trie tuning
+
+`tune_trie_dataset.sh` independently completes all six stages for both
+`spartan-depth` and `spartan-width`. Each method selects its own structure,
+MBR/split dimensions, IVF groups and eligibility, radial policy, and
+record-residual ordering. Each of the two final configurations per method is
+built once; its query workload is then repeated against that same in-memory
+trie and ranked by median query wall time. Thus `--repeats` does not repeat
+index builds. All four finalists compete for the overall recommendation.
+The search remains staged within each method, rather than a full Cartesian grid.
+Rerunning with the same options and output root reuses completed runs, including
+older outputs that tuned only one method, and fills in the other method's stages.
+
+```bash
+scripts/tune_trie_dataset.sh PNW --threads 64 --repeats 5
+```
+
+Multiple datasets can be tuned sequentially with a comma-separated argument;
+each gets its own resumable directory and global winner:
+
+```bash
+scripts/tune_trie_dataset.sh PNW,SALD,TXED --threads 64 --repeats 5
+```
+
+Use the same data-root overrides as `run_suite.sh` when needed. Results default
+to `trie-tuning/DATASET`; `all-runs.tsv` and `all-runs.csv` contain every run.
+The single global winner is written to `best-config.env`, `best-command.sh`,
+`best-config.txt`, and `final-ranking.tsv`. Completed runs are reused. An
+incomplete run directory or an invocation whose options differ from the saved
+manifest causes a safe stop instead of an overwrite. Use a different
+`--output-root` for a genuinely new tuning campaign.
 
 Result archival intentionally preserves the historical behavior: an existing
 `DATASET/RUN` directory is replaced. Labels are restricted to single path
@@ -166,3 +285,78 @@ OMP_PLACES=cores OMP_PROC_BIND=close \
 
 Use `--sequential` to measure contiguous scans instead of the default randomized
 record order.  Build products are written under `build/benchmarks/`.
+
+### ResSPARTAN residual-norm bound (experimental)
+
+Add `--trie-residual-record-only` to a SPARTAN trie run. It is disabled by
+default and requires `--methods spartan-depth,spartan-width` (or either one).
+The C API exposes `messi_index_params.trie_residual_norm_bound`; initialize
+parameter structs to zero and rebuild API clients against the new header.
+
+```bash
+MESSI_RESULTS_ROOT="$PWD/results-residual" \
+  ./scripts/run_suite.sh standard --threads 64 --index-type trie \
+  --methods spartan-depth,spartan-width --n-segments 64 \
+  --trie-residual-record-only --binary ./build/bin/MESSI
+```
+
+Each record gets one float32 residual, computed alongside its symbolic word.
+The residual covers the complement of the record prefix (`--n-segments`),
+not just coordinates beyond the MBR. It does not affect splitting or IVF
+selection. Stable raw-record positions retain alignment through reordering;
+the floats are gathered into contiguous leaf order after IVF. Temporary
+construction storage can reach eight bytes/record while both orders exist.
+Final storage is four bytes/record, plus two float endpoints per IVF group,
+two pointers and two floats per node, and shared model metadata. Node metadata
+fields also occupy space when the option is disabled.
+
+The squared bound is `prefix + max(suffix, residual_gap²)`.
+The stored float is `sqrt(max(0, ||x-mean||² - ||A_k(x-mean)||²))`.
+There is no contraction correction, rounding-error enclosure or error margin.
+This assumes orthonormal PCA and accepts floating-point overestimation near
+the pruning threshold; guaranteed exact pruning is not claimed for this option.
+No square root or projection is performed per candidate.
+
+SIMD prefix scans remain unchanged. Surviving records reuse their already
+computed symbolic bound and add `max(0, residual_gap² - suffix)`, using the
+same leaf/IVF suffix as the original check. There is no second record-prefix
+accumulation or residual lookup table. Residual ranges also participate in
+node and IVF pruning. Query state is prepared once and shared with workers.
+No new persistence format is added.
+
+The log prints storage diagnostics. With `--profile-query-phases`, it also prints per-query `node`, `ivf`,
+and `record` counters: checks, residual wins over the suffix, and additional
+prunes. Record checks count survivors of the existing bound filters, not all
+indexed records. The normal pruning summary includes these prunes; do not add
+the residual counters to its totals again. Use `--profile-query-phases` to
+include residual computation in lower-bound timings.
+
+Earlier benchmark figures below describe the corrected implementation, not this simplified version.
+
+The residual benchmark enables query-phase profiling for both modes to collect
+these counters; its timings therefore include profiling overhead.
+
+Run `bash scripts/bench_spartan_residual.sh` for paired builds and 100-query
+searches on the bundled SALD head fixture, at prefixes 16/32/64 and three
+repetitions. It leaves separate logs in a printed temporary directory.
+Override `MESSI_BINARY`, `RESIDUAL_DATASET`, `RESIDUAL_QUERIES`,
+`RESIDUAL_RECORDS`, `RESIDUAL_LENGTH`, `RESIDUAL_WORKERS`, or
+`RESIDUAL_REPEATS` for other workloads. `RESIDUAL_HISTOGRAM=2` selects
+equi-width instead of equi-depth. `RESIDUAL_QUERY_MODE=batch` selects
+parallel independent queries instead of per-query workers. The benchmark
+checks equality of the reported query distances. Choose a series length of at least 64.
+
+Local ARM results on 20,000 SALD records (100 queries, four workers; medians):
+
+| Prefix | Baseline exact/query | Residual exact/query | Baseline query time | Residual query time |
+| --- | ---: | ---: | ---: | ---: |
+| 16 | 12,740.32 | 11,654.75 | 0.144 s | 0.181 s |
+| 32 | 11,227.01 | 10,567.38 | 0.164 s | 0.210 s |
+| 64 | 8,814.36 | 8,581.55 | 0.210 s | 0.257 s |
+
+These measurements are not a speedup claim: pruning improves, but the added
+check costs more time on this small fixture. Benchmark the full dataset and
+target CPU before enabling it routinely. The regression test additionally
+checks high-precision interval enclosure, no bound overestimation, record/IVF
+alignment, allocation failure, and scalar/SIMD and serial/parallel exact
+searches against brute force.

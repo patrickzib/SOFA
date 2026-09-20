@@ -149,7 +149,7 @@ void isax_query_binary_file_traditional(
     int q_loaded = 0;
 
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * (size_t) index->settings->root_nodes_size);
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {
@@ -438,7 +438,7 @@ isax_knn_query_binary_file_traditional(const char *ifilename, const char *labelf
     ts_type *paa = malloc(sizeof(ts_type) * index->settings->n_segments);
     //sax_type * sax = malloc(sizeof(sax_type) * index->settings->n_segments);
     node_list nodelist;
-    nodelist.nlist = malloc(sizeof(isax_node *) * pow(2, index->settings->n_segments));
+    nodelist.nlist = malloc(sizeof(isax_node *) * (size_t) index->settings->root_nodes_size);
     nodelist.node_amount = 0;
     isax_node *current_root_node = index->first_node;
     while (1) {

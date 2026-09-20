@@ -245,9 +245,7 @@ enum response pisa_set_bins(isax_index *index, const char *ifilename, long int t
                                            index->settings->index_type == MESSI_INDEX_TRIE &&
                                                    index->settings->trie_dynamic_alphabet
                                                ? index->settings->trie_alphabet_budget_bits * index->settings->n_segments
-                                               : (index->settings->n_segments < (int) (sizeof(root_mask_type) * 8)
-                                                      ? index->settings->n_segments
-                                                      : (int) (sizeof(root_mask_type) * 8)),
+                                               : index->settings->isax_index_segments,
                                            index->settings->index_type == MESSI_INDEX_TRIE &&
                                                    index->settings->trie_dynamic_alphabet
                                                ? index->settings->trie_min_bits : 0,

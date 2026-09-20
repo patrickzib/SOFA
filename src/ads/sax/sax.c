@@ -301,9 +301,44 @@ void sax_print(sax_type *sax, int segments, int cardinality) {
 
 #if ADS_HAVE_AVX2
 
-float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
-                                    sax_type *sax_cardinalities,
-                                    const isax_index_settings *settings) {
+#if defined(__AVX512F__)
+static float minidist_paa_to_isax_raw_SIMD_16_avx512(
+        const float *paa, const sax_type *sax, const sax_type *sax_cardinalities,
+        const isax_index_settings *settings) {
+    const int max_bits = settings->sax_bit_cardinality;
+    const int alphabet = settings->sax_alphabet_cardinality;
+    const int offset = ((alphabet - 1) * (alphabet - 2)) / 2;
+    const __m128i symbols8 = _mm_loadu_si128((const __m128i *) sax);
+    const __m128i cards8 = _mm_loadu_si128((const __m128i *) sax_cardinalities);
+    const __m512i symbols = _mm512_cvtepu8_epi32(symbols8);
+    const __m512i cards = _mm512_cvtepu8_epi32(cards8);
+    const __m512i shifts = _mm512_sub_epi32(_mm512_set1_epi32(max_bits), cards);
+    const __m512i low = _mm512_sllv_epi32(_mm512_srlv_epi32(symbols, shifts), shifts);
+    const __m512i high = _mm512_or_epi32(
+        low, _mm512_sub_epi32(_mm512_sllv_epi32(_mm512_set1_epi32(1), shifts),
+                              _mm512_set1_epi32(1)));
+    const __mmask16 has_lower = _mm512_cmpneq_epi32_mask(low, _mm512_setzero_si512());
+    const __mmask16 has_upper = _mm512_cmpneq_epi32_mask(
+        high, _mm512_set1_epi32(alphabet - 1));
+    const __m512i lower_index = _mm512_add_epi32(
+        _mm512_set1_epi32(offset - 1), low);
+    const __m512i upper_index = _mm512_add_epi32(
+        _mm512_set1_epi32(offset), high);
+    const __m512 lower = _mm512_mask_i32gather_ps(
+        _mm512_set1_ps(MINVAL), has_lower, lower_index, sax_breakpoints, 4);
+    const __m512 upper = _mm512_mask_i32gather_ps(
+        _mm512_set1_ps(MAXVAL), has_upper, upper_index, sax_breakpoints, 4);
+    const __m512 value = _mm512_loadu_ps(paa);
+    const __m512 below = _mm512_max_ps(_mm512_sub_ps(lower, value), _mm512_setzero_ps());
+    const __m512 above = _mm512_max_ps(_mm512_sub_ps(value, upper), _mm512_setzero_ps());
+    const __m512 difference = _mm512_max_ps(below, above);
+    return _mm512_reduce_add_ps(_mm512_mul_ps(difference, difference)) * settings->mindist_sqrt;
+}
+#endif
+
+static float minidist_paa_to_isax_raw_SIMD_16(float *paa, sax_type *sax,
+                                               sax_type *sax_cardinalities,
+                                               const isax_index_settings *settings) {
 
     sax_type max_bit_cardinality = settings->sax_bit_cardinality;
     int max_cardinality = settings->sax_alphabet_cardinality;
@@ -477,6 +512,27 @@ float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
     //_mm256_storeu_ps (&checkvalue[8] ,distancev_1);
 
     return (distancef[0] + distancef[4]) * ratio_sqrt;
+}
+
+float minidist_paa_to_isax_raw_SIMD(float *paa, sax_type *sax,
+                                    sax_type *sax_cardinalities,
+                                    const isax_index_settings *settings) {
+    const int dimensions = settings->n_segments;
+    if (dimensions < 16 || dimensions % 16 != 0) {
+        return minidist_paa_to_isax(paa, sax, sax_cardinalities, settings, 1);
+    }
+
+    float distance = 0.0f;
+    for (int dimension = 0; dimension < dimensions; dimension += 16) {
+#if defined(__AVX512F__)
+        distance += minidist_paa_to_isax_raw_SIMD_16_avx512(
+            paa + dimension, sax + dimension, sax_cardinalities + dimension, settings);
+#else
+        distance += minidist_paa_to_isax_raw_SIMD_16(
+            paa + dimension, sax + dimension, sax_cardinalities + dimension, settings);
+#endif
+    }
+    return distance;
 }
 
 float minidist_paa_to_isax_rawa_SIMD(float *paa, sax_type *sax,
