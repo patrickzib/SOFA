@@ -64,30 +64,36 @@ For a direct extension build, run the equivalent command from `python/`:
 `python3 setup.py build_ext --inplace`.
 
 # Minimal Python API usage
-The API consumes float32 binary datasets (same format as CLI). 
-
-This mirrors `tests/cython_with_data.py`.
+The API accepts NumPy arrays as well as float32 binary datasets in the CLI
+format.
 
 ```python
 import numpy as np
-from messi import Index
+from s3trie import Index
 
-ts_size = 256
-idx = Index(timeseries_size=ts_size, transform="spartan", layout="trie",
-            sample_size=1000, max_query_threads=8,
-            trie_mbr_dimensions=128, trie_record_lb_dimensions=32,
-            trie_split_dimensions=32)
-idx.add_file("data_head/astro_head.bin", ts_num=1000)
+data = np.load("data.npy").astype(np.float32)
+queries = np.load("queries.npy").astype(np.float32)
 
-queries = np.fromfile("data_queries/astro_queries.bin", dtype=np.float32, count=10 * ts_size)
-queries = queries.reshape(10, ts_size)
-distances, indices = idx.search(queries, k=1)
+with Index(timeseries_size=data.shape[1], index="s3trie") as index:
+    index.add(data)
+    distances, ids = index.search(queries)
 ```
 
 `Index.add(data)` accepts a two-dimensional NumPy array and creates an
 owned temporary float32 raw-data snapshot for exact refinement.  The snapshot
 is removed by `idx.close()` or by a context manager.  The native query engines
 return exact 1-NN distances and zero-based sequential row IDs. `k` must be 1.
+Use `Index.add_file(...)` to build directly from a CLI-format binary dataset.
+
+`index="messi"` selects SAX+iSAX, `index="sofa"` selects SFA+iSAX, and
+`index="s3trie"` selects the paper-oriented SPARTAN+trie configuration.
+Advanced callers may still select `layout=` and `transform=` directly; these
+must agree when combined with a preset.
+
+The S3-Trie preset uses equi-width binning, a 64-dimensional record bound,
+up to 128 MBR dimensions, 20K leaves, IVF-16 with raw-ball and radial pruning,
+record-MBR suffix pruning, streaming refinement, and symbolic-first residual
+record pruning. Each setting remains explicitly overrideable.
 
 ## Index defaults
 
@@ -101,7 +107,7 @@ benchmark runners and Python API enable it by default.
 
 | Setting | Direct CLI | Script runners | Python `Index` |
 |---|---|---|---|
-| Index layout | Trie | Trie | iSAX; pass `layout="trie"` |
+| Index layout | Trie | Trie | SAX+iSAX; use `index="sofa"` or `index="s3trie"` for another preset |
 | Worker threads | Available physical cores | Available physical cores | 1; pass `max_query_threads=N` |
 | iSAX tight-bound pruning | Off; use `--tight-bound` | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
 | iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
@@ -109,8 +115,8 @@ benchmark runners and Python API enable it by default.
 | Trie record-LB width | 64 | 64 | 64; pass `n_segments=...` or `trie_record_lb_dimensions=...` to override |
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
 | Trie leaf refinement | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Same | Streaming for trie; pass `trie_streaming_leaf_scan=False` for the heap |
-| Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | Off; pass `trie_leaf_ivf=K` |
-| Trie IVF radial record bound | On with IVF; disable with `--no-trie-leaf-ivf-radial-bound`, or use `--trie-leaf-ivf-radial-bound-auto` for the adaptive 25% gate | Same | Off; pass `trie_leaf_ivf_radial_bound_auto=True` or `trie_leaf_ivf_radial_bound=True` |
+| Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | 16 with `index="s3trie"`; pass `trie_leaf_ivf=0` to disable |
+| Trie IVF radial record bound | On with IVF; disable with `--no-trie-leaf-ivf-radial-bound`, or use `--trie-leaf-ivf-radial-bound-auto` for the adaptive 25% gate | Same | On with `index="s3trie"`; pass `trie_leaf_ivf_radial_bound=False` to disable |
 
 Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
 leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and
