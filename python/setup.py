@@ -19,6 +19,7 @@ COMMON_LDFLAGS = [flag for flag in (FFTW_LIBS + " " + LAPACK_LIBS).split() if fl
 
 sources = [
     "src/ads/api.c",
+    "src/ads/build_progress.c",
     "src/ads/isax/isax_file_loaders.c",
     "src/ads/isax/isax_first_buffer_layer.c",
     "src/ads/isax/isax_index.c",
@@ -70,10 +71,10 @@ asan_link_flags = ["-fsanitize=address"] if enable_asan else []
 debug_build = _env_flag("MESSI_DEBUG")
 optimization_flags = ["-O0", "-g"] if debug_build else ["-O3"]
 
-source_file = "messi/_index.pyx" if cythonize is not None else "messi/_index.c"
+source_file = "s3trie/_index.pyx" if cythonize is not None else "s3trie/_index.c"
 
 extension = Extension(
-    "messi._index",
+    "s3trie._index",
     sources=[source_file] + sourcedirs,
     include_dirs=[str(ROOT), str(BUILD_CONFIG_DIR), str(ROOT / "include"), numpy.get_include()],
     extra_compile_args=COMMON_CFLAGS + omp_compile + ["-fcommon"] + optimization_flags + asan_compile_flags,
@@ -87,9 +88,9 @@ else:
     extensions = [extension]
 
 setup(
-    name="messi",
+    name="s3trie",
     version="0.1.0",
-    packages=["messi"],
-    package_dir={"messi": "messi"},
+    packages=["s3trie"],
+    package_dir={"s3trie": "s3trie"},
     ext_modules=extensions,
 )

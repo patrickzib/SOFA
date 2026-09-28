@@ -13,7 +13,7 @@ try:
 except ImportError as exc:
     raise SystemExit("scikit-learn is required: pip install scikit-learn") from exc
 
-from messi import Index
+from s3trie import Index
 
 TS_SIZE = 256
 N_SEGMENTS = 16

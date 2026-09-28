@@ -140,6 +140,9 @@ messi_index *messi_index_create(const messi_index_params *params) {
         index_type == MESSI_INDEX_TRIE && params->trie_streaming_leaf_scan;
     settings->trie_leaf_ivf = params->trie_leaf_ivf;
     settings->trie_leaf_ivf_min_size = params->trie_leaf_ivf_min_size > 0 ? params->trie_leaf_ivf_min_size : 4096;
+    if (params->trie_leaf_ivf_raw_ball_bound_specified) {
+        settings->trie_leaf_ivf_raw_ball_bound = params->trie_leaf_ivf_raw_ball_bound;
+    }
     settings->trie_leaf_ivf_radial_bound =
         index_type == MESSI_INDEX_TRIE && radial_bound_requested;
     settings->trie_residual_norm_bound = params->trie_residual_norm_bound;

@@ -8,7 +8,7 @@ import time
 
 import numpy as np
 
-from messi import Index
+from s3trie import Index
 
 TS_SIZE = 256
 N_SEGMENTS = 64

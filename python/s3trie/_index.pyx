@@ -1,6 +1,6 @@
 # cython: language_level=3
 
-"""Safe Python-facing wrapper around the file-backed MESSI engine."""
+"""Safe Python-facing wrapper around the native S3-Trie/MESSI engine."""
 
 from libc.string cimport memset
 import os
@@ -24,6 +24,11 @@ cdef int MESSI_INDEX_TRIE = 1
 
 _TRANSFORMS = {"sax": 3, "sfa": 4, "spartan": 5, "pisa": 6}
 _LAYOUTS = {"isax": MESSI_INDEX_ISAX, "trie": MESSI_INDEX_TRIE}
+_PRESETS = {
+    "messi": ("sax", "isax"),
+    "sofa": ("sfa", "isax"),
+    "s3trie": ("spartan", "trie"),
+}
 
 
 cdef class Index:
@@ -44,17 +49,18 @@ cdef class Index:
                   int timeseries_size,
                   n_segments=None,
                   int sax_bit_cardinality=8,
-                  int max_leaf_size=2000,
-                  int min_leaf_size=10,
-                  int initial_leaf_buffer_size=2000,
+                  max_leaf_size=None,
+                  min_leaf_size=None,
+                  initial_leaf_buffer_size=None,
                   int max_total_buffer_size=200000,
                   int initial_fbl_buffer_size=100,
                   int total_loaded_leaves=1,
                   int tight_bound=1,
                   int aggressive_check=0,
-                  int function_type=3,
+                  function_type=None,
+                  index=None,
                   transform=None,
-                  layout="isax",
+                  layout=None,
                   char simd=1,
                   int sample_size=1000,
                   char is_norm=1,
@@ -69,9 +75,11 @@ cdef class Index:
                   int trie_mbr_dimensions=0,
                   int trie_record_lb_dimensions=0,
                   int trie_split_dimensions=0,
-                  bint trie_record_mbr_suffix_bound=True,
-                  int trie_leaf_ivf=0,
-                  bint trie_leaf_ivf_radial_bound=False,
+                  trie_record_mbr_suffix_bound=None,
+                  trie_leaf_ivf=None,
+                  trie_leaf_ivf_min_size=None,
+                  trie_leaf_ivf_raw_ball_bound=None,
+                  trie_leaf_ivf_radial_bound=None,
                   bint trie_leaf_ivf_radial_bound_auto=False,
                   int trie_fanout=8,
                   bint trie_dynamic_alphabet=False,
@@ -80,7 +88,9 @@ cdef class Index:
                   int trie_alphabet_budget_bits=3,
                   bint dynamic_root_split_variance=False,
                   root_directory=None,
-                  trie_streaming_leaf_scan=None):
+                  trie_streaming_leaf_scan=None,
+                  trie_residual_record_only=None,
+                  trie_residual_order=None):
         cdef messi_index_params params
         cdef bytes root_dir_bytes
         cdef const char *root_ptr = <const char *> 0
@@ -89,7 +99,20 @@ cdef class Index:
         cdef int record_lb_dim
         cdef int resolved_n_segments
         cdef int resolved_sfa_n_coefficients
+        cdef int resolved_max_leaf_size
+        cdef int resolved_min_leaf_size
+        cdef int resolved_initial_leaf_buffer_size
+        cdef int resolved_trie_leaf_ivf
+        cdef int resolved_trie_leaf_ivf_min_size
         cdef bint resolved_trie_streaming_leaf_scan
+        cdef bint resolved_trie_record_mbr_suffix_bound
+        cdef bint resolved_trie_leaf_ivf_raw_ball_bound
+        cdef bint resolved_trie_leaf_ivf_radial_bound
+        cdef bint resolved_trie_residual_record_only
+        cdef int resolved_trie_residual_order
+        cdef object preset_name
+        cdef object preset_transform
+        cdef object preset_layout
         cdef object layout_name
         cdef object transform_name
 
@@ -104,12 +127,60 @@ cdef class Index:
             raise ValueError("max_query_threads must be positive and queue_count non-negative")
         if sampling_seed < 0 or node_split_criterion < 1 or node_split_criterion > 4:
             raise ValueError("invalid sampling_seed or node_split_criterion")
-        if not isinstance(layout, str):
-            raise TypeError("layout must be 'isax' or 'trie'")
-        layout_name = layout.lower()
+
+        preset_name = None
+        if index is not None:
+            if not isinstance(index, str):
+                raise TypeError("index must be 'messi', 'sofa', or 's3trie'")
+            preset_name = index.lower()
+            if preset_name not in _PRESETS:
+                raise ValueError("index must be 'messi', 'sofa', or 's3trie'")
+            preset_transform, preset_layout = _PRESETS[preset_name]
+            if layout is not None and (not isinstance(layout, str) or layout.lower() != preset_layout):
+                raise ValueError(f"index='{preset_name}' conflicts with layout={layout!r}")
+            if transform is not None and (not isinstance(transform, str) or transform.lower() != preset_transform):
+                raise ValueError(f"index='{preset_name}' conflicts with transform={transform!r}")
+            if function_type is not None and int(function_type) != _TRANSFORMS[preset_transform]:
+                raise ValueError(f"index='{preset_name}' conflicts with function_type={function_type!r}")
+            layout_name = preset_layout
+            transform_name = preset_transform
+            function_type = _TRANSFORMS[transform_name]
+        else:
+            layout_name = "isax" if layout is None else layout
+            if not isinstance(layout_name, str):
+                raise TypeError("layout must be 'isax' or 'trie'")
+            layout_name = layout_name.lower()
+            if transform is not None:
+                if not isinstance(transform, str) or transform.lower() not in _TRANSFORMS:
+                    raise ValueError("transform must be sax, sfa, spartan, or pisa")
+                transform_name = transform.lower()
+                if function_type is not None and int(function_type) != _TRANSFORMS[transform_name]:
+                    raise ValueError("transform conflicts with function_type")
+                function_type = _TRANSFORMS[transform_name]
+            else:
+                if function_type is None:
+                    function_type = 3
+                    if layout is None:
+                        preset_name = "messi"
+                function_type = int(function_type)
+                if function_type not in (3, 4, 5, 6):
+                    raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), or 6 (PISA)")
+                transform_name = {3: "sax", 4: "sfa", 5: "spartan", 6: "pisa"}[function_type]
+
         if layout_name not in _LAYOUTS:
             raise ValueError("layout must be 'isax' or 'trie'")
         index_type = _LAYOUTS[layout_name]
+        resolved_max_leaf_size = int(20000 if preset_name == "s3trie" and max_leaf_size is None
+                                     else 2000 if max_leaf_size is None else max_leaf_size)
+        resolved_min_leaf_size = int(20000 if preset_name == "s3trie" and min_leaf_size is None
+                                     else 10 if min_leaf_size is None else min_leaf_size)
+        resolved_initial_leaf_buffer_size = int(
+            20000 if preset_name == "s3trie" and initial_leaf_buffer_size is None
+            else 2000 if initial_leaf_buffer_size is None else initial_leaf_buffer_size)
+        if (resolved_max_leaf_size <= 0 or resolved_min_leaf_size <= 0 or
+                resolved_min_leaf_size > resolved_max_leaf_size or
+                resolved_initial_leaf_buffer_size <= 0):
+            raise ValueError("leaf sizes must be positive and min_leaf_size cannot exceed max_leaf_size")
         if n_segments is None:
             resolved_n_segments = (
                 DEFAULT_TRIE_RECORD_LB_SEGMENTS
@@ -118,18 +189,30 @@ cdef class Index:
             )
         else:
             resolved_n_segments = n_segments
-        resolved_trie_streaming_leaf_scan = (
-            index_type == MESSI_INDEX_TRIE
-            if trie_streaming_leaf_scan is None
-            else bool(trie_streaming_leaf_scan)
-        )
-        if transform is not None:
-            if not isinstance(transform, str) or transform.lower() not in _TRANSFORMS:
-                raise ValueError("transform must be sax, sfa, spartan, or pisa")
-            transform_name = transform.lower()
-            function_type = _TRANSFORMS[transform_name]
-        elif function_type not in (3, 4, 5, 6):
-            raise ValueError("function_type must be 3 (SAX), 4 (SFA), 5 (SPARTAN), or 6 (PISA)")
+        resolved_trie_streaming_leaf_scan = (index_type == MESSI_INDEX_TRIE
+            if trie_streaming_leaf_scan is None else bool(trie_streaming_leaf_scan))
+        resolved_trie_record_mbr_suffix_bound = (index_type == MESSI_INDEX_TRIE
+            if trie_record_mbr_suffix_bound is None else bool(trie_record_mbr_suffix_bound))
+        resolved_trie_leaf_ivf = int(16 if preset_name == "s3trie" and trie_leaf_ivf is None
+                                     else 0 if trie_leaf_ivf is None else trie_leaf_ivf)
+        resolved_trie_leaf_ivf_min_size = int(
+            4096 if trie_leaf_ivf_min_size is None else trie_leaf_ivf_min_size)
+        resolved_trie_leaf_ivf_raw_ball_bound = (
+            index_type == MESSI_INDEX_TRIE and resolved_trie_leaf_ivf != 0
+            if trie_leaf_ivf_raw_ball_bound is None else bool(trie_leaf_ivf_raw_ball_bound))
+        resolved_trie_leaf_ivf_radial_bound = (
+            preset_name == "s3trie" and resolved_trie_leaf_ivf != 0
+            if trie_leaf_ivf_radial_bound is None else bool(trie_leaf_ivf_radial_bound))
+        resolved_trie_residual_record_only = (preset_name == "s3trie"
+            if trie_residual_record_only is None else bool(trie_residual_record_only))
+        if trie_residual_order is None:
+            resolved_trie_residual_order = 0
+        elif trie_residual_order == "symbolic-first":
+            resolved_trie_residual_order = 0
+        elif trie_residual_order == "residual-first":
+            resolved_trie_residual_order = 1
+        else:
+            raise ValueError("trie_residual_order must be 'symbolic-first' or 'residual-first'")
 
         if index_type == MESSI_INDEX_TRIE:
             record_lb_dim = trie_record_lb_dimensions or resolved_n_segments
@@ -139,13 +222,17 @@ cdef class Index:
             if transform_dim < record_lb_dim or transform_dim > 128 or transform_dim > timeseries_size:
                 raise ValueError("trie_mbr_dimensions must be between record bound width and min(128, timeseries_size)")
             if trie_split_dimensions == 0:
-                trie_split_dimensions = min(32, transform_dim)
-            if trie_split_dimensions < 1 or trie_split_dimensions > transform_dim:
-                raise ValueError("trie_split_dimensions must be between 1 and trie_mbr_dimensions")
-            if trie_leaf_ivf and (trie_leaf_ivf < 2 or trie_leaf_ivf > 64 or function_type not in (4, 5, 6)):
+                trie_split_dimensions = max(record_lb_dim, min(32, transform_dim))
+            if trie_split_dimensions < record_lb_dim or trie_split_dimensions > transform_dim:
+                raise ValueError("trie_split_dimensions must be between the record bound width and trie_mbr_dimensions")
+            if resolved_trie_leaf_ivf and (resolved_trie_leaf_ivf < 2 or resolved_trie_leaf_ivf > 64 or function_type not in (4, 5, 6)):
                 raise ValueError("trie_leaf_ivf requires SFA, SPARTAN, or PISA and a value between 2 and 64")
-            if (trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto) and not trie_leaf_ivf:
+            if resolved_trie_leaf_ivf_min_size <= 0:
+                raise ValueError("trie_leaf_ivf_min_size must be positive")
+            if (resolved_trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto) and not resolved_trie_leaf_ivf:
                 raise ValueError("trie radial bounds require trie_leaf_ivf")
+            if resolved_trie_residual_record_only and function_type != 5:
+                raise ValueError("trie_residual_record_only requires the SPARTAN transform")
             if trie_dynamic_alphabet:
                 if trie_fanout != 8:
                     raise ValueError("trie_fanout cannot be combined with trie_dynamic_alphabet")
@@ -156,8 +243,10 @@ cdef class Index:
         else:
             if resolved_trie_streaming_leaf_scan:
                 raise ValueError("trie_streaming_leaf_scan requires layout='trie'")
-            if trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto:
+            if resolved_trie_leaf_ivf or resolved_trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto:
                 raise ValueError("trie radial bounds require layout='trie'")
+            if resolved_trie_residual_record_only:
+                raise ValueError("trie_residual_record_only requires layout='trie'")
             transform_dim = resolved_n_segments
             record_lb_dim = 0
             if resolved_n_segments <= 0 or resolved_n_segments > timeseries_size:
@@ -197,9 +286,9 @@ cdef class Index:
         params.timeseries_size = timeseries_size
         params.n_segments = transform_dim
         params.sax_bit_cardinality = sax_bit_cardinality
-        params.max_leaf_size = max_leaf_size
-        params.min_leaf_size = min_leaf_size
-        params.initial_leaf_buffer_size = initial_leaf_buffer_size
+        params.max_leaf_size = resolved_max_leaf_size
+        params.min_leaf_size = resolved_min_leaf_size
+        params.initial_leaf_buffer_size = resolved_initial_leaf_buffer_size
         params.max_total_buffer_size = max_total_buffer_size
         params.initial_fbl_buffer_size = initial_fbl_buffer_size
         params.total_loaded_leaves = total_loaded_leaves
@@ -220,10 +309,13 @@ cdef class Index:
         params.node_split_criterion = node_split_criterion
         params.trie_bound_dimensions = record_lb_dim
         params.trie_split_dimensions = trie_split_dimensions
-        params.trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound
+        params.trie_record_mbr_suffix_bound = resolved_trie_record_mbr_suffix_bound
         params.trie_streaming_leaf_scan = resolved_trie_streaming_leaf_scan
-        params.trie_leaf_ivf = trie_leaf_ivf
-        params.trie_leaf_ivf_radial_bound = trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto
+        params.trie_leaf_ivf = resolved_trie_leaf_ivf
+        params.trie_leaf_ivf_min_size = resolved_trie_leaf_ivf_min_size
+        params.trie_leaf_ivf_raw_ball_bound = resolved_trie_leaf_ivf_raw_ball_bound
+        params.trie_leaf_ivf_raw_ball_bound_specified = 1
+        params.trie_leaf_ivf_radial_bound = resolved_trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto
         params.trie_leaf_ivf_radial_bound_auto = trie_leaf_ivf_radial_bound_auto
         params.trie_fanout = trie_fanout
         params.trie_dynamic_alphabet = trie_dynamic_alphabet
@@ -231,26 +323,40 @@ cdef class Index:
         params.trie_max_fanout = trie_max_fanout
         params.trie_alphabet_budget_bits = trie_alphabet_budget_bits
         params.dynamic_root_split_variance = dynamic_root_split_variance
+        params.trie_residual_norm_bound = resolved_trie_residual_record_only
+        params.trie_residual_record_only = resolved_trie_residual_record_only
+        params.trie_residual_order = resolved_trie_residual_order
         self._index = messi_index_create(&params)
         if self._index is NULL:
-            raise MemoryError("Failed to create MESSI index")
+            raise MemoryError("Failed to create native index")
         self._dim = timeseries_size
         self._n_segments = record_lb_dim if index_type == MESSI_INDEX_TRIE else transform_dim
         self._transform_dim = transform_dim
         self._function_type = function_type
         self._filetype_int = filetype_int
         self._is_norm = is_norm
-        self._config = {"layout": layout_name, "function_type": function_type,
+        self._config = {"index": preset_name,
+                        "layout": layout_name,
+                        "transform": transform_name,
+                        "function_type": function_type,
+                        "max_leaf_size": resolved_max_leaf_size,
+                        "min_leaf_size": resolved_min_leaf_size,
+                        "initial_leaf_buffer_size": resolved_initial_leaf_buffer_size,
                         "tight_bound": bool(tight_bound),
+                        "histogram_type": histogram_type,
                         "sfa_n_coefficients": resolved_sfa_n_coefficients if function_type == 4 else None,
                         "transform_dimensions": transform_dim,
                         "record_lb_dimensions": record_lb_dim if index_type == MESSI_INDEX_TRIE else None,
                         "trie_split_dimensions": trie_split_dimensions if index_type == MESSI_INDEX_TRIE else None,
-                        "trie_record_mbr_suffix_bound": bool(trie_record_mbr_suffix_bound),
+                        "trie_record_mbr_suffix_bound": bool(resolved_trie_record_mbr_suffix_bound),
                         "trie_streaming_leaf_scan": bool(resolved_trie_streaming_leaf_scan),
-                        "trie_leaf_ivf": trie_leaf_ivf,
-                        "trie_leaf_ivf_radial_bound": bool(trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto),
+                        "trie_leaf_ivf": resolved_trie_leaf_ivf,
+                        "trie_leaf_ivf_min_size": resolved_trie_leaf_ivf_min_size,
+                        "trie_leaf_ivf_raw_ball_bound": bool(resolved_trie_leaf_ivf_raw_ball_bound),
+                        "trie_leaf_ivf_radial_bound": bool(resolved_trie_leaf_ivf_radial_bound or trie_leaf_ivf_radial_bound_auto),
                         "trie_leaf_ivf_radial_bound_auto": bool(trie_leaf_ivf_radial_bound_auto),
+                        "trie_residual_record_only": bool(resolved_trie_residual_record_only),
+                        "trie_residual_order": "residual-first" if resolved_trie_residual_order else "symbolic-first",
                         "dynamic_root_split_variance": bool(dynamic_root_split_variance),
                         "max_query_threads": max_query_threads,
                         "queue_count": queue_count or max_query_threads,
@@ -296,7 +402,7 @@ cdef class Index:
         if self._closed or self._index is NULL:
             raise RuntimeError("Index is closed")
         if self._has_data:
-            raise RuntimeError("Index already contains data; MESSI indexes are single-build")
+            raise RuntimeError("Index already contains data; indexes are single-build")
 
     cdef void _ensure_searchable(self):
         if self._closed or self._index is NULL:
@@ -353,7 +459,7 @@ cdef class Index:
             if not os.path.isdir(directory):
                 raise ValueError("storage_dir must be an existing directory")
         try:
-            fd, path = tempfile.mkstemp(prefix="messi-raw-", suffix=".f32", dir=directory)
+            fd, path = tempfile.mkstemp(prefix="s3trie-raw-", suffix=".f32", dir=directory)
             with os.fdopen(fd, "wb") as raw:
                 fd = -1
                 array.tofile(raw)

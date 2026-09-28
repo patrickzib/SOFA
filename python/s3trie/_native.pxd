@@ -26,11 +26,18 @@ cdef extern from "ads/api.h":
         int index_type
         unsigned int sampling_seed
         int node_split_criterion
+        char isax_node_mbr
+        char isax_record_mbr_suffix_bound
+        char isax_record_lb_table
+        int isax_mbr_dimensions
         int trie_bound_dimensions
         int trie_split_dimensions
         char trie_record_mbr_suffix_bound
         char trie_streaming_leaf_scan
         int trie_leaf_ivf
+        int trie_leaf_ivf_min_size
+        char trie_leaf_ivf_raw_ball_bound
+        char trie_leaf_ivf_raw_ball_bound_specified
         char trie_leaf_ivf_radial_bound
         char trie_leaf_ivf_radial_bound_auto
         int trie_fanout
@@ -39,6 +46,9 @@ cdef extern from "ads/api.h":
         int trie_max_fanout
         int trie_alphabet_budget_bits
         char dynamic_root_split_variance
+        char trie_residual_norm_bound
+        char trie_residual_record_only
+        char trie_residual_order
 
     messi_index *messi_index_create(const messi_index_params *params)
     void messi_index_destroy(messi_index *index)

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from messi import Index
+from s3trie import Index
 
 
 def main() -> None:
