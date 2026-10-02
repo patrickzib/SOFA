@@ -412,7 +412,10 @@ int main(int argc, char **argv) {
     static char use_index = 0;
     static int complete_type = 0;
     static int total_loaded_leaves = 1;
-    static int tight_bound = 0;
+    /* Match the benchmark runners and Python API: tight iSAX leaf bounds
+     * are enabled by default, with --no-tight-bound available for legacy
+     * comparison runs. */
+    static int tight_bound = 1;
     static int aggressive_check = 0;
     static float minimum_distance = FLT_MAX;
     static int serial_scan = 0;
@@ -518,6 +521,7 @@ int main(int argc, char **argv) {
                 {"leaf-size",           required_argument, 0,    'l'},
                 {"min-leaf-size",       required_argument, 0,    'm'},
                 {"tight-bound",         no_argument,       0,    'n'},
+                {"no-tight-bound",      no_argument,       0,    1049},
                 {"read-thread",         required_argument, 0,    'o'},
                 {"index-path",          required_argument, 0,    'p'},
                 {"queries",             required_argument, 0,    'q'},
@@ -798,6 +802,10 @@ int main(int argc, char **argv) {
                 tight_bound = 1;
                 break;
 
+            case 1049:
+                tight_bound = 0;
+                break;
+
             case 'e':
                 total_loaded_leaves = atoi(optarg);
                 break;
@@ -1018,7 +1026,8 @@ int main(int argc, char **argv) {
                        "  --index-threads N|auto         Index-construction workers (default: --threads)\n"
                        "  --queue-number N               Priority queues\n"
                        "  --numa auto|none|N             CPU affinity policy\n"
-                       "  --tight-bound                  Enable tight iSAX leaf pruning\n"
+                       "  --tight-bound                  Enable tight iSAX leaf pruning (default)\n"
+                       "  --no-tight-bound               Disable tight iSAX leaf pruning\n"
                        "  --aggressive-check             Enable aggressive pruning\n"
                        "  --query-report-interval N      Progress rows (0 disables; default: 10)\n"
                        "  --query-repeats N              Repeat queries after one in-memory trie build\n"

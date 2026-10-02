@@ -8,7 +8,7 @@ configurations.
 # Build S³-Trie
 
 S³-Trie requires the single-precision FFTW library (`fftw3f`). OpenBLAS is
-recommended: it provides the LAPACK routines required by PISA/SPARTAN and the
+recommended: it provides the LAPACK routines required by SPARTAN and the
 optional CBLAS acceleration used for bulk PCA projection. On systems where
 FFTW is discoverable through `pkg-config`, build from the repository root:
 
@@ -95,6 +95,10 @@ Use `Index.add_file(...)` to build directly from a CLI-format binary dataset.
 Advanced callers may still select `layout=` and `transform=` directly; these
 must agree when combined with a preset.
 
+The same names are accepted by the native CLI with `--index messi|sofa|s3trie`.
+Explicit CLI options override the preset, so binning, segment counts, bounds,
+and query settings can still be tuned per run.
+
 The S³-Trie preset uses equi-width binning, a 64-dimensional record bound,
 up to 128 MBR dimensions, 20K leaves, IVF-16 with raw-ball and radial pruning,
 record-MBR suffix pruning, streaming refinement, and symbolic-first residual
@@ -107,14 +111,14 @@ dimensions, node MBRs up to 128 dimensions, 16 leaf-IVF groups, and streaming
 leaf refinement. Their automatic worker count uses available physical CPU cores
 rather than SMT siblings. The Python API uses the same layout-aware segment
 defaults: 16 for iSAX and 64 for trie record lower bounds.
-When iSAX is selected, the direct CLI keeps tight-bound pruning off while the
-benchmark runners and Python API enable it by default.
+When iSAX is selected, the direct CLI, benchmark runners, and Python API all
+enable tight-bound pruning by default.
 
 | Setting | Direct CLI | Script runners | Python `Index` |
 |---|---|---|---|
 | Index layout | Trie | Trie | SAX+iSAX; use `index="sofa"` or `index="s3trie"` for another preset |
 | Worker threads | Available physical cores | Available physical cores | 1; pass `max_query_threads=N` |
-| iSAX tight-bound pruning | Off; use `--tight-bound` | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
+| iSAX tight-bound pruning | On; use `--no-tight-bound` to disable | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
 | iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
 | Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
 | Trie record-LB width | 64 | 64 | 64; pass `n_segments=...` or `trie_record_lb_dimensions=...` to override |
@@ -123,54 +127,43 @@ benchmark runners and Python API enable it by default.
 | Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | 16 with `index="s3trie"`; pass `trie_leaf_ivf=0` to disable |
 | Trie IVF radial record bound | On with IVF; disable with `--no-trie-leaf-ivf-radial-bound`, or use `--trie-leaf-ivf-radial-bound-auto` for the adaptive 25% gate | Same | On with `index="s3trie"`; pass `trie_leaf_ivf_radial_bound=False` to disable |
 
-Variance root splitting is valid only for iSAX SFA, SPARTAN, and PISA. Trie
-leaf IVF is valid only for learned trie transforms (SFA, SPARTAN, and
-PISA), with `K` from 2 to 64.
+Variance root splitting is valid only for learned iSAX transforms. Trie leaf
+IVF is valid only for learned trie transforms, with `K` from 2 to 64.
+
+### iSAX root dimensions
+
+The fixed iSAX root table always has `2^16` entries. SAX uses 16 uniformly
+spaced symbolic dimensions for its root key. Learned iSAX transforms select
+the 16 highest-variance symbolic dimensions for the root key; all symbolic
+dimensions remain available for deeper splits, node MBRs, record lower bounds,
+and SIMD evaluation. The selected dimensions are persisted with index settings
+and printed in the build and query configuration logs.
+
+`--dynamic-root-split-variance` is a separate opt-in policy that allocates
+root bits by variance. It does not change the fixed root-dimension map or
+restrict the dimensions available below the root. Existing indexes without a
+persisted map use the legacy uniform mapping.
 
 # Scripts
 
-See [the benchmark scripts](scripts/README.md) for examples to run S³-Trie,
-SOFA, and MESSI.
-
-- SAX command is `--function-type 3`
-- SFA/SOFA command is `--function-type 4`
-- SPARTAN command is `--function-type 5`
-- PISA command is `--function-type 6`
-
-For trie indexes, `--trie-fanout 2|4|8` selects a fixed fanout. Learned
-SFA/SPARTAN/PISA tries can instead use one global, precomputed dynamic
-alphabet allocation with `--trie-dynamic-alphabet`; this uses a 3-bit average
-budget by default and supports 1--4 bits per coefficient (fanouts 2--16).
-The allocation is computed once from the training representation and reused
-for all trie splits. These fixed and dynamic modes are mutually exclusive.
-
-SAX tries remain on the fixed-fanout path. iSAX’s
-`--dynamic-root-split-variance` is a separate legacy root-only allocation and
-does not control trie alphabets.
+See [the benchmark scripts](scripts/README.md) for the complete runner
+documentation. Named presets keep the transform and layout together:
 
 ```bash
-FILE_PATH=/home/tmp/schaefpa/messi_datasets/deep1b.bin
-QUERIES_PATH=/home/tmp/schaefpa/messi_datasets/$QUERY
-TS_SIZE=96
+scripts/run_dataset.sh bigann standard --index messi
+scripts/run_dataset.sh bigann standard --index sofa --methods depth
+scripts/run_dataset.sh bigann standard --index sofa --methods width
+scripts/run_dataset.sh bigann standard --index s3trie --methods depth
+scripts/run_dataset.sh bigann standard --index s3trie --methods width
+```
 
-COEFF_NUMBER=32
-DATASET_SIZE=100000000
-SAMPLE_SIZE=1000000
-QUERY_SIZE=100
+For iSAX, `--histogram-type 1` selects equi-depth binning and
+`--histogram-type 2` selects equi-width binning. The legacy
+`--dynamic-root-split-variance` option is separate from trie alphabet
+allocation and is available for learned iSAX runs.
 
-./MESSI 
-  --dataset --dataset $FILE_PATH 
-  --dataset-size $DATASET_SIZE 
-  --queries $QUERIES_PATH 
-  --queries-size $QUERY_SIZE 
-  --timeseries-size $TS_SIZE  
-  --function-type 4 
-  --histogram-type 2 
-  --sample-type 3 
-  --sample-size $SAMPLE_SIZE 
-  --sfa-n-coefficients $COEFF_NUMBER  
-  --is-norm 
-  --SIMD
+```bash
+scripts/run_dataset.sh deep1b standard --index sofa --methods width
 ```
 
 For help, please type:
