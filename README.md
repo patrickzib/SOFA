@@ -68,6 +68,9 @@ python3 -m pip install --no-build-isolation -e ./python
 For a direct extension build, run the equivalent command from `python/`:
 `python3 setup.py build_ext --inplace`.
 
+The Python package is the maintained high-level binding; the legacy Node.js
+binding and its vendored build artifacts are no longer included.
+
 # Minimal Python API usage
 The API accepts NumPy arrays as well as float32 binary datasets in the CLI
 format.

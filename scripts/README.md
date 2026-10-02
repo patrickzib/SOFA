@@ -38,7 +38,7 @@ The profiles preserve the existing experiment matrices. With the default trie
 layout, `standard` runs SPARTAN variants and `knn` runs SFA variants;
 select `--index-type isax` for the wider legacy matrices below:
 
-- `standard`: SAX, SFA, PISA, and SPARTAN variants
+- `standard`: SAX, SFA, and SPARTAN variants
 - `high-frequency`: one query with SFA equi-width
 - `knn`: SAX and both SFA histogram variants with top-K search
 - `sampling`: both SFA histogram variants at a configurable sample fraction
@@ -125,7 +125,7 @@ scripts/run_suite.sh standard --threads 64 --index-type trie \
 ```
 
 Dynamic trie alphabets are computed once from the global training
-representation for SFA, SPARTAN, and PISA. The resulting per-dimension bit
+representation for the learned SFA and SPARTAN transforms. The resulting per-dimension bit
 allocation is reused at every trie split; node-local alphabets are not
 recomputed. A 1--4 bit range corresponds to fanouts 2, 4, 8, and 16.
 
