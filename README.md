@@ -1,9 +1,13 @@
-This is the supporting website for the paper "Fast and Exact Similarity Search in less than a Blink of an Eye".
+# S³-Trie
 
+S³-Trie provides fast and exact similarity search using SPARTAN transforms and
+a symbolic trie. This repository includes the native engine, a Python API,
+and benchmark scripts, as well as the MESSI (SAX+iSAX) and SOFA (SFA+iSAX)
+configurations.
 
-# Build MESSI
+# Build S³-Trie
 
-MESSI requires the single-precision FFTW library (`fftw3f`). OpenBLAS is
+S³-Trie requires the single-precision FFTW library (`fftw3f`). OpenBLAS is
 recommended: it provides the LAPACK routines required by PISA/SPARTAN and the
 optional CBLAS acceleration used for bulk PCA projection. On systems where
 FFTW is discoverable through `pkg-config`, build from the repository root:
@@ -25,7 +29,8 @@ make -j
 
 `build_local.sh` is the maintained MacPorts convenience build. It sets those
 paths, enables native optimization, creates a fresh out-of-tree `build/`
-directory, and copies the executable to `bin/MESSI`:
+directory, and copies the executable to `bin/MESSI` (the current executable
+name):
 
 ```bash
 ./build_local.sh
@@ -41,7 +46,7 @@ implementation automatically.
 Run `autoreconf -fi` before `configure` only when modifying Autotools inputs
 or when a clone does not include a usable generated `configure` script.
 
-The detailed S3-Trie lower-bound profiler is compiled out by default. Build a
+The detailed S³-Trie lower-bound profiler is compiled out by default. Build a
 separate experiment binary with `./configure --enable-trie-pruning-trace`; its
 `--trie-pruning-curve` runtime option is then available. Normal builds contain
 neither the counters nor their timing calls.
@@ -90,7 +95,7 @@ Use `Index.add_file(...)` to build directly from a CLI-format binary dataset.
 Advanced callers may still select `layout=` and `transform=` directly; these
 must agree when combined with a preset.
 
-The S3-Trie preset uses equi-width binning, a 64-dimensional record bound,
+The S³-Trie preset uses equi-width binning, a 64-dimensional record bound,
 up to 128 MBR dimensions, 20K leaves, IVF-16 with raw-ball and radial pruning,
 record-MBR suffix pruning, streaming refinement, and symbolic-first residual
 record pruning. Each setting remains explicitly overrideable.
@@ -124,7 +129,8 @@ PISA), with `K` from 2 to 64.
 
 # Scripts
 
-See the provided scripts in the `scripts`-folder for examples to run SOFA with SFA summarization.
+See [the benchmark scripts](scripts/README.md) for examples to run S³-Trie,
+SOFA, and MESSI.
 
 - SAX command is `--function-type 3`
 - SFA/SOFA command is `--function-type 4`

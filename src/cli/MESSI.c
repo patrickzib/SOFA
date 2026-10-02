@@ -402,8 +402,11 @@ int main(int argc, char **argv) {
     static char n_segments_specified = 0;
     static int sax_cardinality = 8;
     static int leaf_size = 2000;
+    static int leaf_size_specified = 0;
     static int min_leaf_size = 10;
+    static int min_leaf_size_specified = 0;
     static int initial_lbl_size = 2000;
+    static int initial_lbl_size_specified = 0;
     static int flush_limit = 200000;
     static int initial_fbl_size = 100;
     static char use_index = 0;
@@ -424,6 +427,7 @@ int main(int argc, char **argv) {
     static char SIMD_flag = ADS_HAVE_AVX2 ? 1 : 0;
     static char is_norm = 0;
     static int histogram_type = 1;
+    static int histogram_type_specified = 0;
     static int sample_type = 1;
     static unsigned int sampling_seed = 1;
     static int n_coefficients = 0;
@@ -436,23 +440,31 @@ int main(int argc, char **argv) {
     static int root_split_variance_disabled = 0;
     static int node_split_criterion = 1;
     static messi_index_type index_type = MESSI_INDEX_TRIE;
+    static int index_type_specified = 0;
+    static const char *index_preset = NULL;
     /* The trie mirrors iSAX's per-query worker scheduling by default. */
     static int trie_query_batch = 0;
     static int profile_query_phases_requested = 0;
     static int queue_number_specified = 0;
     static int trie_mbr_dimensions = 0;
+    static int trie_mbr_dimensions_specified = 0;
     static int trie_split_dimensions = 0;
+    static int trie_split_dimensions_specified = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_streaming_leaf_scan = 1;
     static int trie_streaming_leaf_scan_specified = 0;
     static int trie_leaf_ivf = 0;
     static int trie_leaf_ivf_min_size = 4096;
+    static int trie_leaf_ivf_min_size_specified = 0;
     static int trie_leaf_ivf_specified = 0;
     static int trie_leaf_ivf_raw_ball_bound = 1;
+    static int trie_leaf_ivf_raw_ball_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound = 0;
     static int trie_residual_record_only = 0;
+    static int trie_residual_record_only_specified = 0;
     static int trie_residual_order = 0;
+    static int trie_residual_order_specified = 0;
     static int trie_leaf_ivf_radial_bound_specified = 0;
     static int trie_leaf_ivf_radial_bound_auto = 0;
     /* Preserve historical iSAX behavior: node MBRs are the baseline bound.
@@ -478,6 +490,7 @@ int main(int argc, char **argv) {
 
     int calculate_thread = 8;
     int function_type = 0;
+    int function_type_specified = 0;
     N_PQUEUE = 1;
     maxreadthread = 5;
     read_block_length = 20000;
@@ -543,6 +556,7 @@ int main(int argc, char **argv) {
                 {"dynamic-root-split-variance", no_argument,     0, 'L'},
                 {"no-dynamic-root-split-variance", no_argument,  0, 1022},
                 {"index-type", required_argument, 0, 1000},
+                {"index", required_argument, 0, 1047},
                 {"trie-query-parallel", no_argument, 0, 1001},
                 {"profile-query-phases", no_argument, 0, 1002},
                 {"trie-query-batch", no_argument, 0, 1003},
@@ -556,6 +570,7 @@ int main(int argc, char **argv) {
                 {"no-trie-leaf-ivf-raw-ball-bound", no_argument, 0, 1023},
                 {"trie-leaf-ivf-radial-bound", no_argument, 0, 1026},
                 {"trie-residual-record-only", no_argument, 0, 1041},
+                {"no-trie-residual-record-only", no_argument, 0, 1048},
                 {"trie-residual-order", required_argument, 0, 1042},
                 {"no-trie-leaf-ivf-radial-bound", no_argument, 0, 1033},
                 {"trie-leaf-ivf-radial-bound-auto", no_argument, 0, 1028},
@@ -592,6 +607,15 @@ int main(int argc, char **argv) {
                 if (strcmp(optarg, "isax") == 0) index_type = MESSI_INDEX_ISAX;
                 else if (strcmp(optarg, "trie") == 0) index_type = MESSI_INDEX_TRIE;
                 else { fprintf(stderr, "error: index-type must be isax or trie.\n"); return EXIT_FAILURE; }
+                index_type_specified = 1;
+                break;
+            case 1047:
+                if (strcmp(optarg, "messi") != 0 && strcmp(optarg, "sofa") != 0 &&
+                    strcmp(optarg, "s3trie") != 0) {
+                    fprintf(stderr, "error: --index must be messi, sofa, or s3trie.\n");
+                    return EXIT_FAILURE;
+                }
+                index_preset = optarg;
                 break;
             case 1001:
                 trie_query_batch = 0;
@@ -606,9 +630,11 @@ int main(int argc, char **argv) {
                 break;
             case 1004:
                 trie_mbr_dimensions = atoi(optarg);
+                trie_mbr_dimensions_specified = 1;
                 break;
             case 1015:
                 trie_split_dimensions = atoi(optarg);
+                trie_split_dimensions_specified = 1;
                 break;
             case 1005:
                 trie_fanout = atoi(optarg);
@@ -688,6 +714,7 @@ int main(int argc, char **argv) {
                 break;
             case 1043:
                 trie_leaf_ivf_min_size = atoi(optarg);
+                trie_leaf_ivf_min_size_specified = 1;
                 break;
             case 1025:
                 trie_leaf_ivf = 0;
@@ -695,6 +722,7 @@ int main(int argc, char **argv) {
                 break;
             case 1023:
                 trie_leaf_ivf_raw_ball_bound = 0;
+                trie_leaf_ivf_raw_ball_bound_specified = 1;
                 break;
             case 1026:
                 trie_leaf_ivf_radial_bound_specified = 1;
@@ -703,11 +731,17 @@ int main(int argc, char **argv) {
                 break;
             case 1041:
                 trie_residual_record_only = 1;
+                trie_residual_record_only_specified = 1;
+                break;
+            case 1048:
+                trie_residual_record_only = 0;
+                trie_residual_record_only_specified = 1;
                 break;
             case 1042:
                 if (strcmp(optarg, "symbolic-first") == 0) trie_residual_order = 0;
                 else if (strcmp(optarg, "residual-first") == 0) trie_residual_order = 1;
                 else { fprintf(stderr, "error: --trie-residual-order expects symbolic-first or residual-first.\n"); return EXIT_FAILURE; }
+                trie_residual_order_specified = 1;
                 break;
             case 1028:
                 trie_leaf_ivf_radial_bound_specified = 1;
@@ -807,14 +841,17 @@ int main(int argc, char **argv) {
 
             case 'l':
                 leaf_size = atoi(optarg);
+                leaf_size_specified = 1;
                 break;
 
             case 'm':
                 min_leaf_size = atoi(optarg);
+                min_leaf_size_specified = 1;
                 break;
 
             case 'b':
                 initial_lbl_size = atoi(optarg);
+                initial_lbl_size_specified = 1;
                 break;
 
             case 'f':
@@ -862,6 +899,7 @@ int main(int argc, char **argv) {
 
             case 'y':
                 function_type = atoi(optarg);
+                function_type_specified = 1;
                 break;
             case 'i':
                 initial_fbl_size = atoi(optarg);
@@ -903,6 +941,7 @@ int main(int argc, char **argv) {
                 break;
             case 'A':
                 histogram_type = atoi(optarg);
+                histogram_type_specified = 1;
                 break;
             case 'C':
                 sample_type = atoi(optarg);
@@ -965,6 +1004,7 @@ int main(int argc, char **argv) {
                        "  --queries-size N               Number of queries\n"
                        "  --timeseries-size N            Values per series\n"
                        "  --index-path PATH              Index output directory\n"
+                       "  --index messi|sofa|s3trie     Named system preset (explicit options override it)\n"
                        "  --index-type isax|trie         Layout (default: trie)\n"
                        "  --n-segments N                 Symbolic dimensions (default: iSAX 16, trie 64; trie: 16--64)\n"
                        "  --sax-cardinality N            SAX bits per dimension\n"
@@ -1017,6 +1057,7 @@ int main(int argc, char **argv) {
                        "  --trie-query-batch             Batch independent queries\n"
                        "  --trie-mbr-dimensions N        MBR dimensions (default: min(128, series length))\n"
                        "  --trie-residual-record-only    ResSPARTAN residual checks only at records\n"
+                       "  --no-trie-residual-record-only Disable record-only residual checks\n"
                        "  --trie-residual-order MODE     Residual ordering: symbolic-first or residual-first\n"
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
@@ -1070,12 +1111,57 @@ int main(int argc, char **argv) {
                 break;
         }
     }
+
+    /* Named system presets are resolved only after getopt has seen every
+     * argument.  The per-option markers make explicit flags win regardless
+     * of whether they appear before or after --index. */
+    if (index_preset != NULL) {
+        if (strcmp(index_preset, "messi") == 0) {
+            if (!index_type_specified) index_type = MESSI_INDEX_ISAX;
+            if (!function_type_specified) function_type = 3;
+            if (!n_segments_specified) n_segments = 16;
+        } else if (strcmp(index_preset, "sofa") == 0) {
+            if (!index_type_specified) index_type = MESSI_INDEX_ISAX;
+            if (!function_type_specified) function_type = 4;
+            if (!n_segments_specified) n_segments = 16;
+            if (!histogram_type_specified) histogram_type = 2;
+        } else {
+            if (!index_type_specified) index_type = MESSI_INDEX_TRIE;
+            if (!function_type_specified) function_type = 5;
+            if (!n_segments_specified) n_segments = 64;
+            if (!histogram_type_specified) histogram_type = 2;
+            if (!leaf_size_specified) leaf_size = 20000;
+            if (!min_leaf_size_specified) min_leaf_size = 20000;
+            if (!initial_lbl_size_specified) initial_lbl_size = 20000;
+            if (!trie_mbr_dimensions_specified)
+                trie_mbr_dimensions = time_series_size < 128 ? time_series_size : 128;
+            if (!trie_split_dimensions_specified) trie_split_dimensions = 64;
+            if (!trie_leaf_ivf_specified) trie_leaf_ivf = 16;
+            if (!trie_leaf_ivf_min_size_specified) trie_leaf_ivf_min_size = 4096;
+            if (!trie_leaf_ivf_raw_ball_bound_specified) trie_leaf_ivf_raw_ball_bound = 1;
+            if (!trie_leaf_ivf_radial_bound_specified) {
+                trie_leaf_ivf_radial_bound = trie_leaf_ivf != 0;
+                trie_leaf_ivf_radial_bound_auto = 0;
+            }
+            if (!trie_record_mbr_suffix_bound_specified) trie_record_mbr_suffix_bound = 1;
+            if (!trie_streaming_leaf_scan_specified) trie_streaming_leaf_scan = 1;
+            if (!trie_residual_record_only_specified) trie_residual_record_only = 1;
+            if (!trie_residual_order_specified) trie_residual_order = 0;
+        }
+        fprintf(stderr, ">>> index preset: %s\n", index_preset);
+    }
     INIT_STATS();
     profile_query_phases = profile_query_phases_requested;
     /* Keep the historic 64-dimension trie word, but use the conventional
      * 16-segment SAX/iSAX baseline unless the caller explicitly overrides it. */
     if (!n_segments_specified) {
         n_segments = index_type == MESSI_INDEX_ISAX ? 16 : 64;
+    }
+    if (index_preset != NULL && strcmp(index_preset, "s3trie") == 0 && use_index) {
+        fprintf(stderr,
+                "error: --index s3trie is a new-build preset because its residual bound is construction-only; "
+                "use explicit --index-type/--function-type options to query an existing index.\n");
+        return EXIT_FAILURE;
     }
     if (enable_sofa_v2) {
         if (index_type != MESSI_INDEX_ISAX) {
@@ -1644,7 +1730,7 @@ int main(int argc, char **argv) {
         write_settings_command(logfile, argc, argv);
         fprintf(logfile,
                 "dataset,%s\nqueries,%s\nindex path,%s\n"
-                "layout,%s\nin-memory,%d\n"
+                "preset,%s\nlayout,%s\nin-memory,%d\n"
                 "dataset size,%ld\nqueries size,%d\ntimeseries length,%d\n"
                 "function type,%d\nSIMD,%u\n"
                 "input type,%s\ndataset header bytes,%lu\nquery header bytes,%lu\n"
@@ -1671,7 +1757,7 @@ int main(int argc, char **argv) {
                 "trie pruning trace compiled,1\ntrie pruning curve,%d\n"
 #endif
                 ,
-                dataset, queries, index_path,
+                dataset, queries, index_path, index_preset != NULL ? index_preset : "none",
                 index_type == MESSI_INDEX_TRIE ? "trie" : "isax", inmemory_flag,
                 dataset_size, queries_size, time_series_size,
                 function_type, SIMD_flag,
