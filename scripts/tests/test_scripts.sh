@@ -13,6 +13,45 @@ assert_not_contains() { [[ $1 != *"$2"* ]] || fail "expected output not to conta
 while IFS= read -r script; do bash -n "$script"; done < <(find "$SCRIPT_DIR" -type f -name '*.sh' -not -path '*/old/*' -print)
 pass 'all maintained scripts pass bash syntax validation'
 
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --index messi --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 1 ]] || fail 'MESSI preset should emit one command'
+assert_contains "$OUTPUT" '--index messi'
+assert_contains "$OUTPUT" '--index-type isax'
+assert_contains "$OUTPUT" '--function-type 3'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --index sofa \
+    --methods depth,width --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 2 ]] || fail 'SOFA depth,width aliases should emit two commands'
+assert_contains "$OUTPUT" '--function-type 4'
+assert_contains "$OUTPUT" '--histogram-type 1'
+assert_contains "$OUTPUT" '--histogram-type 2'
+
+OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --methods width \
+    --leaf-size 12345 --index s3trie --no-trie-residual-record-only --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--index s3trie'
+assert_contains "$OUTPUT" '--index-type trie'
+assert_contains "$OUTPUT" '--function-type 5'
+assert_contains "$OUTPUT" '--histogram-type 2'
+assert_contains "$OUTPUT" '--leaf-size 12345'
+assert_not_contains "$OUTPUT" '--trie-residual-record-only'
+
+if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --methods depth --dry-run >/dev/null 2>&1; then
+    fail 'contextual depth alias was accepted without a SOFA or S3-Trie preset'
+fi
+pass 'named presets and contextual binning aliases resolve with explicit overrides'
+
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" standard --datasets astro --threads 1 \
+    --index s3trie --methods depth --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--index s3trie'
+assert_contains "$OUTPUT" '--function-type 5'
+assert_contains "$OUTPUT" '--histogram-type 1'
+OUTPUT=$("$SCRIPT_DIR/run_suite.sh" generated-queries --threads 1 \
+    --index sofa --methods width --dry-run 2>/dev/null)
+assert_contains "$OUTPUT" '--index sofa'
+assert_contains "$OUTPUT" '--function-type 4'
+assert_contains "$OUTPUT" '--histogram-type 2'
+pass 'suite runner forwards named presets and contextual binning aliases'
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --queue-number 36 --index-type isax --data-root '/tmp/data root' --binary /tmp/MESSI --dry-run 2>/dev/null)
 [[ $(printf '%s\n' "$OUTPUT" | wc -l | tr -d ' ') == 5 ]] || fail 'standard profile should emit five default commands'
 assert_contains "$OUTPUT" '/tmp/data\ root/astro.bin'

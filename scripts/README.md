@@ -18,6 +18,22 @@ scripts/run_dataset.sh astro high-frequency --threads 36 --queue-number 36 --dry
 scripts/run_dataset.sh simsearchnet standard --threads 36
 ```
 
+Named presets select one canonical system without spelling out its transform
+and layout. SOFA and S3-Trie default to equi-width binning; `depth` and `width`
+are contextual aliases because their transforms are unambiguous:
+
+```bash
+scripts/run_dataset.sh bigann standard --index messi
+scripts/run_dataset.sh bigann standard --index sofa --methods depth
+scripts/run_dataset.sh bigann standard --index sofa --methods width
+scripts/run_dataset.sh bigann standard --index s3trie --methods depth
+scripts/run_dataset.sh bigann standard --index s3trie --methods width
+```
+
+The full method names remain valid, and explicit tuning options override preset
+defaults regardless of their command-line order. The native executable accepts
+the same `--index` names; use `--histogram-type 1` for depth or `2` for width.
+
 The profiles preserve the existing experiment matrices. With the default trie
 layout, `standard` runs SPARTAN variants and `knn` runs SFA variants;
 select `--index-type isax` for the wider legacy matrices below:

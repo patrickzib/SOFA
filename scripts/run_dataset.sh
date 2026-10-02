@@ -32,6 +32,8 @@ Options:
   --no-apply-z-norm         Use input values without runner-requested normalization
   --no-simd                 Disable SIMD even when AVX2 is available
   --methods LIST            Comma-separated method names
+                            With --index sofa/s3trie, depth and width are accepted aliases
+  --index NAME              System preset: messi, sofa, or s3trie
   --index-type TYPE         Index layout: trie (default) or isax
   --enable-sofa-v2          Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
   --isax-node-mbr           Enable iSAX node MBR bounds
@@ -210,7 +212,9 @@ SAMPLING_SEED=1
 APPLY_Z_NORM_OVERRIDE=
 NO_SIMD=false
 METHODS_OVERRIDE=
+INDEX_PRESET=
 INDEX_TYPE=trie
+INDEX_TYPE_SPECIFIED=false
 TRIE_QUERY_PARALLEL=false
 TRIE_QUERY_BATCH=false
 TRIE_MBR_DIMS=
@@ -285,7 +289,8 @@ while [[ $# -gt 0 ]]; do
         --no-apply-z-norm) APPLY_Z_NORM_OVERRIDE=false; shift ;;
         --no-simd) NO_SIMD=true; shift ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
-        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --index) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_PRESET=$2; shift 2 ;;
+        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; INDEX_TYPE_SPECIFIED=true; shift 2 ;;
         --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
         --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
         --isax-n-segments) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_N_SEGMENTS=$2; shift 2 ;;
@@ -334,6 +339,39 @@ while [[ $# -gt 0 ]]; do
         *) die "unknown option '$1'" ;;
     esac
 done
+
+case "$INDEX_PRESET" in
+    '') ;;
+    messi)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=isax
+        ;;
+    sofa)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=isax
+        ;;
+    s3trie)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=trie
+        [[ $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == true ]] || TRIE_RESIDUAL_RECORD_ONLY=true
+        ;;
+    *) die '--index must be messi, sofa, or s3trie' ;;
+esac
+
+if [[ -n $METHODS_OVERRIDE ]]; then
+    IFS=',' read -r -a requested_methods <<< "$METHODS_OVERRIDE"
+    resolved_methods=()
+    for requested_method in "${requested_methods[@]}"; do
+        case "$requested_method" in
+            depth|width)
+                case "$INDEX_PRESET" in
+                    sofa) resolved_methods+=("sfa-$requested_method") ;;
+                    s3trie) resolved_methods+=("spartan-$requested_method") ;;
+                    *) die '--methods depth/width requires --index sofa or --index s3trie' ;;
+                esac
+                ;;
+            *) resolved_methods+=("$requested_method") ;;
+        esac
+    done
+    METHODS_OVERRIDE=$(IFS=,; printf '%s' "${resolved_methods[*]}")
+fi
 
 load_dataset "$DATASET_ARG" "$PROFILE"
 
@@ -475,10 +513,15 @@ case "$PROFILE" in
     knn) DEFAULT_METHODS=sax,sfa-depth,sfa-width ;;
     sampling) DEFAULT_METHODS=sfa-depth,sfa-width ;;
 esac
+case "$INDEX_PRESET" in
+    messi) DEFAULT_METHODS=sax ;;
+    sofa) DEFAULT_METHODS=sfa-width ;;
+    s3trie) DEFAULT_METHODS=spartan-width ;;
+esac
 if [[ $INDEX_TYPE == trie ]]; then
-    case "$PROFILE" in
-        standard) DEFAULT_METHODS=spartan-depth,spartan-width ;;
-        knn) DEFAULT_METHODS=sfa-depth,sfa-width ;;
+    case "$PROFILE:$INDEX_PRESET" in
+        standard:) DEFAULT_METHODS=spartan-depth,spartan-width ;;
+        knn:) DEFAULT_METHODS=sfa-depth,sfa-width ;;
     esac
 fi
 METHODS=${METHODS_OVERRIDE:-$DEFAULT_METHODS}
@@ -507,6 +550,7 @@ fi
 COMMON_ARGS=(
     --dataset "$DATASET_PATH"
 )
+[[ -n $INDEX_PRESET ]] && COMMON_ARGS+=(--index "$INDEX_PRESET")
 (( DATASET_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--dataset-header-bytes "$DATASET_HEADER_BYTES")
 (( QUERY_HEADER_BYTES > 0 )) && COMMON_ARGS+=(--query-header-bytes "$QUERY_HEADER_BYTES")
 $APPLY_Z_NORM && COMMON_ARGS+=(--apply-z-norm)

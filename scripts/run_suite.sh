@@ -20,6 +20,8 @@ Options:
   --sample-factors LIST   Factors for sampling (default: 0.15,...,0.5)
   --datasets LIST         Limit regular suites to dataset IDs
   --methods LIST          Comma-separated methods to run
+                          With --index sofa/s3trie, depth and width are accepted aliases
+  --index NAME            System preset: messi, sofa, or s3trie
   --index-type TYPE       Index layout: trie (default) or isax
   --enable-sofa-v2        Enable all opt-in iSAX SOFA v2 bounds and variance root splitting
   --isax-node-mbr         Enable iSAX node MBR bounds
@@ -129,7 +131,9 @@ K_VALUES_CSV=20,50
 SAMPLE_FACTORS_CSV=0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5
 DATASETS_CSV=
 METHODS_OVERRIDE=
+INDEX_PRESET=
 INDEX_TYPE=trie
+INDEX_TYPE_SPECIFIED=false
 QUEUE_NUMBER=
 NUMA_MODE=auto
 DATASET_FILE=
@@ -200,7 +204,8 @@ while [[ $# -gt 0 ]]; do
         --sample-factors) [[ $# -ge 2 ]] || die "$1 requires a value"; SAMPLE_FACTORS_CSV=$2; shift 2 ;;
         --datasets) [[ $# -ge 2 ]] || die "$1 requires a value"; DATASETS_CSV=$2; shift 2 ;;
         --methods) [[ $# -ge 2 ]] || die "$1 requires a value"; METHODS_OVERRIDE=$2; shift 2 ;;
-        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; shift 2 ;;
+        --index) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_PRESET=$2; shift 2 ;;
+        --index-type) [[ $# -ge 2 ]] || die "$1 requires a value"; INDEX_TYPE=$2; INDEX_TYPE_SPECIFIED=true; shift 2 ;;
         --enable-sofa-v2) ENABLE_SOFA_V2=true; shift ;;
         --isax-node-mbr) ISAX_NODE_MBR=true; shift ;;
         --isax-n-segments) [[ $# -ge 2 ]] || die "$1 requires a value"; ISAX_N_SEGMENTS=$2; shift 2 ;;
@@ -267,6 +272,42 @@ while [[ $# -gt 0 ]]; do
         *) die "unknown option '$1'" ;;
     esac
 done
+
+case "$INDEX_PRESET" in
+    '') ;;
+    messi)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=isax
+        [[ -n $METHODS_OVERRIDE ]] || METHODS_OVERRIDE=sax
+        ;;
+    sofa)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=isax
+        [[ -n $METHODS_OVERRIDE ]] || METHODS_OVERRIDE=sfa-width
+        ;;
+    s3trie)
+        [[ $INDEX_TYPE_SPECIFIED == true ]] || INDEX_TYPE=trie
+        [[ -n $METHODS_OVERRIDE ]] || METHODS_OVERRIDE=spartan-width
+        [[ $TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED == true ]] || TRIE_RESIDUAL_RECORD_ONLY=true
+        ;;
+    *) die '--index must be messi, sofa, or s3trie' ;;
+esac
+
+if [[ -n $METHODS_OVERRIDE ]]; then
+    IFS=',' read -r -a requested_methods <<< "$METHODS_OVERRIDE"
+    resolved_methods=()
+    for requested_method in "${requested_methods[@]}"; do
+        case "$requested_method" in
+            depth|width)
+                case "$INDEX_PRESET" in
+                    sofa) resolved_methods+=("sfa-$requested_method") ;;
+                    s3trie) resolved_methods+=("spartan-$requested_method") ;;
+                    *) die '--methods depth/width requires --index sofa or --index s3trie' ;;
+                esac
+                ;;
+            *) resolved_methods+=("$requested_method") ;;
+        esac
+    done
+    METHODS_OVERRIDE=$(IFS=,; printf '%s' "${resolved_methods[*]}")
+fi
 
 case "$SUITE" in
     standard|high-frequency|knn|sampling|generated-queries|hard-queries|noise-workloads) ;;
@@ -364,6 +405,7 @@ run_one() {
     local queue_number=${QUEUE_NUMBER:-$threads}
     local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" "$profile" --threads "$threads" \
         --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+    [[ -n $INDEX_PRESET ]] && command+=(--index "$INDEX_PRESET")
     [[ -n $INDEX_THREADS ]] && command+=(--index-threads "$INDEX_THREADS")
     [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
     [[ -n $QUERY_FILE ]] && command+=(--query-file "$QUERY_FILE")
@@ -515,6 +557,7 @@ run_query_suite() {
             local queue_number=${QUEUE_NUMBER:-$threads}
             local -a command=("$SCRIPT_DIR/run_dataset.sh" "$dataset" standard --threads "$threads" \
                 --queue-number "$queue_number" --numa "$NUMA_MODE" --index-type "$INDEX_TYPE")
+            [[ -n $INDEX_PRESET ]] && command+=(--index "$INDEX_PRESET")
             [[ -n $INDEX_THREADS ]] && command+=(--index-threads "$INDEX_THREADS")
             [[ -n $DATASET_FILE ]] && command+=(--dataset-file "$DATASET_FILE")
             [[ -n $DATASET_SIZE ]] && command+=(--dataset-size "$DATASET_SIZE")
