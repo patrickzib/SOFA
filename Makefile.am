@@ -43,7 +43,3 @@ scripts_tests_test_trie_partitioned_bounds_LDADD = lib/libads.a $(FFTW_LIBS) $(L
 scripts_tests_test_trie_partitioned_bounds_LDFLAGS = -fopenmp
 scripts_tests_test_build_progress_SOURCES = scripts/tests/test_build_progress.c
 scripts_tests_test_build_progress_LDADD = lib/libads.a -lm -lpthread
-
-EXTRA_PROGRAMS = bench_ed_simd
-bench_ed_simd_SOURCES = scripts/bench_ed_simd.c
-bench_ed_simd_LDADD = lib/libads.a -lm

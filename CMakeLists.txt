@@ -197,13 +197,3 @@ if(BUILD_TESTING)
   endif()
   add_test(NAME isax_root_dimension_mapping COMMAND test_root_dimensions)
 endif()
-
-add_executable(bench_ed_simd EXCLUDE_FROM_ALL scripts/bench_ed_simd.c)
-target_include_directories(bench_ed_simd PRIVATE
-  ${PROJECT_SOURCE_DIR}
-  ${PROJECT_SOURCE_DIR}/include
-)
-target_link_libraries(bench_ed_simd PRIVATE ads)
-if(MATH_LIBRARY)
-  target_link_libraries(bench_ed_simd PRIVATE ${MATH_LIBRARY})
-endif()

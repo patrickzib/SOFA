@@ -1,7 +1,7 @@
 # Benchmark scripts
 
 `run_dataset.sh` is the canonical entrypoint for one dataset and profile. The
-older `run_*.sh` names remain as compatibility wrappers. Both canonical
+suite entrypoint is `run_suite.sh`. Both canonical
 runners default to trie indexes with 128 MBR dimensions (capped by series
 length), 64 record-bound dimensions, and 16 leaf-IVF groups. If `--threads`
 is omitted, they use the physical cores available to the process; set
@@ -44,8 +44,26 @@ select `--index-type isax` for the wider legacy matrices below:
 - `sampling`: both SFA histogram variants at a configurable sample fraction
 
 Use `run_suite.sh` for the complete benchmark matrices. It also exposes the
-`generated-queries`, `hard-queries`, and `noise-workloads` suites migrated from
-`scripts/old/`.
+`generated-queries`, `hard-queries`, and `noise-workloads` suites.
+
+Use these canonical commands in place of the removed compatibility wrappers:
+
+```bash
+scripts/run_dataset.sh astro standard --threads 36 --queue-number 36
+scripts/run_dataset.sh astro high-frequency
+scripts/run_dataset.sh astro knn --k 20
+scripts/run_dataset.sh astro sampling --sample-factor 0.2
+scripts/run_suite.sh standard
+scripts/run_suite.sh knn
+scripts/run_suite.sh sampling
+scripts/run_suite.sh high-frequency
+scripts/run_suite.sh standard --datasets ethc,isc_ehb_depthphases,lendb,iquique,neic,obs,obst2024,pnw,meier2019jgr,stead,txed
+scripts/archive_results.sh ASTRO 36
+```
+
+Replace `astro` with the desired dataset ID; the former `bigann_norm` wrapper
+uses the `bigann` ID. Custom SeisBench inputs use `run_dataset.sh seisbench`
+with `--dataset-file`, `--query-file`, and `--dataset-size`.
 
 For the compact core-scaling comparison across TRIE/SPARTAN, SOFA/SFA+iSAX,
 and MESSI/SAX+iSAX, run:
@@ -130,8 +148,7 @@ Command-line path options take precedence over these environment variables:
 | `MESSI_LOG_ROOT` | `$HOME/MESSI_logs` | logs produced by MESSI |
 | `MESSI_SHELL_LOG_DIR` | `MESSI_LOG_ROOT` | combined runner transcript for each dataset/profile run |
 | `MESSI_RESULTS_ROOT` | `$HOME/MESSI_SFA_logs` | archived benchmark results |
-| `MESSI_INDEX_ROOT` | `$HOME/index` | index directory cleared by `run_cleanup.sh` |
-| `MESSI_DRY_RUN` | `false` | enable dry-run mode through compatibility wrappers |
+| `MESSI_DRY_RUN` | `false` | enable dry-run mode in `run_dataset.sh` |
 
 Relative dataset and query overrides are resolved below the applicable data
 root. Absolute overrides are used unchanged. `--dry-run` prints shell-escaped
@@ -270,12 +287,9 @@ components, and the destination is checked before removal.
 
 ## Validation
 
-Run `scripts/tests/test_scripts.sh` for syntax, argument-generation, wrapper,
+Run `scripts/tests/test_scripts.sh` for syntax, argument-generation, runner,
 and result-archival tests. Set `RUN_MESSI_INTEGRATION=1` to additionally run a
 small fixture test with the real `bin/MESSI`; no substitute executable is used.
-
-Files below `scripts/old/` are historical and unsupported. Useful datasets and
-query matrices from that directory are represented by the maintained runner.
 
 ## Lower-bound versus exact-distance microbenchmark
 

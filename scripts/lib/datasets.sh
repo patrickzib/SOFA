@@ -112,7 +112,7 @@ load_dataset() {
             [[ $profile == high-frequency ]] && COEFF_NUMBER=64
             ;;
 
-        # Useful datasets migrated from scripts/old/.
+        # Additional benchmark datasets.
         simsearchnet)
             DATASET_FILE=SimSearchNet.bin; QUERY_FILE=SimSearchNet_queries.bin
             TS_SIZE=256; DATASET_SIZE=100000000

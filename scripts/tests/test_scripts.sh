@@ -398,15 +398,15 @@ OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" seisbench sampling --threads 36 --queue-nu
 assert_contains "$OUTPUT" '--sample-size 250'
 pass 'SeisBench sampling factor is wired into sample-size calculation'
 
-OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true "$SCRIPT_DIR/run_astro.sh" 9 18 2>/dev/null)
+OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 9 --queue-number 18 2>/dev/null)
 assert_contains "$OUTPUT" '--threads 9'
 assert_contains "$OUTPUT" '--queue-number 18'
-pass 'compatibility wrappers work outside the scripts directory'
+pass 'canonical runner works outside the scripts directory'
 
-OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_astro.sh" 2>/dev/null)
+OUTPUT=$(cd /tmp && MESSI_DRY_RUN=true MESSI_PHYSICAL_CORES=7 "$SCRIPT_DIR/run_dataset.sh" astro standard 2>/dev/null)
 assert_contains "$OUTPUT" '--threads 7'
 assert_contains "$OUTPUT" '--index-type trie'
-pass 'compatibility wrappers inherit canonical defaults when counts are omitted'
+pass 'canonical runner uses default layout and workers when omitted'
 
 if "$SCRIPT_DIR/run_dataset.sh" astro knn --threads 1 --queue-number 1 --dry-run >/dev/null 2>&1; then
     fail 'knn profile accepted a missing K value'
