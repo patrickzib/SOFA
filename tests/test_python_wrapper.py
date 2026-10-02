@@ -15,6 +15,11 @@ class PresetTests(unittest.TestCase):
         with Index(timeseries_size=128, **kwargs) as index:
             return index.config
 
+    def test_default_is_s3trie(self):
+        config = self.config_for()
+        self.assertEqual(config["index"], "s3trie")
+        self.assertEqual((config["transform"], config["layout"]), ("spartan", "trie"))
+
     def test_named_presets(self):
         messi = self.config_for(index="messi")
         self.assertEqual((messi["transform"], messi["layout"]), ("sax", "isax"))

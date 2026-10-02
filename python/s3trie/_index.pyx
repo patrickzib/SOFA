@@ -128,6 +128,13 @@ cdef class Index:
         if sampling_seed < 0 or node_split_criterion < 1 or node_split_criterion > 4:
             raise ValueError("invalid sampling_seed or node_split_criterion")
 
+        # The high-level Python entry point defaults to the paper-oriented
+        # S³-Trie preset. Explicit layout/transform/function_type arguments
+        # retain the lower-level behavior and bypass the preset.
+        if (index is None and layout is None and transform is None and
+                function_type is None):
+            index = "s3trie"
+
         preset_name = None
         if index is not None:
             if not isinstance(index, str):

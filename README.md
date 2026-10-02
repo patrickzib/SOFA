@@ -112,23 +112,24 @@ record pruning. Each setting remains explicitly overrideable.
 The direct CLI and benchmark runners default to the trie layout, 64 record-LB
 dimensions, node MBRs up to 128 dimensions, 16 leaf-IVF groups, and streaming
 leaf refinement. Their automatic worker count uses available physical CPU cores
-rather than SMT siblings. The Python API uses the same layout-aware segment
-defaults: 16 for iSAX and 64 for trie record lower bounds.
+rather than SMT siblings. The Python `Index` defaults to the `s3trie` preset;
+pass explicit `layout=`, `transform=`, or `function_type=` arguments for
+lower-level configuration.
 When iSAX is selected, the direct CLI, benchmark runners, and Python API all
 enable tight-bound pruning by default.
 
 | Setting | Direct CLI | Script runners | Python `Index` |
 |---|---|---|---|
-| Index layout | Trie | Trie | SAX+iSAX; use `index="sofa"` or `index="s3trie"` for another preset |
-| Worker threads | Available physical cores | Available physical cores | 1; pass `max_query_threads=N` |
+| Index layout | Trie by default; use `--index messi`, `--index sofa`, or `--index s3trie` | Trie by default; use `--index messi`, `--index sofa`, or `--index s3trie` | S³-Trie (`s3trie`) by default; use `index="messi"` or `index="sofa"` |
+| Worker threads | Available physical cores; use `--threads N` | Available physical cores; use `--threads N` | 1; pass `max_query_threads=N` |
 | iSAX tight-bound pruning | On; use `--no-tight-bound` to disable | On; use `--no-tight-bound` to disable | On; pass `tight_bound=False` to disable |
 | iSAX variance root splitting | Off; use `--dynamic-root-split-variance` | Off; use `--dynamic-root-split-variance` | Off; pass `dynamic_root_split_variance=True` |
-| Trie node-MBR width | Automatic `min(128, series length)` | Same | Same |
-| Trie record-LB width | 64 | 64 | 64; pass `n_segments=...` or `trie_record_lb_dimensions=...` to override |
+| Trie node-MBR width | Automatic `min(128, series length)`; use `--trie-mbr-dimensions N` | Automatic `min(128, series length)`; use `--trie-mbr-dims N` | Automatic `min(128, series length)`; pass `trie_mbr_dimensions=N` |
+| Trie record-LB width | 64; use `--n-segments N` | 64; use `--n-segments N` | 64; pass `n_segments=N` or `trie_record_lb_dimensions=N` |
 | Trie record-MBR suffix pruning | On; use `--no-trie-record-mbr-suffix-bound` | On; use `--no-trie-record-mbr-suffix-bound` | On; pass `trie_record_mbr_suffix_bound=False` |
-| Trie leaf refinement | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Same | Streaming for trie; pass `trie_streaming_leaf_scan=False` for the heap |
-| Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 | 16 with `index="s3trie"`; pass `trie_leaf_ivf=0` to disable |
-| Trie IVF radial record bound | On with IVF; disable with `--no-trie-leaf-ivf-radial-bound`, or use `--trie-leaf-ivf-radial-bound-auto` for the adaptive 25% gate | Same | On with `index="s3trie"`; pass `trie_leaf_ivf_radial_bound=False` to disable |
+| Trie leaf refinement | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Streaming LB → ED; use `--no-trie-streaming-leaf-scan` for the heap | Streaming for trie; pass `trie_streaming_leaf_scan=False` for the heap |
+| Trie leaf IVF groups | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 for learned transforms; use `--no-trie-leaf-ivf` to disable | 16 with `index="s3trie"`; pass `trie_leaf_ivf=0` to disable |
+| Trie IVF radial record bound | On with IVF; use `--no-trie-leaf-ivf-radial-bound`, or `--trie-leaf-ivf-radial-bound-auto` | On with IVF; use `--no-trie-leaf-ivf-radial-bound`, or `--trie-leaf-ivf-radial-bound-auto` | On with `index="s3trie"`; pass `trie_leaf_ivf_radial_bound=False` to disable |
 
 Variance root splitting is valid only for learned iSAX transforms. Trie leaf
 IVF is valid only for learned trie transforms, with `K` from 2 to 64.
