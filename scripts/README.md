@@ -97,6 +97,30 @@ ignores trailing samples for series lengths that are not divisible by 48; the
 runner prints a warning so this exploratory point is not mistaken for a
 strictly like-for-like PAA comparison.
 
+Use `--methods s3trie` to run only both S3-Trie binning variants, or select
+individual methods with `--methods spartan-depth` or
+`--methods sax,sfa-width,spartan-width`. The aliases `messi`, `sofa`, and
+`all` are also supported; the default is `all`. Archives are per system and
+segment width, so use a separate experiment root or `--rerun-existing` when
+changing the selected binning variants within a system.
+
+To repeat the comparison with every S3-Trie query lower bound disabled:
+
+```bash
+scripts/run_segment_scaling_experiment.sh --datasets astro,obs,pnw \
+  --no-trie-bounds --experiment-root results/segment_scaling_no_bounds
+```
+
+Rebuild the binary first. This switch bypasses node MBR, IVF group MBR/raw-ball,
+radial, symbolic record/prefix/suffix, and residual bounds. Every record reaches
+exact-distance evaluation; exact-distance early abandonment remains active.
+Index construction and bound metadata are retained, so this measures query
+pruning ablation, not reduced construction or storage costs. MESSI and SOFA
+runs are unchanged. The switch also works with `run_suite.sh`,
+`run_dataset.sh`, and the binary directly, and overrides individual query-bound
+settings regardless of argument order. It cannot be combined with the paper
+pruning trace. Use a separate experiment root to avoid resuming bounded results.
+
 Runs resume by default. A dataset is skipped only
 when its archive already exists under the matching system and segment width;
 an interrupted, unarchived dataset is rerun from the beginning. The default

@@ -12,10 +12,14 @@ the symbolic dimensions. Query and index construction use 64 workers by
 default. SOFA-v2 bounds are deliberately excluded.
 
 Options:
+  --methods LIST           Comma-separated methods (default: all):
+                           sax,sfa-depth,sfa-width,spartan-depth,spartan-width
+                           Aliases: messi,sofa,s3trie (both trie variants),all
   --segment-list LIST       Symbolic dimensions (default: 16,32,48,64)
   --threads N               Query workers (default: 64)
   --index-threads N|auto    Index workers (default: 64)
   --experiment-root PATH    Logs/results root (default: ./results/segment_scaling)
+  --no-trie-bounds          Disable all trie query bounds (other systems unchanged)
   --resume                  Skip completed dataset/system/segment archives (default)
   --rerun-existing          Rerun completed archives
   -h, --help                Show this help
@@ -27,16 +31,23 @@ USAGE
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 2; }
 
+METHODS=all
 SEGMENT_LIST=16,32,48,64
 QUERY_THREADS=64
 INDEX_THREADS=64
 EXPERIMENT_ROOT=${MESSI_SEGMENT_SCALING_ROOT:-"$PWD/results/segment_scaling"}
+TRIE_ARGS=()
 RESUME=true
 DRY_RUN=false
 PASSTHROUGH=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --methods)
+            [[ $# -ge 2 ]] || die "$1 requires a value"
+            METHODS=$2
+            shift 2
+            ;;
         --segment-list)
             [[ $# -ge 2 ]] || die "$1 requires a value"
             SEGMENT_LIST=$2
@@ -57,6 +68,10 @@ while [[ $# -gt 0 ]]; do
             EXPERIMENT_ROOT=$2
             shift 2
             ;;
+        --no-trie-bounds)
+            TRIE_ARGS+=(--no-trie-bounds)
+            shift
+            ;;
         --resume)
             RESUME=true
             shift
@@ -73,7 +88,7 @@ while [[ $# -gt 0 ]]; do
         --enable-sofa-v2|--isax-node-mbr|--isax-record-mbr-suffix-bound|--isax-record-lb-table|--no-simd)
             die "$1 is controlled by this experiment"
             ;;
-        --isax-n-segments|--n-segments|--trie-record-lb-dims|--trie-split-dims|--trie-mbr-dims|--methods|--index-type)
+        --isax-n-segments|--n-segments|--trie-record-lb-dims|--trie-split-dims|--trie-mbr-dims|--index-type)
             die "$1 is controlled by this experiment"
             ;;
         -h|--help)
@@ -91,6 +106,21 @@ done
 [[ $INDEX_THREADS == auto || $INDEX_THREADS =~ ^[1-9][0-9]*$ ]] || \
     die '--index-threads must be a positive integer or auto'
 
+[[ -n $METHODS && $METHODS != ,* && $METHODS != *, && $METHODS != *,,* ]] ||
+    die '--methods requires a nonempty comma-separated list'
+IFS=',' read -r -a REQUESTED_METHODS <<< "$METHODS"
+SELECTED_METHODS=,
+for method in "${REQUESTED_METHODS[@]}"; do
+    case "$method" in
+        all) SELECTED_METHODS+=sax,sfa-depth,sfa-width,spartan-depth,spartan-width, ;;
+        messi|sax) SELECTED_METHODS+=sax, ;;
+        sofa) SELECTED_METHODS+=sfa-depth,sfa-width, ;;
+        s3trie) SELECTED_METHODS+=spartan-depth,spartan-width, ;;
+        sfa-depth|sfa-width|spartan-depth|spartan-width) SELECTED_METHODS+="$method," ;;
+        *) die "unknown method '$method'; use sax,sfa-depth,sfa-width,spartan-depth,spartan-width or messi,sofa,s3trie,all" ;;
+    esac
+done
+
 IFS=',' read -r -a SEGMENTS <<< "$SEGMENT_LIST"
 [[ ${#SEGMENTS[@]} -gt 0 ]] || die '--segment-list must not be empty'
 for segments in "${SEGMENTS[@]}"; do
@@ -99,7 +129,7 @@ for segments in "${SEGMENTS[@]}"; do
         die '--segment-list supports 16, 32, 48, and 64'
 done
 
-if [[ ,$SEGMENT_LIST, == *,48,* ]]; then
+if [[ ,$SEGMENT_LIST, == *,48,* && $SELECTED_METHODS == *,sax,* ]]; then
     printf '%s\n' \
         'Warning: SAX/PAA ignores trailing samples when a dataset length is not divisible by 48.' >&2
 fi
@@ -107,6 +137,16 @@ fi
 run_system() {
     local segments=$1 name=$2 index_type=$3 methods=$4
     shift 4
+    local method selected=
+    local -a system_methods
+    IFS=',' read -r -a system_methods <<< "$methods"
+    for method in "${system_methods[@]}"; do
+        if [[ $SELECTED_METHODS == *,"$method",* ]]; then
+            selected+="${selected:+,}$method"
+        fi
+    done
+    [[ -n $selected ]] || return 0
+    methods=$selected
     local results_root="$EXPERIMENT_ROOT/results/$name/segments-$segments"
     local log_root="$EXPERIMENT_ROOT/logs/$name/segments-$segments"
     local -a rerun_args=()
@@ -147,5 +187,5 @@ for segments in "${SEGMENTS[@]}"; do
         --leaf-size 20000 --min-leaf-size 20000 --trie-leaf-ivf 16 \
         --trie-leaf-ivf-min-size 4096 --trie-record-mbr-suffix-bound \
         --trie-streaming-leaf-scan --trie-residual-record-only \
-        --trie-residual-order symbolic-first --trie-leaf-ivf-radial-bound
+        --trie-residual-order symbolic-first --trie-leaf-ivf-radial-bound "${TRIE_ARGS[@]}"
 done

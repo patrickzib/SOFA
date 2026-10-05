@@ -137,6 +137,23 @@ assert_not_contains "$OUTPUT" '--isax-record-lb-table'
 assert_contains "$(<"$SCRIPT_DIR/run_segment_scaling_experiment.sh")" 'segments-$segments'
 pass 'segment-scaling runner fixes workers, isolates widths, and excludes SOFA-v2 bounds'
 
+OUTPUT=$("$SCRIPT_DIR/run_segment_scaling_experiment.sh" --datasets astro --no-trie-bounds --dry-run 2>/dev/null)
+[[ $(printf '%s\n' "$OUTPUT" | grep -c -- '--no-trie-bounds') == 8 ]] ||
+    fail 'no-bounds scaling should affect exactly the eight trie commands'
+while IFS= read -r command; do
+    if [[ $command == *'--index-type trie'* ]]; then
+        assert_contains "$command" '--no-trie-bounds'
+    else
+        assert_not_contains "$command" '--no-trie-bounds'
+    fi
+done <<< "$OUTPUT"
+if "$SCRIPT_DIR/run_suite.sh" standard --datasets astro --index-type trie \
+    --no-trie-bounds --trie-pruning-curve --dry-run >/dev/null 2>&1; then
+    fail 'no-bounds ablation must reject the paper pruning trace'
+fi
+pass 'all-bounds switch reaches only trie commands and rejects pruning traces'
+
+
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)
 assert_contains "$OUTPUT" '--sample-type 3'
 if "$SCRIPT_DIR/run_dataset.sh" astro standard --threads 1 --sample-type 4 --dry-run >/dev/null 2>&1; then

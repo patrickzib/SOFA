@@ -107,6 +107,7 @@ typedef struct {
     /* Trie-only: prefix of the symbolic word considered while selecting a
      * split.  MBRs always retain the full symbolic word. */
     int trie_split_dimensions;
+    char trie_disable_bounds; /* Query ablation: bypass every trie lower bound. */
     char trie_record_mbr_suffix_bound;
     /* Refine passing records immediately instead of ordering them in a
      * per-leaf lower-bound heap.  This is the trie default; clearing it

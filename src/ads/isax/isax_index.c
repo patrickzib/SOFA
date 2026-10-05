@@ -262,6 +262,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 #endif
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
+    settings->trie_disable_bounds = 0;
     settings->trie_record_mbr_suffix_bound = 0;
     settings->trie_streaming_leaf_scan = 1;
     settings->trie_fanout = 8;

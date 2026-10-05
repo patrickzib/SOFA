@@ -64,6 +64,7 @@ Options:
                           Use the record lower-bound heap instead
   --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves (default: 16)
   --trie-leaf-ivf-min-size N  Minimum leaf size eligible for IVF (default: 4096)
+  --no-trie-bounds        Bypass every trie query lower bound
   --no-trie-leaf-ivf       Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
@@ -163,6 +164,7 @@ TRIE_LEAF_IVF=16
 TRIE_LEAF_IVF_MIN_SIZE=4096
 TRIE_LEAF_IVF_SPECIFIED=false
 TRIE_LEAF_IVF_RAW_BALL_BOUND=true
+TRIE_DISABLE_BOUNDS=false
 TRIE_LEAF_IVF_RADIAL_BOUND=false
 TRIE_RESIDUAL_RECORD_ONLY=false
 TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=false
@@ -238,6 +240,7 @@ while [[ $# -gt 0 ]]; do
         --no-trie-streaming-leaf-scan) TRIE_STREAMING_LEAF_SCAN=false; TRIE_STREAMING_LEAF_SCAN_SPECIFIED=true; shift ;;
         --trie-leaf-ivf) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF=$2; TRIE_LEAF_IVF_SPECIFIED=true; shift 2 ;;
         --trie-leaf-ivf-min-size) [[ $# -ge 2 ]] || die "$1 requires a value"; TRIE_LEAF_IVF_MIN_SIZE=$2; shift 2 ;;
+        --no-trie-bounds) TRIE_DISABLE_BOUNDS=true; shift ;;
         --no-trie-leaf-ivf) TRIE_LEAF_IVF=0; TRIE_LEAF_IVF_SPECIFIED=true; shift ;;
         --no-trie-leaf-ivf-raw-ball-bound) TRIE_LEAF_IVF_RAW_BALL_BOUND=false; shift ;;
         --trie-residual-record-only) TRIE_RESIDUAL_RECORD_ONLY=true; TRIE_RESIDUAL_RECORD_ONLY_SPECIFIED=true; shift ;;
@@ -360,7 +363,9 @@ if [[ $INDEX_TYPE == trie ]]; then
     [[ $TRIE_LEAF_IVF_RADIAL_BOUND_AUTO == false || $TRIE_LEAF_IVF != 0 ]] || \
         die '--trie-leaf-ivf-radial-bound-auto requires --trie-leaf-ivf'
 fi
+[[ $TRIE_DISABLE_BOUNDS == false || $INDEX_TYPE == trie ]] || die '--no-trie-bounds requires --index-type trie'
 if [[ $TRIE_PRUNING_CURVE == true ]]; then
+    [[ $TRIE_DISABLE_BOUNDS == false ]] || die '--no-trie-bounds conflicts with --trie-pruning-curve'
     [[ $METHODS_OVERRIDE == spartan-depth ]] || \
         die '--trie-pruning-curve requires --methods spartan-depth'
     [[ $TRIE_LEAF_IVF != 0 && $TRIE_LEAF_IVF_RAW_BALL_BOUND == false &&
@@ -433,6 +438,7 @@ run_one() {
         [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
         $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
         [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
+        [[ $TRIE_DISABLE_BOUNDS == true ]] && command+=(--no-trie-bounds)
         [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
         [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf-min-size "$TRIE_LEAF_IVF_MIN_SIZE")
         [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
@@ -582,6 +588,7 @@ run_query_suite() {
                 [[ $TRIE_RECORD_MBR_SUFFIX_BOUND == false ]] && command+=(--no-trie-record-mbr-suffix-bound)
                 $TRIE_STREAMING_LEAF_SCAN && command+=(--trie-streaming-leaf-scan)
                 [[ $TRIE_STREAMING_LEAF_SCAN == false ]] && command+=(--no-trie-streaming-leaf-scan)
+                [[ $TRIE_DISABLE_BOUNDS == true ]] && command+=(--no-trie-bounds)
                 [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf "$TRIE_LEAF_IVF")
                 [[ $TRIE_LEAF_IVF != 0 ]] && command+=(--trie-leaf-ivf-min-size "$TRIE_LEAF_IVF_MIN_SIZE")
                 [[ $TRIE_LEAF_IVF == 0 ]] && command+=(--no-trie-leaf-ivf)
