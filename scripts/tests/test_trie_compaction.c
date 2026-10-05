@@ -138,9 +138,9 @@ static int check_seed_search(void) {
             if (result.distance != 0.0f || result.record_position != D) ok = 0;
         }
     }
-    /* An exact seed match must not prune the other leaf in either traversal.
+    /* Node MBRs must still prune the distant leaf in either traversal.
      * Advertise IVF/residual metadata: the bypass must never read those bounds. */
-    settings.trie_disable_bounds = 1;
+    settings.trie_disable_cascade_bounds = 1;
     trie.residual.enabled = 1;
     for (int r = 0; r < 2; ++r) {
         trie.root->children[r]->cluster_count = 1;
@@ -150,7 +150,7 @@ static int check_seed_search(void) {
     }
     for (maxquerythread = 1; maxquerythread <= 2; ++maxquerythread) {
       for (int finite = 0; finite < 2; ++finite) {
-        const float initial_bsf = finite ? 0.0f : FLT_MAX;
+        const float initial_bsf = finite ? 0.0f : 1.0f;
         trie_query_stats bypass_stats = {0};
         trie_query_scratch bypass_scratch = {0};
         bypass_scratch.residual_ready = 1;
@@ -163,12 +163,13 @@ static int check_seed_search(void) {
             distance = trie_parallel_exact_search(&index, query, query, initial_bsf, NULL,
                 &bypass_stats, &bypass_position, NULL, &bypass_scratch);
         if (distance != 0.0f || bypass_position != D ||
-            bypass_stats.exact_distances != 2 || bypass_stats.lower_bounds != 0 ||
+            bypass_stats.exact_distances != (finite && maxquerythread == 2 ? 0 : 1) ||
+            bypass_stats.lower_bounds != 0 ||
             bypass_stats.cluster_bounds != 0 || bypass_stats.residual_checks[2] != 0) ok = 0;
         free(bypass_scratch.candidates);
       }
     }
-    settings.trie_disable_bounds = 0;
+    settings.trie_disable_cascade_bounds = 0;
     trie.residual.enabled = 0;
     for (int r = 0; r < 2; ++r) trie.root->children[r]->cluster_count = 0;
     for (int d = 0; d < D; ++d) query[d] = 1.125f;

@@ -151,7 +151,7 @@ if "$SCRIPT_DIR/run_suite.sh" standard --datasets astro --index-type trie \
     --no-trie-bounds --trie-pruning-curve --dry-run >/dev/null 2>&1; then
     fail 'no-bounds ablation must reject the paper pruning trace'
 fi
-pass 'all-bounds switch reaches only trie commands and rejects pruning traces'
+pass 'cascade bypass switch reaches only trie commands and rejects pruning traces'
 
 
 OUTPUT=$("$SCRIPT_DIR/run_dataset.sh" astro standard --threads 36 --sample-type 3 --binary /tmp/MESSI --dry-run 2>/dev/null)

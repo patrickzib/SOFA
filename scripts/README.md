@@ -104,20 +104,23 @@ individual methods with `--methods spartan-depth` or
 segment width, so use a separate experiment root or `--rerun-existing` when
 changing the selected binning variants within a system.
 
-To repeat the comparison with every S3-Trie query lower bound disabled:
+To repeat the comparison with S3-Trie node MBRs enabled and the leaf/record cascade disabled:
 
 ```bash
 scripts/run_segment_scaling_experiment.sh --datasets astro,obs,pnw \
-  --no-trie-bounds --experiment-root results/segment_scaling_no_bounds
+  --no-trie-bounds --experiment-root results/segment_scaling_mbr_only
 ```
 
-Rebuild the binary first. This switch bypasses node MBR, IVF group MBR/raw-ball,
-radial, symbolic record/prefix/suffix, and residual bounds. Every record reaches
-exact-distance evaluation; exact-distance early abandonment remains active.
+Rebuild the binary first. Despite its historical name, this switch retains core
+node-MBR pruning (including MBRs on leaf nodes), and bypasses IVF group MBR/raw-ball,
+radial, symbolic record/prefix/suffix, and residual bounds. Records in surviving
+leaves reach exact-distance evaluation; exact-distance early abandonment remains active.
+Earlier binaries disabled node MBRs too. Use a new result directory to keep those
+old all-bounds-disabled runs separate from this MBR-only configuration.
 Index construction and bound metadata are retained, so this measures query
 pruning ablation, not reduced construction or storage costs. MESSI and SOFA
 runs are unchanged. The switch also works with `run_suite.sh`,
-`run_dataset.sh`, and the binary directly, and overrides individual query-bound
+`run_dataset.sh`, and the binary directly, and overrides individual leaf/record query-bound
 settings regardless of argument order. It cannot be combined with the paper
 pruning trace. Use a separate experiment root to avoid resuming bounded results.
 

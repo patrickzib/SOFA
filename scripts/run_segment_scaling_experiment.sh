@@ -19,7 +19,7 @@ Options:
   --threads N               Query workers (default: 64)
   --index-threads N|auto    Index workers (default: 64)
   --experiment-root PATH    Logs/results root (default: ./results/segment_scaling)
-  --no-trie-bounds          Disable all trie query bounds (other systems unchanged)
+  --no-trie-bounds          Keep trie node MBRs; disable leaf/record query bounds
   --resume                  Skip completed dataset/system/segment archives (default)
   --rerun-existing          Rerun completed archives
   -h, --help                Show this help

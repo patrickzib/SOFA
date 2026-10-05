@@ -64,7 +64,7 @@ Options:
                           Use the record lower-bound heap instead
   --trie-leaf-ivf K        Build K flat IVF MBR groups inside large trie leaves (default: 16)
   --trie-leaf-ivf-min-size N  Minimum leaf size eligible for IVF (default: 4096)
-  --no-trie-bounds        Bypass every trie query lower bound
+  --no-trie-bounds        Keep node MBRs; bypass trie leaf/record query bounds
   --no-trie-leaf-ivf       Disable flat leaf IVF groups
   --no-trie-leaf-ivf-raw-ball-bound
                           Disable certified raw centroid/radius cluster pruning
