@@ -453,7 +453,7 @@ int main(int argc, char **argv) {
     static int trie_mbr_dimensions_specified = 0;
     static int trie_split_dimensions = 0;
     static int trie_split_dimensions_specified = 0;
-    static int trie_disable_bounds = 0;
+    static int trie_disable_cascade_bounds = 0;
     static int trie_record_mbr_suffix_bound = 0;
     static int trie_record_mbr_suffix_bound_specified = 0;
     static int trie_streaming_leaf_scan = 1;
@@ -740,7 +740,7 @@ int main(int argc, char **argv) {
                 trie_residual_record_only_specified = 1;
                 break;
             case 1050:
-                trie_disable_bounds = 1;
+                trie_disable_cascade_bounds = 1;
                 break;
             case 1048:
                 trie_residual_record_only = 0;
@@ -1075,7 +1075,7 @@ int main(int argc, char **argv) {
                        "  --trie-residual-order MODE     Residual ordering: symbolic-first or residual-first\n"
                        "  --trie-split-dimensions N      Split candidates (default: max(n-segments, min(32, MBR dimensions)))\n"
                        "  --trie-record-mbr-suffix-bound Add leaf-MBR suffix contributions (default)\n"
-                       "  --no-trie-bounds             Bypass all trie lower bounds during queries\n"
+                       "  --no-trie-bounds             Keep node MBRs; bypass leaf/record query bounds\n"
                        "  --no-trie-record-mbr-suffix-bound  Disable record-MBR suffix pruning\n"
                        "  --trie-streaming-leaf-scan  Refine each passing record immediately (default)\n"
                        "  --no-trie-streaming-leaf-scan  Use the record lower-bound heap instead\n"
@@ -1300,7 +1300,7 @@ int main(int argc, char **argv) {
         fprintf(stderr, "error: --trie-residual-record-only requires a newly built SPARTAN trie.\n");
         return EXIT_FAILURE;
     }
-    if (trie_disable_bounds && (index_type != MESSI_INDEX_TRIE
+    if (trie_disable_cascade_bounds && (index_type != MESSI_INDEX_TRIE
 #ifdef MESSI_TRIE_PRUNING_TRACE
                                 || trie_pruning_curve
 #endif
@@ -1723,8 +1723,8 @@ int main(int argc, char **argv) {
         index_settings->isax_mbr_dimensions = isax_mbr_dimensions;
         index_settings->trie_bound_dimensions = trie_bound_dimensions;
         index_settings->trie_split_dimensions = trie_split_dimensions;
-        index_settings->trie_disable_bounds = trie_disable_bounds;
-        if (trie_disable_bounds) fprintf(stderr, ">>> trie query lower bounds: all disabled\n");
+        index_settings->trie_disable_cascade_bounds = trie_disable_cascade_bounds;
+        if (trie_disable_cascade_bounds) fprintf(stderr, ">>> trie query lower bounds: node MBR enabled; leaf/record cascade disabled\n");
         index_settings->trie_record_mbr_suffix_bound = trie_record_mbr_suffix_bound;
         index_settings->trie_streaming_leaf_scan = trie_streaming_leaf_scan;
         index_settings->trie_leaf_ivf = trie_leaf_ivf;
@@ -1815,7 +1815,7 @@ int main(int argc, char **argv) {
                 , trie_pruning_curve
 #endif
                 );
-        fprintf(logfile, "trie all query bounds disabled,%d\n", trie_disable_bounds);
+        fprintf(logfile, "trie leaf/record cascade disabled,%d\n", trie_disable_cascade_bounds);
         fflush(logfile);
 
         if (!inmemory_flag) {

@@ -262,7 +262,7 @@ isax_index_settings * isax_index_settings_init(const char * root_directory, int 
 #endif
     settings->trie_bound_dimensions = 0;
     settings->trie_split_dimensions = 0;
-    settings->trie_disable_bounds = 0;
+    settings->trie_disable_cascade_bounds = 0;
     settings->trie_record_mbr_suffix_bound = 0;
     settings->trie_streaming_leaf_scan = 1;
     settings->trie_fanout = 8;
@@ -3109,7 +3109,9 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
                 settings->sampling_seed);
     }
     if (settings->index_type == MESSI_INDEX_TRIE) {
-        fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s%s\n",
+        if (settings->trie_disable_cascade_bounds)
+            fprintf(stderr, "  query bounds  : node MBRs only; leaf/record cascade disabled\n");
+        else fprintf(stderr, "  query bounds  : node MBRs + symbolic record bounds%s%s\n",
                 settings->trie_record_mbr_suffix_bound ? " + MBR suffix" : "",
                 settings->trie_leaf_ivf
                     ? (settings->trie_leaf_ivf_raw_ball_bound
@@ -3118,7 +3120,9 @@ void print_settings(isax_index_settings *settings, int query_workers, int trie_q
         if (settings->trie_leaf_ivf)
             fprintf(stderr, "  leaf IVF      : %d groups for leaves with at least 4 K records\n",
                     settings->trie_leaf_ivf);
-        if (settings->trie_leaf_ivf_radial_bound) {
+        if (settings->trie_leaf_ivf_radial_bound && settings->trie_disable_cascade_bounds)
+            fprintf(stderr, "  radial bound  : disabled during queries; centroid radii retained\n");
+        else if (settings->trie_leaf_ivf_radial_bound) {
 #if defined(__AVX512F__)
             fprintf(stderr, "  radial bound  : float32 centroid radii, %s, original IVF order%s\n",
                     settings->SIMD_flag ? "16-lane AVX-512" : "scalar scan",

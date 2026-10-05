@@ -227,9 +227,6 @@ static float trie_lower_bound(const struct symbolic_trie_index *trie, isax_index
                               const ts_type *transform, sax_type *sax_min,
                               sax_type *sax_max, int dimensions, float bsf,
                               trie_query_stats *stats TRIE_TRACE_PARAMETER) {
-    /* Negative sentinel also survives the parallel traversal's >= BSF test
-     * when an exact match has already set BSF to zero. */
-    if (index->settings->trie_disable_bounds) return -FLT_MAX;
     unsigned long long start = 0;
     if (profile_query_phases && stats != NULL) start = trie_monotonic_microseconds();
 #ifdef MESSI_TRIE_PRUNING_TRACE
@@ -286,7 +283,7 @@ static double trie_residual_coordinate_gap(const isax_index *index, const float 
 }
 static void trie_residual_prepare(isax_index *index, const float *query,
                                   const float *transform, trie_query_scratch *scratch) {
-    scratch->residual_ready = !index->settings->trie_disable_bounds && index->trie->residual.enabled;
+    scratch->residual_ready = !index->settings->trie_disable_cascade_bounds && index->trie->residual.enabled;
     if (scratch->residual_ready)
         scratch->residual_query = spartan_residual_encode(index, &index->trie->residual,
             query, transform, index->trie->bound_dimensions);
@@ -443,7 +440,7 @@ static void trie_prepare_record_lb_table(const struct symbolic_trie_index *trie,
                                          const ts_type *transform,
                                          trie_query_scratch *scratch) {
     if (scratch == NULL) return;
-    if (index->settings->trie_disable_bounds) {
+    if (index->settings->trie_disable_cascade_bounds) {
         scratch->record_lb_table_ready = 0;
         return;
     }
@@ -1825,7 +1822,7 @@ static float trie_refine_record_distance(isax_index *index, const symbolic_trie_
                                          int record, const ts_type *query, float bsf,
                                          trie_query_stats *stats, file_position_type *best_position,
                                          float symbolic_bound, float mbr_suffix, trie_query_scratch *scratch) {
-    if (!index->settings->trie_disable_bounds && index->trie->residual.enabled && node->record_residuals != NULL) {
+    if (!index->settings->trie_disable_cascade_bounds && index->trie->residual.enabled && node->record_residuals != NULL) {
         const unsigned long long start = profile_query_phases && stats ? trie_monotonic_microseconds() : 0;
 #ifdef MESSI_TRIE_PRUNING_TRACE
         const unsigned long long trace_start = trie_trace_start(stats);
@@ -2173,7 +2170,7 @@ static float trie_scan_leaf_best_first(isax_index *index, const symbolic_trie_no
                                        const ts_type *query, const ts_type *transform, float bsf,
                                        trie_query_stats *stats, trie_query_scratch *scratch,
                                        file_position_type *best_position) {
-    if (index->settings->trie_disable_bounds) {
+    if (index->settings->trie_disable_cascade_bounds) {
         for (int record = 0; record < node->size; ++record)
             bsf = trie_refine_record_distance(index, node, record, query, bsf,
                                               stats, best_position, 0.0f, 0.0f, scratch);
