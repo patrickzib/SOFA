@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "objective": "mean exact rank-1 query_time_ms",
+  "best": [
+    {
+      "dataset": "bigann",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 32,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 414.17210059999996,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/messi_datasets/bigANN.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/messi_datasets/bigANN_queries.bin",
+        "query_count": 100,
+        "dimension": 128
+      }
+    },
+    {
+      "dataset": "sift1b",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 32,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 405.95142994,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/messi_datasets/sift1b.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/messi_datasets/sift1b_queries.bin",
+        "query_count": 100,
+        "dimension": 128
+      }
+    },
+    {
+      "dataset": "deep1b",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 32,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 235.74082264,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/messi_datasets/deep1b.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/messi_datasets/deep1b_queries.bin",
+        "query_count": 100,
+        "dimension": 96
+      }
+    },
+    {
+      "dataset": "scedc",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 20000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 5409.096936409999,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/messi_datasets/SCEDC.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/messi_datasets/SCEDC_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "astro",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 660.3863277700001,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/messi_datasets/astro.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/messi_datasets/astro_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "ethc",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 10000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 128.2841105,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/ETHZ.bin",
+        "base_count": 4999932,
+        "query_file": "/home/tmp/schaefpa/seismic/ETHZ_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "isc_ehb_depthphases",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 332.36892526,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases.bin",
+        "base_count": 100000000,
+        "query_file": "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "lendb",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 10000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 141.47060711,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/LenDB.bin",
+        "base_count": 37345260,
+        "query_file": "/home/tmp/schaefpa/seismic/LenDB_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "iquique",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 760,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 95.23868199,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/Iquique.bin",
+        "base_count": 578853,
+        "query_file": "/home/tmp/schaefpa/seismic/Iquique_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "neic",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 407.49056943000005,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/NEIC.bin",
+        "base_count": 93473541,
+        "query_file": "/home/tmp/schaefpa/seismic/NEIC_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "obs",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 4783.3085488,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/OBS.bin",
+        "base_count": 15508794,
+        "query_file": "/home/tmp/schaefpa/seismic/OBS_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "obst2024",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 544.23249202,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/OBST2024.bin",
+        "base_count": 4160286,
+        "query_file": "/home/tmp/schaefpa/seismic/OBST2024_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "pnw",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 7477.5385045699995,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/PNW.bin",
+        "base_count": 31982766,
+        "query_file": "/home/tmp/schaefpa/seismic/PNW_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "meier2019jgr",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 10000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 7.56360867,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/Meier2019JGR.bin",
+        "base_count": 6361998,
+        "query_file": "/home/tmp/schaefpa/seismic/Meier2019JGR_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "stead",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 3642.61284159,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/STEAD.bin",
+        "base_count": 87323433,
+        "query_file": "/home/tmp/schaefpa/seismic/STEAD_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    },
+    {
+      "dataset": "txed",
+      "threads": 64,
+      "parameters": {
+        "leaf-size": 5000,
+        "sax-length": 16,
+        "ref-objects": 10000,
+        "approximate-nodes": 200,
+        "read-buffer": 100000,
+        "write-buffer": 100,
+        "k": 1
+      },
+      "mean_query_time_ms": 1389.9138406499999,
+      "tuning_workload": {
+        "base_file": "/home/tmp/schaefpa/seismic/TXED.bin",
+        "base_count": 35851641,
+        "query_file": "/home/tmp/schaefpa/seismic/TXED_queries.bin",
+        "query_count": 100,
+        "dimension": 256
+      }
+    }
+  ]
+}

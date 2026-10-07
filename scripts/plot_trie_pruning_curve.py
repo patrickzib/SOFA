@@ -124,6 +124,8 @@ def plot_paper_bound_profile(
     title: str = "S3-Trie paper-bound profile",
     output: Path | str | None = None,
     dpi: int = 180,
+    ax=None,
+    show_legend: bool = True,
 ):
     """Plot the paper cascade as a clean time-weighted pruning staircase."""
 
@@ -169,10 +171,12 @@ def plot_paper_bound_profile(
             f"{path}: total measured stage time must be positive"
         )
 
-    # Smaller, more compact figure.
-    fig, ax = plt.subplots(
-        figsize=(7.0, 3.5)
-    )
+    # Allow several profiles to share a figure and legend.
+    owns_figure = ax is None
+    if owns_figure:
+        fig, ax = plt.subplots(figsize=(7.0, 3.5))
+    else:
+        fig = ax.figure
 
     previous_time = 0.0
     cumulative = 0.0
@@ -327,29 +331,31 @@ def plot_paper_bound_profile(
     # Compact legend below the axes
     # ------------------------------------------------------------
 
-    handles, labels = ax.get_legend_handles_labels()
+    if show_legend:
+        handles, labels = ax.get_legend_handles_labels()
 
-    fig.legend(
-        handles,
-        labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, -0.08),
-        ncol=3,
-        fontsize=10,
-        frameon=False,
-        handlelength=2.4,
-        handletextpad=0.6,
-        columnspacing=1.6,
-        labelspacing=0.6,
-    )
+        fig.legend(
+            handles,
+            labels,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.08),
+            ncol=3,
+            fontsize=10,
+            frameon=False,
+            handlelength=2.4,
+            handletextpad=0.6,
+            columnspacing=1.6,
+            labelspacing=0.6,
+        )
 
     # Reserve just enough space for the legend.
-    fig.subplots_adjust(
-        left=0.12,
-        right=0.98,
-        top=0.88,
-        bottom=0.23,
-    )
+    if owns_figure:
+        fig.subplots_adjust(
+            left=0.12,
+            right=0.98,
+            top=0.88,
+            bottom=0.23,
+        )
 
     if output is not None:
         output = Path(output)

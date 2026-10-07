@@ -359,10 +359,16 @@ def load_logs(path, config_names, layout):
 
 
 def load_dids_logs(path, layout="DIDS"):
+    """Load one timing per query from exact-search results."""
     dfs = []
 
     for file in sorted(Path(path).rglob("queries.csv")):
         df = pd.read_csv(file).copy()
+
+        # Each top-k neighbor repeats the query timing; count it only once.
+        df = df.loc[(df["mode"] == "exact") & (df["rank"] == 1)].copy()
+        if df.empty:
+            continue
 
         df["querying time"] = df["query_time_ms"] / 1_000
         df["method"] = "DIDS"
