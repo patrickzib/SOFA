@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "isc_ehb_depthphases",
+  "dimension": 256,
+  "sax_length": 16,
+  "base_count": 100000000,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T16:23:54Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 100,
+  "base_file": "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases_queries.bin",
+  "index_dir": "/tmp/dids-index.nBfhrc/isc_ehb_depthphases/dim-256-sax-16/ref-10000-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax16", "--mode", "all", "--dataset-id", "isc_ehb_depthphases", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases.bin", "--base-count", "100000000", "--query-file", "/home/tmp/schaefpa/seismic/ISC_EHB_DepthPhases_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "100", "--ref-objects", "10000", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.nBfhrc/isc_ehb_depthphases/dim-256-sax-16/ref-10000-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/isc_ehb_depthphases/threads-64"]
+}

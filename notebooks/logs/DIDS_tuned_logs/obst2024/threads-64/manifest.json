@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "obst2024",
+  "dimension": 256,
+  "sax_length": 32,
+  "base_count": 4160286,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T17:11:06Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 4,
+  "base_file": "/home/tmp/schaefpa/seismic/OBST2024.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/OBST2024_queries.bin",
+  "index_dir": "/tmp/dids-index.5UUlM0/obst2024/dim-256-sax-32/ref-2040-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax32", "--mode", "all", "--dataset-id", "obst2024", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/OBST2024.bin", "--base-count", "4160286", "--query-file", "/home/tmp/schaefpa/seismic/OBST2024_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "4", "--ref-objects", "2040", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.5UUlM0/obst2024/dim-256-sax-32/ref-2040-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/obst2024/threads-64"]
+}

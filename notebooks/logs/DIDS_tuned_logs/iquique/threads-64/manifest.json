@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "iquique",
+  "dimension": 256,
+  "sax_length": 24,
+  "base_count": 578853,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T16:31:17Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 1,
+  "base_file": "/home/tmp/schaefpa/seismic/Iquique.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/Iquique_queries.bin",
+  "index_dir": "/tmp/dids-index.0YRcoh/iquique/dim-256-sax-24/ref-1522-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax24", "--mode", "all", "--dataset-id", "iquique", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/Iquique.bin", "--base-count", "578853", "--query-file", "/home/tmp/schaefpa/seismic/Iquique_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "1", "--ref-objects", "1522", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.0YRcoh/iquique/dim-256-sax-24/ref-1522-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/iquique/threads-64"]
+}

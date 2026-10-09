@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "stead",
+  "dimension": 256,
+  "sax_length": 32,
+  "base_count": 87323433,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T17:54:48Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 87,
+  "base_file": "/home/tmp/schaefpa/seismic/STEAD.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/STEAD_queries.bin",
+  "index_dir": "/tmp/dids-index.fg4yv6/stead/dim-256-sax-32/ref-9345-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax32", "--mode", "all", "--dataset-id", "stead", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/STEAD.bin", "--base-count", "87323433", "--query-file", "/home/tmp/schaefpa/seismic/STEAD_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "87", "--ref-objects", "9345", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.fg4yv6/stead/dim-256-sax-32/ref-9345-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/stead/threads-64"]
+}

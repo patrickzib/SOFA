@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "pnw",
+  "dimension": 256,
+  "sax_length": 32,
+  "base_count": 31982766,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T17:25:42Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 32,
+  "base_file": "/home/tmp/schaefpa/seismic/PNW.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/PNW_queries.bin",
+  "index_dir": "/tmp/dids-index.7krPa3/pnw/dim-256-sax-32/ref-5655-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax32", "--mode", "all", "--dataset-id", "pnw", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/PNW.bin", "--base-count", "31982766", "--query-file", "/home/tmp/schaefpa/seismic/PNW_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "32", "--ref-objects", "5655", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.7krPa3/pnw/dim-256-sax-32/ref-5655-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/pnw/threads-64"]
+}

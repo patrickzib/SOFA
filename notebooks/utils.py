@@ -535,7 +535,10 @@ def select_best_query_configs(query_times):
 
     result["selected_config"] = result["method"]
     result["Method"] = result["layout"] + " " + result["base_method"]
-    result.loc[result["layout"].eq("DIDS"), "Method"] = "DIDS"
+    dids = result["layout"].eq("DIDS")
+    result.loc[dids, "Method"] = "DIDS"
+    result.loc[dids & result["split"].eq("DIDS default"), "Method"] = "DIDS"
+    result.loc[dids & result["split"].eq("DIDS tuned"), "Method"] = "DIDS (tuned)"
 
     return result
 
@@ -617,4 +620,4 @@ def select_median_query_repeat(
               .drop(columns=["repeat"])
           )
 
-      return pd.concat(selected, ignore_index=True)    
+      return pd.concat(selected, ignore_index=True)

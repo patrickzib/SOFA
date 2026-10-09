@@ -1,0 +1,2 @@
+dataset_id,base_count,dimension,threads,preparation_seconds,reference_selection_seconds,grouping_seconds,structure_build_seconds,index_build_seconds,max_rss_kib,base_loading_included,source_conversion_included
+obst2024,4160286,256,64,2.4043e-05,2.67622508,33.1379995,10.9441639,46.7710705,318648,true,false

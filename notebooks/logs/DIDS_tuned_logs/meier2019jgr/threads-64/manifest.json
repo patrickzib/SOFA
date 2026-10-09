@@ -1,0 +1,22 @@
+{
+  "competitor": "dids",
+  "dataset_id": "meier2019jgr",
+  "dimension": 256,
+  "sax_length": 16,
+  "base_count": 6361998,
+  "query_count": 100,
+  "scalar_type": "float32",
+  "base_header": "raw",
+  "query_header": "raw",
+  "preprocessing": "none",
+  "metric": "squared_l2",
+  "timestamp_utc": "2026-10-08T17:26:40Z",
+  "compiler": "15.1.0",
+  "threads": 64,
+  "k": 1,
+  "approximate_nodes": 32,
+  "base_file": "/home/tmp/schaefpa/seismic/Meier2019JGR.bin",
+  "query_file": "/home/tmp/schaefpa/seismic/Meier2019JGR_queries.bin",
+  "index_dir": "/tmp/dids-index.29G19I/meier2019jgr/dim-256-sax-16/ref-2522-leaf-20000",
+  "command": ["/vol/fob-wbib-vol2/wbi/schaefpa/DIDS/bin/dids_benchmark_256_sax16", "--mode", "all", "--dataset-id", "meier2019jgr", "--dimension", "256", "--base-file", "/home/tmp/schaefpa/seismic/Meier2019JGR.bin", "--base-count", "6361998", "--query-file", "/home/tmp/schaefpa/seismic/Meier2019JGR_queries.bin", "--query-count", "100", "--scalar-type", "float32", "--base-header", "raw", "--query-header", "raw", "--preprocessing", "none", "--threads", "64", "--search", "exact", "--k", "1", "--approximate-nodes", "32", "--ref-objects", "2522", "--leaf-size", "20000", "--read-buffer", "100000", "--write-buffer", "100", "--index-dir", "/tmp/dids-index.29G19I/meier2019jgr/dim-256-sax-16/ref-2522-leaf-20000", "--output-dir", "/vol/tmp/schaefpa/dids_full_evaluation/dids/meier2019jgr/threads-64"]
+}
