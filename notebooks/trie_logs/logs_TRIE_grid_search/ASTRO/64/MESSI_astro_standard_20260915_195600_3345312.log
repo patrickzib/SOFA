@@ -1,0 +1,136 @@
+Running dataset=astro profile=standard method=spartan-depth
+>>> using 64 worker threads on 64 physical cores (128 logical CPUs) across detected NUMA nodes
+=== MESSI index configuration ===
+  index root    : /vol/home-vol3/wbi/schaefpa/index/2026_09_15_19:56:00
+  layout        : symbolic trie (4-way fanout)
+  trie symbols  : 96 dimensions (node/leaf MBRs)
+  split dims    : dimensions 0--47 (48 candidates)
+  record bound  : symbolic prefix, dimensions 0--47 (48 total)
+  MBR suffix    : dimensions 48--95, combined with the record prefix
+  series length : 256
+  leaf capacity : 20 K (minimum 20 K)
+  split policy  : symbolic entropy × variance
+  root split    : sampled symbolic partition
+  leaf refine   : streaming lower-bound -> exact-distance
+  query parallel: per-query leaf work (64 workers, 64 queues)
+  SIMD          : AVX-512 enabled (may be slower; compare AVX2)
+  transform     : SPARTAN, 96 PCA coefficients, alphabet 256 (8 bits)
+  binning       : equi-depth; sampling: uniform (1 M records, seed 1)
+  query bounds  : node MBRs + symbolic record bounds + MBR suffix + leaf IVF MBRs/raw balls
+  leaf IVF      : 8 groups for leaves with at least 4 K records
+  radial bound  : float32 centroid radii, 16-lane AVX-512, original IVF order, auto >=25% rejection after 64 K candidates
+===================================
+>>> SPARTAN: Initialized bins[96][255] 
+>>> SPARTAN binning: /home/tmp/schaefpa/messi_datasets/astro.bin
+>> sampling: [32m0.00%[0m | elapsed 0s | ETA -->> sampling: [32m1.01%[0m | elapsed 0s | ETA 15s>> sampling: [32m2.01%[0m | elapsed 0s | ETA 14s>> sampling: [32m3.01%[0m | elapsed 0s | ETA 13s>> sampling: [32m4.01%[0m | elapsed 1s | ETA 13s>> sampling: [32m5.00%[0m | elapsed 1s | ETA 13s>> sampling: [32m6.00%[0m | elapsed 1s | ETA 12s>> sampling: [32m7.00%[0m | elapsed 1s | ETA 12s>> sampling: [32m8.00%[0m | elapsed 1s | ETA 12s>> sampling: [32m9.01%[0m | elapsed 1s | ETA 12s>> sampling: [32m10.01%[0m | elapsed 1s | ETA 12s>> sampling: [32m11.01%[0m | elapsed 1s | ETA 11s>> sampling: [32m12.01%[0m | elapsed 2s | ETA 11s>> sampling: [32m13.00%[0m | elapsed 2s | ETA 11s>> sampling: [32m14.00%[0m | elapsed 2s | ETA 11s>> sampling: [32m15.00%[0m | elapsed 2s | ETA 11s>> sampling: [32m16.00%[0m | elapsed 2s | ETA 11s>> sampling: [32m17.01%[0m | elapsed 2s | ETA 11s>> sampling: [32m18.01%[0m | elapsed 2s | ETA 11s>> sampling: [32m19.01%[0m | elapsed 2s | ETA 10s>> sampling: [32m20.01%[0m | elapsed 3s | ETA 10s>> sampling: [32m21.00%[0m | elapsed 3s | ETA 10s>> sampling: [32m22.00%[0m | elapsed 3s | ETA 10s>> sampling: [32m23.00%[0m | elapsed 3s | ETA 10s>> sampling: [32m24.00%[0m | elapsed 3s | ETA 10s>> sampling: [32m25.01%[0m | elapsed 3s | ETA 10s>> sampling: [32m26.01%[0m | elapsed 3s | ETA 9s>> sampling: [32m27.01%[0m | elapsed 3s | ETA 9s>> sampling: [32m28.01%[0m | elapsed 4s | ETA 9s>> sampling: [32m29.00%[0m | elapsed 4s | ETA 9s>> sampling: [32m30.00%[0m | elapsed 4s | ETA 9s>> sampling: [32m31.00%[0m | elapsed 4s | ETA 9s>> sampling: [32m32.00%[0m | elapsed 4s | ETA 9s>> sampling: [32m33.01%[0m | elapsed 4s | ETA 9s>> sampling: [32m34.01%[0m | elapsed 4s | ETA 8s>> sampling: [32m35.01%[0m | elapsed 4s | ETA 8s>> sampling: [32m36.01%[0m | elapsed 5s | ETA 8s>> sampling: [32m37.00%[0m | elapsed 5s | ETA 8s>> sampling: [32m38.00%[0m | elapsed 5s | ETA 8s>> sampling: [32m39.00%[0m | elapsed 5s | ETA 8s>> sampling: [32m40.00%[0m | elapsed 5s | ETA 8s>> sampling: [32m41.01%[0m | elapsed 5s | ETA 8s>> sampling: [32m42.01%[0m | elapsed 5s | ETA 7s>> sampling: [32m43.01%[0m | elapsed 5s | ETA 7s>> sampling: [32m44.01%[0m | elapsed 6s | ETA 7s>> sampling: [32m45.00%[0m | elapsed 6s | ETA 7s>> sampling: [32m46.00%[0m | elapsed 6s | ETA 7s>> sampling: [32m47.00%[0m | elapsed 6s | ETA 7s>> sampling: [32m48.00%[0m | elapsed 6s | ETA 7s>> sampling: [32m49.01%[0m | elapsed 6s | ETA 7s>> sampling: [32m50.01%[0m | elapsed 6s | ETA 6s>> sampling: [32m51.01%[0m | elapsed 7s | ETA 6s>> sampling: [32m52.01%[0m | elapsed 7s | ETA 6s>> sampling: [32m53.00%[0m | elapsed 7s | ETA 6s>> sampling: [32m54.00%[0m | elapsed 7s | ETA 6s>> sampling: [32m55.00%[0m | elapsed 7s | ETA 6s>> sampling: [32m56.00%[0m | elapsed 7s | ETA 6s>> sampling: [32m57.01%[0m | elapsed 7s | ETA 5s>> sampling: [32m58.01%[0m | elapsed 7s | ETA 5s>> sampling: [32m59.01%[0m | elapsed 8s | ETA 5s>> sampling: [32m60.01%[0m | elapsed 8s | ETA 5s>> sampling: [32m61.00%[0m | elapsed 8s | ETA 5s>> sampling: [32m62.00%[0m | elapsed 8s | ETA 5s>> sampling: [32m63.00%[0m | elapsed 8s | ETA 5s>> sampling: [32m64.00%[0m | elapsed 8s | ETA 5s>> sampling: [32m65.01%[0m | elapsed 8s | ETA 4s>> sampling: [32m66.01%[0m | elapsed 8s | ETA 4s>> sampling: [32m67.01%[0m | elapsed 9s | ETA 4s>> sampling: [32m68.01%[0m | elapsed 9s | ETA 4s>> sampling: [32m69.00%[0m | elapsed 9s | ETA 4s>> sampling: [32m70.00%[0m | elapsed 9s | ETA 4s>> sampling: [32m71.00%[0m | elapsed 9s | ETA 4s>> sampling: [32m72.00%[0m | elapsed 9s | ETA 4s>> sampling: [32m73.01%[0m | elapsed 9s | ETA 3s>> sampling: [32m74.01%[0m | elapsed 9s | ETA 3s>> sampling: [32m75.01%[0m | elapsed 10s | ETA 3s>> sampling: [32m76.01%[0m | elapsed 10s | ETA 3s>> sampling: [32m77.00%[0m | elapsed 10s | ETA 3s>> sampling: [32m78.00%[0m | elapsed 10s | ETA 3s>> sampling: [32m79.00%[0m | elapsed 10s | ETA 3s>> sampling: [32m80.00%[0m | elapsed 10s | ETA 3s>> sampling: [32m81.01%[0m | elapsed 10s | ETA 2s>> sampling: [32m82.01%[0m | elapsed 10s | ETA 2s>> sampling: [32m83.01%[0m | elapsed 11s | ETA 2s>> sampling: [32m84.01%[0m | elapsed 11s | ETA 2s>> sampling: [32m85.00%[0m | elapsed 11s | ETA 2s>> sampling: [32m86.00%[0m | elapsed 11s | ETA 2s>> sampling: [32m87.00%[0m | elapsed 11s | ETA 2s>> sampling: [32m88.00%[0m | elapsed 11s | ETA 2s>> sampling: [32m89.01%[0m | elapsed 11s | ETA 1s>> sampling: [32m90.01%[0m | elapsed 11s | ETA 1s>> sampling: [32m91.01%[0m | elapsed 12s | ETA 1s>> sampling: [32m92.01%[0m | elapsed 12s | ETA 1s>> sampling: [32m93.00%[0m | elapsed 12s | ETA 1s>> sampling: [32m94.00%[0m | elapsed 12s | ETA 1s>> sampling: [32m95.00%[0m | elapsed 12s | ETA 1s>> sampling: [32m96.00%[0m | elapsed 12s | ETA 1s>> sampling: [32m97.01%[0m | elapsed 12s | ETA 0s>> sampling: [32m98.01%[0m | elapsed 12s | ETA 0s>> sampling: [32m99.01%[0m | elapsed 13s | ETA 0s>> sampling: [32m100.00%[0m | elapsed 13s | ETA 0s
+>>> PCA eigenvalue ranking (top 8/96):
+255, (6.3649) 254, (4.2496) 253, (3.3249) 252, (2.8844) 251, (2.5615) 250, (2.3261) 249, (2.1473) 248, (2.0194) ... (+88 more)
+>>> SPARTAN: Sample size 1000000
+>>> SPARTAN: Using Equi-depth histograms
+>>> SPARTAN binning timing: sample=12.736s PCA=9.030s projection=0.610s bin-sort=4.805s total=27.180s
+>>> PCA projection: CBLAS SGEMM; OpenBLAS threaded (OpenBLAS 0.3.33 DYNAMIC_ARCH NO_AFFINITY SkylakeX MAX_THREADS=64)
+>>> Finished SPARTAN binning
+>> building index: [32m0.00%[0m | elapsed 0s | ETA -->> building index: [32m10.00%[0m | elapsed 22s | ETA 196s>> building index: [32m11.00%[0m | elapsed 23s | ETA 189s>> building index: [32m12.01%[0m | elapsed 25s | ETA 182s>> building index: [32m13.00%[0m | elapsed 26s | ETA 175s>> building index: [32m14.00%[0m | elapsed 28s | ETA 169s>> building index: [32m15.01%[0m | elapsed 29s | ETA 164s>> building index: [32m16.00%[0m | elapsed 30s | ETA 159s>> building index: [32m17.00%[0m | elapsed 32s | ETA 155s>> building index: [32m18.01%[0m | elapsed 33s | ETA 151s>> building index: [32m19.00%[0m | elapsed 35s | ETA 147s>> building index: [32m20.00%[0m | elapsed 36s | ETA 144s>> building index: [32m21.00%[0m | elapsed 37s | ETA 140s>> building index: [32m22.00%[0m | elapsed 39s | ETA 137s>> building index: [32m23.01%[0m | elapsed 40s | ETA 134s>> building index: [32m24.00%[0m | elapsed 42s | ETA 131s>> building index: [32m25.00%[0m | elapsed 43s | ETA 129s>> building index: [32m26.01%[0m | elapsed 44s | ETA 126s>> building index: [32m27.00%[0m | elapsed 46s | ETA 123s>> building index: [32m28.00%[0m | elapsed 47s | ETA 121s>> building index: [32m29.01%[0m | elapsed 48s | ETA 119s>> building index: [32m30.00%[0m | elapsed 50s | ETA 116s>> building index: [32m31.01%[0m | elapsed 51s | ETA 114s>> building index: [32m32.00%[0m | elapsed 53s | ETA 112s>> building index: [32m33.00%[0m | elapsed 54s | ETA 110s>> building index: [32m34.01%[0m | elapsed 55s | ETA 108s>> building index: [32m35.00%[0m | elapsed 57s | ETA 106s>> building index: [32m36.00%[0m | elapsed 58s | ETA 103s>> building index: [32m37.01%[0m | elapsed 60s | ETA 101s>> building index: [32m38.00%[0m | elapsed 61s | ETA 100s>> building index: [32m39.00%[0m | elapsed 62s | ETA 98s>> building index: [32m40.01%[0m | elapsed 64s | ETA 96s>> building index: [32m41.00%[0m | elapsed 65s | ETA 94s>> building index: [32m42.01%[0m | elapsed 67s | ETA 92s>> building index: [32m43.00%[0m | elapsed 68s | ETA 90s>> building index: [32m44.00%[0m | elapsed 69s | ETA 88s>> building index: [32m45.01%[0m | elapsed 71s | ETA 86s>> building index: [32m46.00%[0m | elapsed 72s | ETA 85s>> building index: [32m47.00%[0m | elapsed 74s | ETA 83s>> building index: [32m48.01%[0m | elapsed 75s | ETA 81s>> building index: [32m49.00%[0m | elapsed 76s | ETA 79s>> building index: [32m50.00%[0m | elapsed 78s | ETA 78s>> building index: [32m51.00%[0m | elapsed 79s | ETA 76s>> building index: [32m52.00%[0m | elapsed 81s | ETA 74s>> building index: [32m53.01%[0m | elapsed 82s | ETA 73s>> building index: [32m54.00%[0m | elapsed 83s | ETA 71s>> building index: [32m55.00%[0m | elapsed 85s | ETA 69s>>> trie transform phases: preprocess=0.001s projection=49.339s bias+symbolize=13.555s
+>> building index: [32m65.00%[0m | elapsed 85s | ETA 46s>> building index: [32m90.00%[0m | elapsed 116s | ETA 13s>>> trie leaf IVF timing
+    eligible leaves  : 4829
+    workers          : 64
+    clustered leaves : 4829
+    clusters         : 38632
+    radial leaves    : 4829
+    radial records   : 64.8 M
+    radius storage   : 259 MB
+    total            : 4.017 s
+>> building index: [32m100.00%[0m | elapsed 127s | ETA 0s
+>>> trie build timing
+    read       : 21.803 s
+    transform  : 62.896 s
+    split      : 35.235 s
+    compact    : 7.171 s
+    total      : 127.104 s
+>>> trie split diagnostics
+    internal nodes : 3.63 K
+    max fanout     : 4
+    avg non-empty  : 4.00
+    occupancy      : 100.0%
+    largest child  : 33.2%
+idx:    nodes checked_nodes approximate_distance     distance cumulative_ms
+  0:    14533           276                0.000        0.000        2.210
+  9:    14533           512                0.958        0.958       22.454
+ 19:    14533          1124                4.266        4.266       45.240
+ 29:    14533          2988                9.865        9.865       84.487
+ 39:    14533         14448              348.139       17.592      273.065
+ 49:    14533         14448              350.277       27.212      504.460
+ 59:    14533         14448              352.882       38.435      834.217
+ 69:    14533         14448              331.247       50.948     1253.560
+ 79:    14533         14448              336.404       64.430     1747.814
+ 89:    14533         14448              341.829       78.580     2324.086
+ 99:    14533         14448              347.416       93.123     2958.825
+>>> query repeat 1/5 wall time: 2.960492 s
+  0:    14533           276                0.000        0.000        1.694
+  9:    14533           512                0.958        0.958       22.251
+ 19:    14533          1124                4.266        4.266       46.166
+ 29:    14533          2988                9.865        9.865       86.271
+ 39:    14533         14448              348.139       17.592      205.129
+ 49:    14533         14448              350.277       27.212      410.166
+ 59:    14533         14448              352.882       38.435      712.363
+ 69:    14533         14448              331.247       50.948     1112.768
+ 79:    14533         14448              336.404       64.430     1576.678
+ 89:    14533         14448              341.829       78.580     2110.466
+ 99:    14533         14448              347.416       93.123     2747.024
+>>> query repeat 2/5 wall time: 2.748148 s
+  0:    14533           276                0.000        0.000        1.806
+  9:    14533           512                0.958        0.958       24.363
+ 19:    14533          1124                4.266        4.266       50.348
+ 29:    14533          2988                9.865        9.865       92.461
+ 39:    14533         14448              348.139       17.592      210.065
+ 49:    14533         14448              350.277       27.212      418.510
+ 59:    14533         14448              352.882       38.435      724.905
+ 69:    14533         14448              331.247       50.948     1122.757
+ 79:    14533         14448              336.404       64.430     1591.493
+ 89:    14533         14448              341.829       78.580     2119.003
+ 99:    14533         14448              347.416       93.123     2759.135
+>>> query repeat 3/5 wall time: 2.760300 s
+  0:    14533           276                0.000        0.000        1.827
+  9:    14533           512                0.958        0.958       25.073
+ 19:    14533          1124                4.266        4.266       51.898
+ 29:    14533          2988                9.865        9.865       94.918
+ 39:    14533         14448              348.139       17.592      212.276
+ 49:    14533         14448              350.277       27.212      419.561
+ 59:    14533         14448              352.882       38.435      720.452
+ 69:    14533         14448              331.247       50.948     1110.388
+ 79:    14533         14448              336.404       64.430     1566.169
+ 89:    14533         14448              341.829       78.580     2097.964
+ 99:    14533         14448              347.416       93.123     2737.899
+>>> query repeat 4/5 wall time: 2.739037 s
+  0:    14533           276                0.000        0.000        1.525
+  9:    14533           512                0.958        0.958       20.036
+ 19:    14533          1124                4.266        4.266       41.263
+ 29:    14533          2988                9.865        9.865       78.993
+ 39:    14533         14448              348.139       17.592      198.668
+ 49:    14533         14448              350.277       27.212      410.398
+ 59:    14533         14448              352.882       38.435      724.620
+ 69:    14533         14448              331.247       50.948     1129.672
+ 79:    14533         14448              336.404       64.430     1609.565
+ 89:    14533         14448              341.829       78.580     2149.632
+ 99:    14533         14448              347.416       93.123     2796.042
+>>> query repeat 5/5 wall time: 2.797145 s
+>>> query wall time: 14.005122 s
+=== Query summary ===
+  queries          : 500
+  wall time        : 14.005 s (28.010 ms/query)
+  checked nodes    : 9.99 K/query (68.75% of 14.53 K index nodes)
+  symbolic record bounds: 53.12 M/query (53.12% of 100.00 M indexed series)
+  exact distances  : 707.93 K/query (0.71% of 100.00 M indexed series)
+  pruning breakdown:
+    node MBRs            : 46.67 M records/query (46.67% of indexed series)
+    leaf IVF symbolic    : 207.44 K records/query (1.58% of clusters; 0.21% indexed)
+    leaf IVF raw ball    : 1.08 K records/query (0.00% of surviving clusters; 0.00% indexed)
+    record radial        : 9.63 K records/query (6.80% of candidates; 0.01% indexed)
+    prefix + MBR suffix  : 52.41 M records/query (98.67% of candidates; 52.41% indexed)
+    total                : 99.29 M records/query (99.29% of indexed series)
+
+
+=== Benchmark summary: dataset=astro, profile=standard ===
+Layout  Method    Binning  Leaf cap.  Fanout  Lower bounds/query      LB %   Exact comps/query   Exact %     Walltime
+------------------------------------------------------------------------------------------------------------------------
+Trie    SPARTAN   depth      20 K   4-way       53.12 M/query    53.12%      707.93 K/query     0.71%     14.005 s
