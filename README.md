@@ -1,6 +1,6 @@
 # S³-Trie
 
-S³-Trie provides fast and exact similarity search using SPARTAN transforms and
+S³-Trie provides fast and exact similarity search using SPARTAN+ transforms and
 a symbolic trie. This repository includes the native engine, a Python API,
 and benchmark scripts, as well as the MESSI (SAX+iSAX) and SOFA (SFA+iSAX)
 configurations.
@@ -8,7 +8,7 @@ configurations.
 # Build S³-Trie
 
 S³-Trie requires the single-precision FFTW library (`fftw3f`). OpenBLAS is
-recommended: it provides the LAPACK routines required by SPARTAN and the
+recommended: it provides the LAPACK routines required by SPARTAN+ and the
 optional CBLAS acceleration used for bulk PCA projection. On systems where
 FFTW is discoverable through `pkg-config`, build from the repository root:
 
